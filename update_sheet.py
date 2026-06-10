@@ -1,11 +1,10 @@
 import os
 import json
 import gspread
-import requests
 from oauth2client.service_account import ServiceAccountCredentials
 
 def main():
-    # 1. Stocks List (Future mein bas yahan naye stocks add kariye)
+    # 1. Stocks List
     stocks = ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS', 'TECHM.NS']
     
     # 2. Credentials Setup
@@ -16,16 +15,16 @@ def main():
     )
     client = gspread.authorize(creds)
     
-    # 3. Sheet Connect (GitHub Secrets mein SHEET_ID save rakhein)
+    # 3. Sheet Connect (Correct Sequence)
     sheet_id = os.environ.get('SHEET_ID')
     spreadsheet = client.open_by_key(sheet_id)
-    # Agar tab ka naam "Sheet1" hai toh yahan "Sheet1" likhein
-    sheet = spreadsheet.worksheet('Sheet1') 
+    
+    # PEHLI TAB UTHANE KA SABSE SAFE TAREEKA (Name ka panga khatam)
+    sheet = spreadsheet.get_worksheet(0)
     
     # 4. Processing Loop
     results = []
     for symbol in stocks:
-        # Yahan aapka logic aayega
         action = '⏳ WAIT' 
         results.append([symbol, 0, action])
     
