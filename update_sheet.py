@@ -1,53 +1,45 @@
 import os
-import yfinance as yf
 import json
 import gspread
+import yfinance as yf
+import requests
 from oauth2client.service_account import ServiceAccountCredentials
 
+# Telegram Alert Function
+def send_telegram_alert(message):
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('CHAT_ID')
+    url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
+    requests.get(url)
+
 def main():
-    # 1. Stocks List
     stocks = ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS', 'TECHM.NS']
     
-    # 2. Credentials Setup
     creds_raw = os.environ.get('GCP_CREDENTIALS_JSON')
     creds_dict = json.loads(creds_raw)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(
         creds_dict, ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     )
     client = gspread.authorize(creds)
+    sheet = client.open_by_key(os.environ.get('SHEET_ID')).get_worksheet(0)
     
-    # 3. Sheet Connect (Correct Sequence)
-    sheet_id = os.environ.get('SHEET_ID')
-    spreadsheet = client.open_by_key(sheet_id)
-    
-    # PEHLI TAB UTHANE KA SABSE SAFE TAREEKA (Name ka panga khatam)
-    sheet = spreadsheet.get_worksheet(0)
-    
-  # 4. Processing Loop
     results = []
     for symbol in stocks:
         try:
-            # Ticker data fetch karna
             ticker = yf.Ticker(symbol)
             data = ticker.history(period="1d")
+            ltp = round(data['Close'].iloc[-1], 2)
             
-            # Check karein data empty toh nahi
-            if not data.empty:
-                ltp = round(data['Close'].iloc[-1], 2)
-            else:
-                ltp = 0.0
-            
-            # Logic
             action = '⏳ WAIT'
-            if ltp > 1000:
+            if ltp > 1000: # Aapka Buy Logic
                 action = '🚀 BUY'
+                # Yahan Telegram alert trigger hoga
+                send_telegram_alert(f"📢 SIGNAL: {symbol} is at {ltp}. Action: {action}")
                 
             results.append([symbol, ltp, action])
         except Exception as e:
-            print(f"Error fetching {symbol}: {e}")
-            results.append([symbol, 0.0, "❌ ERROR"])
+            results.append([symbol, 0, "❌ ERROR"])
     
-    # 5. Sheet Update
     sheet.clear()
     sheet.update('A1', [['Symbol', 'LTP', 'Action']] + results)
 
