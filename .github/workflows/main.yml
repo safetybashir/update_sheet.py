@@ -14,8 +14,10 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+          
       - name: Install dependencies
-        run: pip install gspread oauth2client requests pandas yfinance
+        run: pip install gspread oauth2client requests pandas yfinance pandas-ta
+      
       - name: Run script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
