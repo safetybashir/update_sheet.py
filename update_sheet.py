@@ -1,4 +1,5 @@
 import os
+import yfinance as yf
 import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -22,11 +23,29 @@ def main():
     # PEHLI TAB UTHANE KA SABSE SAFE TAREEKA (Name ka panga khatam)
     sheet = spreadsheet.get_worksheet(0)
     
-    # 4. Processing Loop
+  # 4. Processing Loop
     results = []
     for symbol in stocks:
-        action = '⏳ WAIT' 
-        results.append([symbol, 0, action])
+        try:
+            # Ticker data fetch karna
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="1d")
+            
+            # Check karein data empty toh nahi
+            if not data.empty:
+                ltp = round(data['Close'].iloc[-1], 2)
+            else:
+                ltp = 0.0
+            
+            # Logic
+            action = '⏳ WAIT'
+            if ltp > 1000:
+                action = '🚀 BUY'
+                
+            results.append([symbol, ltp, action])
+        except Exception as e:
+            print(f"Error fetching {symbol}: {e}")
+            results.append([symbol, 0.0, "❌ ERROR"])
     
     # 5. Sheet Update
     sheet.clear()
