@@ -1,9 +1,8 @@
-name: NSE-Auto-Sheet-Update
-
+name: Market Scanner
 on:
   schedule:
-    - cron: '*/15 * * * *' # Har 15 minute mein chalega
-  workflow_dispatch: # Manual run ke liye
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -16,7 +15,7 @@ jobs:
           python-version: '3.9'
           
       - name: Install dependencies
-        run: pip install gspread oauth2client requests pandas yfinance pandas-ta
+        run: pip install gspread oauth2client requests pandas yfinance
       
       - name: Run script
         env:
