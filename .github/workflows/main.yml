@@ -1,4 +1,4 @@
-name: Market Scanner
+name: NSE-Auto-Sheet-Update
 on:
   schedule:
     - cron: '*/15 * * * *'
