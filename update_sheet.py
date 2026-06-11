@@ -4,7 +4,8 @@ import gspread
 import yfinance as yf
 import pytz
 from datetime import datetime
-from nsepython import * from concurrent.futures import ThreadPoolExecutor
+from nsepython import *
+from concurrent.futures import ThreadPoolExecutor
 from google.oauth2.service_account import Credentials
 
 # Ab aapka code bina kisi error ke execute hoga
