@@ -31,12 +31,15 @@ def main():
         rsi = get_rsi(df).iloc[-1]
         ema_50 = df['Close'].ewm(span=50).mean().iloc[-1]
         
+        
         # SMART LOGIC
         signal = "⏳ SEARCHING..."
         if rsi < 30 and ltp > ema_50:
             signal = "⚡ REVERSAL BUY"
+            send_alert(sym, ltp) # Alert sirf tabhi jayega
         elif turnover > (avg_turnover * 1.5):
             signal = "🚀 VALUE BREAKOUT"
+            send_alert(sym, ltp) # Alert sirf tabhi jayega
             
         report.append([sym, round(ltp, 2), signal])
     
