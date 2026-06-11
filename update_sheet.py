@@ -1,51 +1,38 @@
-import os
-import json
-import gspread
-import yfinance as yf
-import pandas as pd
-import requests
+import os, json, gspread, yfinance as yf, requests
 from oauth2client.service_account import ServiceAccountCredentials
 
-def send_telegram_alert(message):
-    token = os.environ.get('TELEGRAM_TOKEN')
-    chat_id = os.environ.get('CHAT_ID')
-    if token and chat_id:
-        requests.get(f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}&parse_mode=Markdown")
+def send_alert(stock, ltp):
+    msg = f"🚀 *SNIPER RADAR: {stock}*\nPrice: {ltp}\nVolume Blast & Breakout detected!"
+    requests.get(f"https://api.telegram.org/bot{os.environ.get('TELEGRAM_TOKEN')}/sendMessage?chat_id={os.environ.get('CHAT_ID')}&text={msg}&parse_mode=Markdown")
 
 def main():
-    # Stocks list yahan define hai, ab error nahi aayega!
-    stocks = ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS', 'TECHM.NS']
+    # Poora Nifty 50 scan karne ke liye symbols (Short list for example)
+    universe = ['RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HINDUNILVR.NS', 'SBIN.NS', 'ICICIBANK.NS'] 
     
+    # Auth setup (purana hi rahega)
     creds_dict = json.loads(os.environ.get('GCP_CREDENTIALS_JSON'))
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive'])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ['https://spreadsheets.google.com/feeds', 'https://spreadsheets.google.com/drive'])
     sheet = gspread.authorize(creds).open_by_key(os.environ.get('SHEET_ID')).get_worksheet(0)
     
-    results = []
-    for symbol in stocks:
-        try:
-            df = yf.Ticker(symbol).history(period="1mo")
-            ltp = round(df['Close'].iloc[-1], 2)
+    report = []
+    for sym in universe:
+        df = yf.Ticker(sym).history(period="1mo")
+        ltp = df['Close'].iloc[-1]
+        vol = df['Volume'].iloc[-1]
+        avg_vol = df['Volume'].rolling(20).mean().iloc[-1]
+        high_20 = df['High'].rolling(20).max().iloc[-2] # Pichle 20 din ka high
+        
+        # SNIPER CONDITION
+        if ltp > high_20 and vol > (avg_vol * 1.5):
+            action = '🚀 BREAKOUT'
+            send_alert(sym, ltp)
+        else:
+            action = '⏳ SEARCHING...'
             
-            # Indicators
-            df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
-            df['SMA'] = df['Close'].rolling(20).mean()
-            df['STD'] = df['Close'].rolling(20).std()
-            df['BB_Low'] = df['SMA'] - (2 * df['STD'])
-            
-            vwap = round(df['VWAP'].iloc[-1], 2)
-            bb_low = round(df['BB_Low'].iloc[-1], 2)
-            
-            action = '⏳ WAIT'
-            if ltp <= bb_low:
-                action = '🎯 BUY SIGNAL'
-                send_telegram_alert(f"🎯 *RADAR HIT: {symbol}*\n🟢 Entry: {ltp}\n💰 Target: {round(ltp*1.05, 2)}")
-            
-            results.append([symbol, ltp, action, vwap, bb_low])
-        except Exception as e:
-            results.append([symbol, 0, "❌ ERROR", 0, 0])
+        report.append([sym, ltp, action])
     
     sheet.clear()
-    sheet.update('A1', [['Symbol', 'LTP', 'Action', 'VWAP', 'BB_Low']] + results)
+    sheet.update('A1', [['Symbol', 'LTP', 'Action']] + report)
 
 if __name__ == "__main__":
     main()
