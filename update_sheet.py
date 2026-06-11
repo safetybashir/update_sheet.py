@@ -8,7 +8,7 @@ from nsepython import *
 from concurrent.futures import ThreadPoolExecutor
 from google.oauth2.service_account import Credentials
 
-# 1. Institutional Logic with Fallback
+# 1. Institutional Flow with Fallback
 def get_institutional_flow(sym_full):
     try:
         sym = sym_full.split('.')[0]
@@ -28,14 +28,14 @@ def get_institutional_flow(sym_full):
         return "⏳ MARKET CLOSED", 5
 
 # 2. Scanner Logic
-def scan_stock_v15(sym):
+def scan_stock_v16(sym):
     try:
         ticker = yf.Ticker(sym)
         df = ticker.history(period="5d")
         ltp = df['Close'].iloc[-1]
         flow_status, score = get_institutional_flow(sym)
         
-        # Decision logic for manual action
+        # Decision logic
         if score >= 8: action = "🚀 BUY ZONE"
         elif score <= 2: action = "📉 SELL ZONE"
         else: action = "⏳ WAIT/WATCH"
@@ -49,7 +49,7 @@ def main():
     universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI', 'MAXHEALTH']
     
     with ThreadPoolExecutor(max_workers=5) as executor:
-        data = list(executor.map(lambda s: [s + '.NS'] + scan_stock_v15(s + '.NS'), universe))
+        data = list(executor.map(lambda s: [s + '.NS'] + scan_stock_v16(s + '.NS'), universe))
     
     # Credentials & Auth
     creds = Credentials.from_service_account_info(
@@ -58,17 +58,19 @@ def main():
     )
     sheet = gspread.authorize(creds).open_by_key(os.environ.get('SHEET_ID')).get_worksheet(0)
     
-    # Clear & Rebuild Sheet
+    # Forceful Update Logic
     sheet.clear()
-    headers = ['Symbol', 'LTP', 'Action Plan', 'OI Status', 'Insti Score', 'Update Time']
-    sheet.update(range_name='A1', values=[headers])
     
-    # Data Processing
+    # Headers in A1:F1
+    headers = ['Symbol', 'LTP', 'Action Plan', 'OI Status', 'Insti Score', 'Update Time']
+    sheet.update(range_name='A1:F1', values=[headers])
+    
+    # Data in A2:F6
     timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
     formatted_data = [[*row, timestamp] for row in data]
-    sheet.update(range_name='A2', values=formatted_data)
+    sheet.update(range_name='A2:F6', values=formatted_data)
     
-    # Freeze Header for Professional Look
+    # Freeze Header
     sheet.freeze(rows=1)
 
 if __name__ == "__main__":
