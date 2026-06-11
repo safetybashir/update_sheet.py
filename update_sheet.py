@@ -1,6 +1,14 @@
 import os, json, gspread, yfinance as yf, requests
 from google.oauth2.service_account import Credentials
-import pandas as pd
+
+# 1. PEHLE FUNCTION DEFINITION (Isse Python pehle padhega)
+def send_alert(stock, ltp):
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('CHAT_ID')
+    if token and chat_id:
+        msg = f"🚀 *SNIPER RADAR: {stock}*\nPrice: {ltp:.2f}\nAction: Detected!"
+        url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={msg}&parse_mode=Markdown"
+        requests.get(url)
 
 def get_rsi(df, period=14):
     delta = df['Close'].diff()
@@ -9,8 +17,9 @@ def get_rsi(df, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
+# 2. PHIR MAIN LOGIC
 def main():
-    universe = ['RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'SBIN.NS', 'ICICIBANK.NS', 'TATAMOTORS.NS']
+    universe = ['RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HINDUNILVR.NS', 'SBIN.NS', 'ICICIBANK.NS', 'TATAMOTORS.NS']
     
     creds_dict = json.loads(os.environ.get('GCP_CREDENTIALS_JSON'))
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -21,25 +30,23 @@ def main():
     
     report = []
     for sym in universe:
-        df = yf.Ticker(sym).history(period="3mo") # 3 mahine ka data chahiye indicators ke liye
+        df = yf.Ticker(sym).history(period="3mo")
         if len(df) < 50: continue
             
         ltp = df['Close'].iloc[-1]
-        # Turnover (Value) Calculation: Price * Volume
         turnover = ltp * df['Volume'].iloc[-1]
         avg_turnover = (df['Close'] * df['Volume']).rolling(20).mean().iloc[-1]
         rsi = get_rsi(df).iloc[-1]
         ema_50 = df['Close'].ewm(span=50).mean().iloc[-1]
         
-        
-        # SMART LOGIC
         signal = "⏳ SEARCHING..."
+        # Logic check
         if rsi < 30 and ltp > ema_50:
             signal = "⚡ REVERSAL BUY"
-            send_alert(sym, ltp) # Alert sirf tabhi jayega
+            send_alert(sym, ltp) 
         elif turnover > (avg_turnover * 1.5):
             signal = "🚀 VALUE BREAKOUT"
-            send_alert(sym, ltp) # Alert sirf tabhi jayega
+            send_alert(sym, ltp) 
             
         report.append([sym, round(ltp, 2), signal])
     
