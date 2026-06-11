@@ -3,57 +3,55 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from google.oauth2.service_account import Credentials
 
-# --- V10.0: Autonomous Engine Logic ---
+# 1. Global Context Filter
+def get_global_sentiment():
+    # In V11, we check a proxy for global risk (e.g., ^NSEI or ^GSPC)
+    # Agar Nifty 50 apne 200-day EMA ke niche hai, toh Global Risk high hai.
+    nifty = yf.Ticker("^NSEI").history(period="1mo")
+    sma_200 = nifty['Close'].rolling(200).mean().iloc[-1]
+    return "BEARISH" if nifty['Close'].iloc[-1] < sma_200 else "BULLISH"
 
-def get_market_bias(universe):
-    """Checks if the broader market is in a healthy state."""
-    # Logic: Agar 50% stocks apni 50-day EMA ke upar hain, toh Market 'Healthy' hai
-    healthy_stocks = 0
-    for sym in universe[:50]: # Sample check for speed
-        df = yf.Ticker(sym).history(period="3mo")
-        if len(df) > 50:
-            ema_50 = df['Close'].ewm(span=50).mean().iloc[-1]
-            if df['Close'].iloc[-1] > ema_50:
-                healthy_stocks += 1
-    return (healthy_stocks / 50) > 0.5
-
-def scan_stock(sym, market_is_healthy):
+# 2. Advanced Scan Logic
+def scan_stock_v11(sym, global_trend):
     try:
         df = yf.Ticker(sym).history(period="3mo")
-        if len(df) < 50: return [sym, 0, "DATA ERR", "-", "-", "-", "-", "-", "-"]
+        if len(df) < 50: return [sym, 0, "DATA ERR", "-", "-", "-", "-", "-"]
         
         ltp = df['Close'].iloc[-1]
-        atr = (df['High'] - df['Low']).rolling(14).mean().iloc[-1]
-        volatility = df['Close'].pct_change().std() * 100
+        vol = df['Volume'].iloc[-1]
+        avg_vol = df['Volume'].rolling(20).mean().iloc[-1]
+        vol_spike = round(vol / avg_vol, 2)
+        rsi = 100 - (100 / (1 + (df['Close'].diff().clip(lower=0).rolling(14).mean() / -df['Close'].diff().clip(upper=0).rolling(14).mean())))
+        rsi = rsi.iloc[-1]
         
-        # Adaptive Risk Calculation
-        multiplier = 2.0 if volatility > 1.5 else 1.2
-        sl = round(ltp - (multiplier * atr), 2)
-        tg = round(ltp + (2.5 * multiplier * atr), 2)
-        
-        # Contextual Logic
+        # Macro Check
+        if global_trend == "BEARISH":
+            return [sym, round(ltp, 2), "🛡️ GLOBAL RISK", "-", "-", "-", "-", "-"]
+
+        # Breakout/Reversal Scoring
         signal = "⏳ SEARCHING..."
-        if market_is_healthy:
-            if df['Close'].iloc[-1] > df['Close'].ewm(span=50).mean().iloc[-1]:
-                signal = "🎯 SYSTEM BUY" # Sirf jab market healthy ho
-        else:
-            signal = "🛡️ DEFENSIVE MODE" # Market risky hai, no new buys
-            
-        return [sym, round(ltp, 2), signal, f"{volatility:.2f}%", sl, tg]
+        if vol_spike > 2.5 and (ltp > df['High'].rolling(20).max().iloc[-2]):
+            signal = "🔥 SUPER BREAKOUT"
+        elif rsi < 30:
+            signal = "⚡ STRONG REVERSAL"
+        
+        atr = (df['High'] - df['Low']).rolling(14).mean().iloc[-1]
+        sl = round(ltp - (1.5 * atr), 2)
+        tg = round(ltp + (3.0 * atr), 2)
+        
+        return [sym, round(ltp, 2), signal, f"{vol_spike}x", round(rsi, 2), sl, tg, "ACTIVE"]
     except:
         return [sym, 0, "ERROR", "-", "-", "-", "-", "-"]
 
-# --- Main Setup ---
 def main():
     universe = ['TRENT.NS', 'CUMMINSIND.NS', 'PERSISTENT.NS', 'TATAELXSI.NS', 'MAXHEALTH.NS']
-    is_healthy = get_market_bias(universe)
+    global_trend = get_global_sentiment()
     
     with ThreadPoolExecutor(max_workers=10) as executor:
-        results = [executor.submit(scan_stock, s, is_healthy) for s in universe]
-        report = [r.result() for r in results]
+        report = list(executor.map(lambda s: scan_stock_v11(s, global_trend), universe))
     
-    # [Update logic for Google Sheets same as previous versions...]
-    print(f"Market Healthy: {is_healthy}")
+    # [Google Sheet Update logic...]
+    print(f"Global Trend: {global_trend}")
     print(report)
 
 if __name__ == "__main__":
