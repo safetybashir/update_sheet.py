@@ -1,4 +1,6 @@
+from nsepython import * from concurrent.futures import ThreadPoolExecutor
 import os, json, gspread, yfinance as yf, pytz
+# ... baaki ka code same rahega
 from datetime import datetime
 from nsepython import * from concurrent.futures import ThreadPoolExecutor
 from google.oauth2.service_account import Credentials
