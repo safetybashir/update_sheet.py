@@ -9,18 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12' # 3.9 se upgrade kar diya
+          python-version: '3.12'
           
       - name: Install dependencies
-  run: |
-    pip install nsepython yfinance gspread google-auth
+        run: |
+          pip install nsepython yfinance gspread google-auth
       
       - name: Run script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
-        
