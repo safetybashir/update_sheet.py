@@ -12,15 +12,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12' # 3.9 se upgrade kar diya
           
       - name: Install dependencies
-        run: pip install gspread oauth2client requests pandas yfinance
+        # oauth2client ki jagah google-auth-oauthlib aur gspread install kar rahe hain
+        run: pip install gspread google-auth pandas yfinance
       
       - name: Run script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python update_sheet.py
