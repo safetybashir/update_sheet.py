@@ -24,50 +24,39 @@ def get_institutional_flow(sym_full):
     except: return "⏳ MARKET CLOSED", 5
 
 # 2. Scanner Logic
-def scan_stock_v17(sym):
+def scan_stock_v18(sym):
     try:
         ticker = yf.Ticker(sym)
         df = ticker.history(period="5d")
         ltp = df['Close'].iloc[-1]
         flow_status, score = get_institutional_flow(sym)
-        
         if score >= 8: action = "🚀 BUY ZONE"
         elif score <= 2: action = "📉 SELL ZONE"
         else: action = "⏳ WAIT/WATCH"
-        
-        # 6 Data points return kar rahe hain
         return [round(ltp, 2), action, flow_status, score]
     except: return [0, "ERR", "ERR", 0]
 
-# 3. Main Controller with Journaling Columns
+# 3. Main Controller
 def main():
     universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI', 'MAXHEALTH']
     with ThreadPoolExecutor(max_workers=5) as executor:
-        data = list(executor.map(lambda s: [s + '.NS'] + scan_stock_v17(s + '.NS'), universe))
+        data = list(executor.map(lambda s: [s + '.NS'] + scan_stock_v18(s + '.NS'), universe))
     
     creds = Credentials.from_service_account_info(
         json.loads(os.environ.get('GCP_CREDENTIALS_JSON')), 
         scopes=['https://www.googleapis.com/auth/spreadsheets']
     )
-    sheet = gspread.authorize(creds).open_by_key(os.environ.get('SHEET_ID')).get_worksheet(0)
+    sh = gspread.authorize(creds).open_by_key(os.environ.get('SHEET_ID'))
     
-    sheet.clear()
-    
-    # 10 Columns total: 6 Auto + 4 Manual
-    headers = ['Symbol', 'LTP', 'Action Plan', 'OI Status', 'Insti Score', 'Update Time', 'Buy Price', 'Qty', 'Sell Price', 'P/L']
-    sheet.update(range_name='A1:J1', values=[headers])
+    # DASHBOARD TAB (Live Signals)
+    dash_sheet = sh.get_worksheet(0)
+    dash_sheet.clear()
+    dash_sheet.update(range_name='A1', values=[['Symbol', 'LTP', 'Action Plan', 'OI Status', 'Insti Score', 'Update Time']])
     
     timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
-    # Hum sirf data populate karenge, last 4 columns khali rahenge jise aap manual bharenge
     formatted_data = [[*row, timestamp] for row in data]
-    sheet.update(range_name='A2:F6', values=formatted_data)
-    
-    sheet.freeze(rows=1)
-    
-    # P/L Column mein Formula add karna (Optional: Sheet mein khud se bhi kar sakte hain)
-    # Range J2 se J6 mein formula: =(I2-G2)*H2
-    for i in range(2, 7):
-        sheet.update_cell(i, 10, f'=IF(ISBLANK(I{i}), "", (I{i}-G{i})*H{i})')
+    dash_sheet.update(range_name='A2', values=formatted_data)
+    dash_sheet.freeze(rows=1)
 
 if __name__ == "__main__":
     main()
