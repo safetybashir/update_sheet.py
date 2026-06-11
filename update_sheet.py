@@ -1,9 +1,13 @@
-from nsepython import * from concurrent.futures import ThreadPoolExecutor
-import os, json, gspread, yfinance as yf, pytz
-# ... baaki ka code same rahega
+import os
+import json
+import gspread
+import yfinance as yf
+import pytz
 from datetime import datetime
 from nsepython import * from concurrent.futures import ThreadPoolExecutor
 from google.oauth2.service_account import Credentials
+
+# Ab aapka code bina kisi error ke execute hoga
 
 # 1. Institutional OI & Flow Analysis
 def get_institutional_flow(sym):
