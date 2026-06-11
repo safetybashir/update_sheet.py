@@ -15,8 +15,8 @@ jobs:
           python-version: '3.12' # 3.9 se upgrade kar diya
           
       - name: Install dependencies
-        # oauth2client ki jagah google-auth-oauthlib aur gspread install kar rahe hain
-        run: pip install gspread google-auth pandas yfinance
+  run: |
+    pip install nsepython yfinance gspread google-auth
       
       - name: Run script
         env:
