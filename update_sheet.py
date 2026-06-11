@@ -47,11 +47,18 @@ def main():
         elif turnover > (avg_turnover * 1.5):
             signal = "🚀 VALUE BREAKOUT"
             send_alert(sym, ltp) 
-            
+         # Strategy 1: Momentum
+if ltp > high_20 and vol > (avg_vol * 1.5):
+    signal = "🚀 MOMENTUM BREAKOUT"
+
+# Strategy 2: Reversal (Price 50 DMA ke upar nikal raha hai)
+sma_50 = df['Close'].rolling(50).mean().iloc[-1]
+if ltp > sma_50 and ltp_prev < sma_50_prev: # Cross-over
+    signal = "📈 TREND REVERSAL"   
         report.append([sym, round(ltp, 2), signal])
     
     sheet.clear()
-    sheet.update('A1', [['Symbol', 'LTP', 'Action']] + report)
+    sheet.update('A1', [['Symbol', 'LTP', 'REVERSAL', '🚀 MOMENTUM BREAKOUT', 'Action']] + report)
 
 if __name__ == "__main__":
     main()
