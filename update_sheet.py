@@ -50,11 +50,10 @@ def main():
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         final_data.append([sym + ".NS", ltp, action, status, score, timestamp])
     
-    # Update Sheet
-    dash_sheet.clear()
-    dash_sheet.update(range_name='A1', values=[['Symbol', 'LTP', 'Action Plan', 'Trend Status', 'Insti Score', 'Update Time']])
-    dash_sheet.update(range_name='A2', values=final_data)
-    dash_sheet.freeze(rows=1)
+    # Ensure sheet is cleared properly before update
+    dash_sheet.clear_contents() 
+    dash_sheet.update('A1', [['Symbol', 'LTP', 'Action Plan', 'Trend Status', 'Insti Score', 'Update Time']])
+    dash_sheet.update('A2', final_data)
 
 if __name__ == "__main__":
     main()
