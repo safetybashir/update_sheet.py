@@ -31,7 +31,8 @@ def get_invincible_score(ticker_obj):
 
 # 2. Main Controller
 def main():
-    universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI','TORNTPHARM', 'WAAREEENER', 'SOLARINDS', 'ALKEM', 'DIVISLAB', 'JSWSTEEL', 'APOLLOHOSP', 'POWERINDIA', 'MAXHEALTH']
+    universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI','TORNTPHARM', 'AVANTIFEED', 'LT', 'DIXON', 'MARUTI', 'EICHERMOT', 'TITAN', 'RVNL', 'KAYNES',
+                'WAAREEENER', 'SOLARINDS', 'ALKEM', 'DIVISLAB', 'JSWSTEEL', 'APOLLOHOSP', 'POWERINDIA', 'BAJAJ-AUTO', 'ULTRACEMCO', 'INDIGO', 'MAXHEALTH']
     
     # Credentials setup
     creds = Credentials.from_service_account_info(
