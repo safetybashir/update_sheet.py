@@ -38,7 +38,7 @@ def scan_stock_v18(sym):
 
 # 3. Main Controller
 def main():
-    universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI', 'MAXHEALTH']
+    universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI', 'POWERINDIA', 'MAXHEALTH']
     with ThreadPoolExecutor(max_workers=5) as executor:
         data = list(executor.map(lambda s: [s + '.NS'] + scan_stock_v18(s + '.NS'), universe))
     
