@@ -20,7 +20,7 @@ def get_invincible_score(ticker_obj):
         
         # Logic: Price up + Volume Spike = Institutional Buying
         score = 5
-        if ltp > prev_close and vol > avg_vol: score = 10  # Bullish Breakout
+        if ltp > prev_close and vol > avg_vol: score = 11  # Bullish Breakout
         elif ltp < prev_close and vol > avg_vol: score = 2   # Institutional Dumping
         elif ltp > prev_close: score = 8                    # Mild Buying
         
@@ -32,7 +32,7 @@ def get_invincible_score(ticker_obj):
 # 2. Main Controller
 def main():
     universe = ['TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI','TORNTPHARM', 'AVANTIFEED', 'LT', 'DIXON', 'MARUTI', 'EICHERMOT', 'TITAN', 'RVNL', 'KAYNES',
-                'WAAREEENER', 'SOLARINDS', 'ALKEM', 'DIVISLAB', 'JSWSTEEL', 'APOLLOHOSP', 'POWERINDIA', 'BAJAJ-AUTO', 'ULTRACEMCO', 'INDIGO', 'MAXHEALTH']
+                'WAAREEENER', 'SOLARINDS', 'WABAG', 'ALKEM', 'DIVISLAB', 'JSWSTEEL', 'APOLLOHOSP', 'POWERINDIA', 'BAJAJ-AUTO', 'ULTRACEMCO', 'INDIGO', 'MAXHEALTH']
     
     # Credentials setup
     creds = Credentials.from_service_account_info(
