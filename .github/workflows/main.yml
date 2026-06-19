@@ -17,7 +17,7 @@ jobs:
           
       - name: Install dependencies
         run: |
-          pip install nsepython yfinance gspread google-auth
+          pip install nsepython yfinance gspread google-auth pandas pytz
       
       - name: Run script
         env:
