@@ -39,15 +39,38 @@ def fetch_nifty_largemidcap250():
     except Exception as e:
         logging.error(f"❌ Failed to fetch NIFTY LargeMidcap 250: {e}")
         # Fallback to default universe
-        return [
-            'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
-            'ICICIBANK', 'ITC', 'KOTAKBANK', 'SBIN', 'BHARTIARTL',
-            'LT', 'AXISBANK', 'BAJFINANCE', 'HCLTECH', 'WIPRO',
-            'SUNPHARMA', 'TITAN', 'MARUTI', 'ONGC', 'NTPC'
-        ]
-
-# Use this function to set UNIVERSE
-UNIVERSE = fetch_nifty_largemidcap250()
+       UNIVERSE = [
+    'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
+    'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
+    'ULTRACEMCO', 'LT', 'HAL', 'BSE', 'KALYANKJIL',
+    'NESTLEIND', 'SUNPHARMA', 'JUBLFOOD', 'WIPRO', 'RVNL',
+    'MAXHEALTH', 'HCLTECH', 'POWERINDIA', 'TATASTEEL', 'ASHOKLEY',
+    'HINDALCO', 'ASIANPAINT', 'CIPLA', 'TORNTPHARM', 'ETERNAL',
+    'MARUTI', 'TMPV', 'WAAREEENER', 'MOTHERSON', 'GVT&D',
+    'CUMMINSIND', 'TATACONSUM', 'BEL', 'EICHERMOT', 'DLF',
+    'ENRIN', 'ITC', 'BDL', 'SOLARINDS', 'BRITANNIA',
+    'DMART', 'THERMAX', 'CGPOWER', 'LODHA', 'APOLLOHOSP',
+    'NAUKRI', 'TVSMOTOR', 'TMCV', 'TITAN', 'HEROMOTOCO',
+    'ABB', 'BPCL', 'ALKEM', 'SIEMENS', 'PERSISTENT',
+    'DRREDDY', 'OFSS', 'SWIGGY', 'LUPIN', 'JSWENERGY',
+    'PIDILITIND', 'INDUSTOWER', 'BOSCHLTD', 'BHARATFORG', 'INDIGO',
+    'MARICO', 'TECHM', 'DABUR', 'DIXON', 'SRF',
+    'MANKIND', 'LTM', 'JINDALSTEL', 'GRASIM', 'HAVELLS',
+    'BAJAJ-AUTO', 'NYKAA', 'COFORGE', 'TRENT', 'HINDPETRO',
+    'ASTRAL', 'POLYCAB', 'MAZDOCK', 'PREMIERENE', 'APARINDS',
+    'GAIL', 'UPL', 'DIVISLAB', 'JSWSTEEL', 'GODREJCP',
+    'GODREJPROP', 'VOLTAS', 'APLAPOLLO', 'AUROPHARMA', 'RECLTD',
+    'TATAPOWER', 'PIIND', 'GLENMARK', 'MPHASIS', 'LTF',
+    'FORTIS', 'BIOCON', 'OBEROIRLTY', 'COLPAL', 'LAURUSLABS',
+    'COCHINSHIP', 'PETRONET', 'TIINDIA', 'JSL', 'PHOENIXLTD',
+    'TATACOMM', 'ESCORTS', 'SHREECEM', 'TORNTPOWER', 'LENSKART',
+    'EXIDEIND', 'COROMANDEL', 'KEI', 'AMBUJACEM', 'PRESTIGE',
+    'SUPREMEIND', 'IPCALAB', 'BALKRISIND', 'CONCOR', 'TATAELXSI',
+    'FLUOROCHEM', 'KPITTECH', 'UNOMINDA', 'LINDEINDIA', 'AIAENG',
+    'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND',
+    'APOLLOTYRE', 'LTTS', 'TATAINVEST', 'BERGEPAINT', 'KPRMILL',
+    'ABBOTINDIA', 'ACC'
+]
 
 # --- Main Scoring Function with Traded Value ---
 def get_institutional_score(ticker_obj, symbol):
