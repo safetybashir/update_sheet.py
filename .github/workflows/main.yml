@@ -18,11 +18,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install nsepython yfinance gspread google-auth pandas pytz numpy
-          pip install google-generativeai  # Optional for AI insights
       
       - name: Run script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python update_sheet.py
