@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Super Scanner 2.0 with Traded Value
+# update_sheet.py – AI Bro Super Scanner 2.0 (Complete)
 import os
 import json
 import gspread
@@ -9,6 +9,7 @@ import numpy as np
 import logging
 import sys
 import time
+import requests  # Added for CSV fetch
 from datetime import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
@@ -27,8 +28,9 @@ try:
 except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
-     
-    UNIVERSE = [
+
+# --- Custom Universe (Your Selected Stocks) ---
+UNIVERSE = [
     'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
     'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
     'ULTRACEMCO', 'LT', 'HAL', 'BSE', 'KALYANKJIL',
@@ -60,7 +62,8 @@ except Exception as e:
     'APOLLOTYRE', 'LTTS', 'TATAINVEST', 'BERGAPAINT', 'KPRMILL',
     'ABBOTINDIA', 'ACC'
 ]
-# --- Main Scoring Function with Traded Value ---
+
+# --- Core Scoring Function ---
 def get_institutional_score(ticker_obj, symbol):
     try:
         if ticker_obj is None:
@@ -75,18 +78,18 @@ def get_institutional_score(ticker_obj, symbol):
         vol = df['Volume'].iloc[-1]
         avg_vol = df['Volume'].mean()
         
-        # --- TRADED VALUE (Price × Volume) ---
-        traded_value = ltp * vol  # in rupees
+        # Traded Value
+        traded_value = ltp * vol
         
-        # --- Week Change ---
+        # Week Change
         week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         
-        # --- Moving Averages ---
+        # Moving Averages
         sma20 = df['Close'].rolling(20).mean().iloc[-1] if len(df) >= 20 else ltp
         sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else ltp
         sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else ltp
         
-        # --- RSI ---
+        # RSI
         if len(df) > 14:
             delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -96,19 +99,17 @@ def get_institutional_score(ticker_obj, symbol):
         else:
             rsi = 50
         
-        # --- SCORE COMPONENTS ---
-        # 1. Traded Value Score (40% weight)
+        # Score Components
         value_score = 0
-        if traded_value > 100_00_00_000:  # 100+ Crore
+        if traded_value > 100_00_00_000:
             value_score = 40
-        elif traded_value > 50_00_00_000:  # 50+ Crore
+        elif traded_value > 50_00_00_000:
             value_score = 30
-        elif traded_value > 10_00_00_000:  # 10+ Crore
+        elif traded_value > 10_00_00_000:
             value_score = 15
         else:
             value_score = 5
         
-        # 2. Trend Score (30%)
         trend_score = 0
         if ltp > sma20:
             trend_score += 10
@@ -117,26 +118,22 @@ def get_institutional_score(ticker_obj, symbol):
         if ltp > sma200:
             trend_score += 10
         
-        # 3. RSI Score (20%)
         rsi_score = 0
         if rsi > 60:
             rsi_score = 20
         elif rsi > 50:
             rsi_score = 10
         
-        # 4. Week Performance Score (10%)
         week_score = 0
         if week_change > 5:
             week_score = 10
         elif week_change > 2:
             week_score = 5
         
-        # --- Final Score (0-100) ---
         total_score = value_score + trend_score + rsi_score + week_score
         score = min(100, total_score)
         score = max(0, score)
         
-        # --- Status ---
         if score >= 75:
             status = "🎯 STRONG BUY"
         elif score >= 60:
@@ -154,7 +151,7 @@ def get_institutional_score(ticker_obj, symbol):
         logging.error(f"Error processing {symbol}: {e}")
         return "⏳ SYNCING", 0, 0, 0, 0, 0, 0, 0, 0, 0
 
-# --- Fetch All Stocks with Retry ---
+# --- Fetch All Stocks ---
 def fetch_all_stocks(universe):
     results = []
     for sym in universe:
