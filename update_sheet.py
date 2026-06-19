@@ -38,7 +38,8 @@ def fetch_nifty_largemidcap250():
         return symbols
     except Exception as e:
         logging.error(f"❌ Failed to fetch NIFTY LargeMidcap 250: {e}")
-      UNIVERSE = [
+     
+    UNIVERSE = [
     'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
     'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
     'ULTRACEMCO', 'LT', 'HAL', 'BSE', 'KALYANKJIL',
