@@ -28,18 +28,26 @@ except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- Stock Universe (Nifty 50 + Midcap + Your existing) ---
-UNIVERSE = [
-    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
-    'ICICIBANK', 'ITC', 'KOTAKBANK', 'SBIN', 'BHARTIARTL',
-    'LT', 'AXISBANK', 'BAJFINANCE', 'HCLTECH', 'WIPRO',
-    'SUNPHARMA', 'TITAN', 'MARUTI', 'ONGC', 'NTPC',
-    'TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI', 'TORNTPHARM',
-    'AVANTIFEED', 'DIXON', 'EICHERMOT', 'RVNL', 'KAYNES',
-    'WAAREEENER', 'SOLARINDS', 'WABAG', 'ALKEM', 'DIVISLAB',
-    'JSWSTEEL', 'APOLLOHOSP', 'POWERINDIA', 'BAJAJ-AUTO',
-    'ULTRACEMCO', 'INDIGO', 'MAXHEALTH'
-]
+# --- Fetch NIFTY LargeMidcap 250 Stocks ---
+def fetch_nifty_largemidcap250():
+    try:
+        url = "https://archives.nseindia.com/content/indices/ind_niftylargemidcap250list.csv"
+        df = pd.read_csv(url)
+        symbols = df['Symbol'].tolist()
+        logging.info(f"✅ Fetched {len(symbols)} stocks from NIFTY LargeMidcap 250")
+        return symbols
+    except Exception as e:
+        logging.error(f"❌ Failed to fetch NIFTY LargeMidcap 250: {e}")
+        # Fallback to default universe
+        return [
+            'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
+            'ICICIBANK', 'ITC', 'KOTAKBANK', 'SBIN', 'BHARTIARTL',
+            'LT', 'AXISBANK', 'BAJFINANCE', 'HCLTECH', 'WIPRO',
+            'SUNPHARMA', 'TITAN', 'MARUTI', 'ONGC', 'NTPC'
+        ]
+
+# Use this function to set UNIVERSE
+UNIVERSE = fetch_nifty_largemidcap250()
 
 # --- Main Scoring Function with Traded Value ---
 def get_institutional_score(ticker_obj, symbol):
