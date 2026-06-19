@@ -27,17 +27,6 @@ try:
 except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
-
-# --- Fetch NIFTY LargeMidcap 250 Stocks ---
-def fetch_nifty_largemidcap250():
-    try:
-        url = "https://archives.nseindia.com/content/indices/ind_niftylargemidcap250list.csv"
-        df = pd.read_csv(url)
-        symbols = df['Symbol'].tolist()
-        logging.info(f"✅ Fetched {len(symbols)} stocks from NIFTY LargeMidcap 250")
-        return symbols
-    except Exception as e:
-        logging.error(f"❌ Failed to fetch NIFTY LargeMidcap 250: {e}")
      
     UNIVERSE = [
     'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
