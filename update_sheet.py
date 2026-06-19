@@ -38,8 +38,7 @@ def fetch_nifty_largemidcap250():
         return symbols
     except Exception as e:
         logging.error(f"❌ Failed to fetch NIFTY LargeMidcap 250: {e}")
-        # Fallback to default universe
-       UNIVERSE = [
+      UNIVERSE = [
     'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
     'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
     'ULTRACEMCO', 'LT', 'HAL', 'BSE', 'KALYANKJIL',
@@ -68,10 +67,9 @@ def fetch_nifty_largemidcap250():
     'SUPREMEIND', 'IPCALAB', 'BALKRISIND', 'CONCOR', 'TATAELXSI',
     'FLUOROCHEM', 'KPITTECH', 'UNOMINDA', 'LINDEINDIA', 'AIAENG',
     'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND',
-    'APOLLOTYRE', 'LTTS', 'TATAINVEST', 'BERGEPAINT', 'KPRMILL',
+    'APOLLOTYRE', 'LTTS', 'TATAINVEST', 'BERGAPAINT', 'KPRMILL',
     'ABBOTINDIA', 'ACC'
 ]
-
 # --- Main Scoring Function with Traded Value ---
 def get_institutional_score(ticker_obj, symbol):
     try:
