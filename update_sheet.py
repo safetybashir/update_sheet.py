@@ -1,15 +1,23 @@
-# update_sheet.py
+# update_sheet.py – AI Bro Super Scanner 2.0
 import os
 import json
 import gspread
 import yfinance as yf
 import pytz
 import pandas as pd
+import numpy as np
 import logging
 import sys
 from datetime import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
+
+# Optional: Google Gemini AI for interpretation (if API key available)
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -22,18 +30,17 @@ logging.basicConfig(
 try:
     GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
     SHEET_ID = os.environ.get('SHEET_ID', '1T0r-MG2oxImCyhJv0q98bdCEnjNschePHBhOtMmW9Bg')
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', None)
 except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- Stock Universe (Nifty 50 + Midcap) ---
+# --- Stock Universe (Nifty 50 + Midcap + Your existing) ---
 UNIVERSE = [
-    # Nifty 50
     'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
     'ICICIBANK', 'ITC', 'KOTAKBANK', 'SBIN', 'BHARTIARTL',
     'LT', 'AXISBANK', 'BAJFINANCE', 'HCLTECH', 'WIPRO',
     'SUNPHARMA', 'TITAN', 'MARUTI', 'ONGC', 'NTPC',
-    # Your existing universe
     'TRENT', 'CUMMINSIND', 'PERSISTENT', 'TATAELXSI', 'TORNTPHARM',
     'AVANTIFEED', 'DIXON', 'EICHERMOT', 'RVNL', 'KAYNES',
     'WAAREEENER', 'SOLARINDS', 'WABAG', 'ALKEM', 'DIVISLAB',
@@ -41,13 +48,36 @@ UNIVERSE = [
     'ULTRACEMCO', 'INDIGO', 'MAXHEALTH'
 ]
 
-# --- Institutional Score Logic ---
-def get_institutional_score(ticker_obj):
-    """Calculate institutional score based on price action and volume."""
+# --- AI Interpretation (Gemini) ---
+def get_ai_insight(symbol, score, ltp, week_change, volume, sma50, sma200):
+    """Generate AI interpretation using Gemini."""
+    if not GEMINI_AVAILABLE or not GEMINI_API_KEY:
+        return "-"
+    
     try:
-        df = ticker_obj.history(period="5d")
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""
+        Stock: {symbol}
+        Price: {ltp}, Week Change: {week_change}%, Volume: {volume}
+        SMA50: {sma50}, SMA200: {sma200}
+        Institutional Score: {score}
+        
+        Generate one-line actionable insight for a trader.
+        """
+        response = model.generate_content(prompt)
+        return response.text[:60]  # Trim to 60 chars
+    except:
+        return "AI insight unavailable"
+
+# --- Core Logic: Institutional Score 2.0 ---
+def get_institutional_score(ticker_obj):
+    """Enhanced institutional score with multi-timeframe trend."""
+    try:
+        df = ticker_obj.history(period="6mo")
         if df.empty:
-            return "⏳ NO DATA", 0, 0, 0, 0
+            return "⏳ NO DATA", 0, 0, 0, 0, 0, 0, 0
         
         ltp = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else ltp
@@ -56,37 +86,70 @@ def get_institutional_score(ticker_obj):
         vol = df['Volume'].iloc[-1]
         avg_vol = df['Volume'].mean()
         
-        # Calculate 5-day change
-        week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
+        # Moving Averages
+        sma20 = df['Close'].rolling(20).mean().iloc[-1]
+        sma50 = df['Close'].rolling(50).mean().iloc[-1]
+        sma200 = df['Close'].rolling(200).mean().iloc[-1]
         
-        # Score logic
-        score = 5  # neutral
-        if ltp > prev_close and vol > avg_vol * 1.5:
-            score = 11  # 🎯 Strong breakout with volume
-        elif ltp > prev_close and vol > avg_vol:
-            score = 9   # 📈 Healthy uptrend
-        elif ltp > prev_close:
-            score = 7   # 🟡 Mild buying
-        elif ltp < prev_close and vol > avg_vol * 1.5:
-            score = 2   # 📉 Institutional dumping
-        elif ltp < prev_close:
-            score = 3   # 🔻 Mild selling
+        # --- Institutional Score Components ---
+        price_score = 0
+        volume_score = 0
+        trend_score = 0
         
-        # Status
-        if score >= 9:
+        # Price Action
+        if ltp > prev_close:
+            price_score += 3
+        if ltp > sma20:
+            price_score += 2
+        if ltp > sma50:
+            price_score += 1
+        if ltp > sma200:
+            price_score += 1
+        
+        # Volume
+        if vol > avg_vol * 1.5:
+            volume_score += 3
+        elif vol > avg_vol:
+            volume_score += 1
+        
+        # Trend
+        if sma20 > sma50 > sma200:
+            trend_score += 3
+        elif sma50 > sma200:
+            trend_score += 1
+        
+        # --- Relative Strength (RSI) ---
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
+        
+        rsi_score = 1 if rsi > 60 else 0
+        if rsi > 70:
+            rsi_score = -1  # Overbought warning
+        
+        # --- Final Institutional Score (0-100) ---
+        score = min(100, int((price_score + volume_score + trend_score + rsi_score + 3) * 10))
+        score = max(0, score)  # Ensure non-negative
+        
+        # --- Status ---
+        if score >= 75:
             status = "🎯 STRONG BUY"
-        elif score >= 7:
+        elif score >= 60:
             status = "📈 BUY ZONE"
-        elif score <= 2:
-            status = "⚠️ DUMPING"
-        else:
+        elif score >= 40:
             status = "🛡️ RANGE-BOUND"
+        elif score >= 20:
+            status = "📉 WEAK"
+        else:
+            status = "⚠️ DUMPING"
         
-        return status, score, round(ltp, 2), round(vol, 0), round(week_change, 2)
+        return status, score, round(ltp, 2), round(vol, 0), round(week_change, 2), round(sma50, 2), round(sma200, 2), round(rsi, 2)
     
     except Exception as e:
         logging.error(f"Error calculating score: {e}")
-        return "⏳ SYNCING", 0, 0, 0, 0
+        return "⏳ SYNCING", 0, 0, 0, 0, 0, 0, 0
 
 # --- Fetch All Stocks in Parallel ---
 def fetch_all_stocks(universe):
@@ -100,17 +163,17 @@ def fetch_all_stocks(universe):
         for future in as_completed(future_to_symbol):
             sym = future_to_symbol[future]
             try:
-                status, score, ltp, vol, week_change = future.result()
-                results.append((sym, status, score, ltp, vol, week_change))
+                status, score, ltp, vol, week_change, sma50, sma200, rsi = future.result()
+                results.append((sym, status, score, ltp, vol, week_change, sma50, sma200, rsi))
             except Exception as e:
                 logging.error(f"Error processing {sym}: {e}")
-                results.append((sym, "❌ ERROR", 0, 0, 0, 0))
+                results.append((sym, "❌ ERROR", 0, 0, 0, 0, 0, 0, 0))
     return results
 
 # --- Main Update Function ---
 def update_google_sheet():
     """Main function to update Google Sheet."""
-    logging.info("🚀 Starting sheet update process...")
+    logging.info("🚀 AI Bro Super Scanner 2.0 – Starting...")
     
     try:
         # 1. Authenticate with Google
@@ -136,16 +199,19 @@ def update_google_sheet():
         results.sort(key=lambda x: x[2], reverse=True)
         
         final_data = []
-        for sym, status, score, ltp, vol, week_change in results:
+        for sym, status, score, ltp, vol, week_change, sma50, sma200, rsi in results:
             # Action Plan based on score
-            if score >= 9:
+            if score >= 75:
                 action = "🚀 BUY NOW"
-            elif score >= 7:
+            elif score >= 60:
                 action = "📈 WATCH"
-            elif score <= 2:
-                action = "📉 SELL"
-            else:
+            elif score >= 40:
                 action = "⏳ HOLD"
+            else:
+                action = "📉 AVOID"
+            
+            # AI Insight
+            ai_insight = get_ai_insight(sym, score, ltp, week_change, vol, sma50, sma200)
             
             final_data.append([
                 sym + ".NS",
@@ -155,28 +221,29 @@ def update_google_sheet():
                 score,
                 f"{vol:,}",
                 f"{week_change}%",
+                rsi,
+                f"{sma50:.2f}",
+                f"{sma200:.2f}",
+                ai_insight,
                 timestamp
             ])
         
         # 4. Clear and Update Sheet
         dash_sheet.clear()
         
-        # Update Header with date
-        header = [[f"📊 DASHBOARD LIVE - {date_stamp}", "", "", "", "", "", "", ""]]
+        # Header with date
+        header = [[f"📊 AI BRO SUPER SCANNER 2.0 - {date_stamp}", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
-        header2 = [['Symbol', 'LTP', 'Action', 'Trend Status', 'Score', 'Volume', 'Week %', 'Time']]
+        header2 = [['Symbol', 'LTP', 'Action', 'Trend Status', 'Score', 'Volume', 'Week %', 'RSI', 'SMA50', 'SMA200', 'AI Insight', 'Time']]
         dash_sheet.update(range_name='A2', values=header2)
         
-        # Update Data (starting from A3)
         if final_data:
             dash_sheet.update(range_name='A3', values=final_data)
             logging.info(f"✅ Updated {len(final_data)} rows in sheet")
         
-        # 5. Freeze rows
         dash_sheet.freeze(rows=2)
-        
-        logging.info("✅ Sheet update completed successfully!")
+        logging.info("✅ AI Bro Super Scanner 2.0 – Update completed!")
         return True
         
     except Exception as e:
