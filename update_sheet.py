@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Super Scanner 2.0 with ENTRY DECISION
+# update_sheet.py – AI Bro Scanner with 15-Minute Candle Strategy (10-Min Update)
 import os
 import json
 import gspread
@@ -9,7 +9,6 @@ import numpy as np
 import logging
 import sys
 import time
-import requests
 from datetime import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
@@ -63,111 +62,55 @@ UNIVERSE = [
     'ABBOTINDIA', 'ACC'
 ]
 
-# --- Core Scoring Function ---
-def get_institutional_score(ticker_obj, symbol):
-    try:
-        if ticker_obj is None:
-            return "⏳ NO DATA", 0, 0, 0, 0, 0, 0, 0, 0, 0
-        
-        df = ticker_obj.history(period="5d")
-        if df.empty:
-            return "⏳ NO DATA", 0, 0, 0, 0, 0, 0, 0, 0, 0
-        
-        ltp = df['Close'].iloc[-1]
-        prev_close = df['Close'].iloc[-2] if len(df) > 1 else ltp
-        vol = df['Volume'].iloc[-1]
-        avg_vol = df['Volume'].mean()
-        
-        # Traded Value
-        traded_value = ltp * vol
-        
-        # Week Change
-        week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
-        
-        # Moving Averages
-        sma20 = df['Close'].rolling(20).mean().iloc[-1] if len(df) >= 20 else ltp
-        sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else ltp
-        sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else ltp
-        
-        # RSI
-        if len(df) > 14:
-            delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
-        else:
-            rsi = 50
-        
-        # Score Components
-        value_score = 0
-        if traded_value > 100_00_00_000:
-            value_score = 40
-        elif traded_value > 50_00_00_000:
-            value_score = 30
-        elif traded_value > 10_00_00_000:
-            value_score = 15
-        else:
-            value_score = 5
-        
-        trend_score = 0
-        if ltp > sma20:
-            trend_score += 10
-        if ltp > sma50:
-            trend_score += 10
-        if ltp > sma200:
-            trend_score += 10
-        
-        rsi_score = 0
-        if rsi > 60:
-            rsi_score = 20
-        elif rsi > 50:
-            rsi_score = 10
-        
-        week_score = 0
-        if week_change > 5:
-            week_score = 10
-        elif week_change > 2:
-            week_score = 5
-        
-        total_score = value_score + trend_score + rsi_score + week_score
-        score = min(100, total_score)
-        score = max(0, score)
-        
-        if score >= 75:
-            status = "🎯 STRONG BUY"
-        elif score >= 60:
-            status = "📈 BUY ZONE"
-        elif score >= 40:
-            status = "🛡️ RANGE-BOUND"
-        elif score >= 20:
-            status = "📉 WEAK"
-        else:
-            status = "⚠️ DUMPING"
-        
-        return status, score, round(ltp, 2), round(vol, 0), round(traded_value, 2), round(week_change, 2), round(sma50, 2), round(sma200, 2), round(rsi, 2), round(prev_close, 2)
-    
-    except Exception as e:
-        logging.error(f"Error processing {symbol}: {e}")
-        return "⏳ SYNCING", 0, 0, 0, 0, 0, 0, 0, 0, 0
+# --- NIFTY Index for Index Trading ---
+NIFTY_SYMBOL = "^NSEI"
 
-# --- Fetch All Stocks ---
-def fetch_all_stocks(universe):
-    results = []
-    for sym in universe:
-        try:
-            ticker = yf.Ticker(sym + ".NS")
-            time.sleep(0.5)
-            status, score, ltp, vol, traded_value, week_change, sma50, sma200, rsi, prev_close = get_institutional_score(ticker, sym)
-            results.append((sym, status, score, ltp, vol, traded_value, week_change, sma50, sma200, rsi, prev_close))
-        except Exception as e:
-            logging.error(f"Error processing {sym}: {e}")
-            results.append((sym, "❌ ERROR", 0, 0, 0, 0, 0, 0, 0, 0, 0))
-    return results
+# --- 15-Minute Candle Signal (Stocks) ---
+def get_15min_signal_stock(ticker_obj):
+    try:
+        df = ticker_obj.history(period="1h", interval="15m")
+        if len(df) >= 3:
+            current_close = df['Close'].iloc[-1]
+            prev_high = df['High'].iloc[-2]
+            prev_low = df['Low'].iloc[-2]
+            current_vol = df['Volume'].iloc[-1]
+            prev_vol = df['Volume'].iloc[-2]
+            
+            # Buy Call Signal
+            if current_close > prev_high and current_vol > prev_vol * 1.5:
+                return "📈 BUY CALL", "Bullish Breakout"
+            # Buy Put Signal
+            elif current_close < prev_low and current_vol > prev_vol * 1.5:
+                return "📉 BUY PUT", "Bearish Breakdown"
+        return "⏳ WAIT", "No Signal"
+    except:
+        return "⏳ WAIT", "Error"
+
+# --- 15-Minute Candle Signal (NIFTY Index) ---
+def get_15min_signal_index():
+    try:
+        nifty = yf.Ticker(NIFTY_SYMBOL)
+        df = nifty.history(period="1h", interval="15m")
+        if len(df) >= 3:
+            current_close = df['Close'].iloc[-1]
+            prev_high = df['High'].iloc[-2]
+            prev_low = df['Low'].iloc[-2]
+            current_vol = df['Volume'].iloc[-1]
+            prev_vol = df['Volume'].iloc[-2]
+            
+            # Buy Call Signal
+            if current_close > prev_high and current_vol > prev_vol * 1.5:
+                return "📈 BUY CALL", "NIFTY Bullish"
+            # Buy Put Signal
+            elif current_close < prev_low and current_vol > prev_vol * 1.5:
+                return "📉 BUY PUT", "NIFTY Bearish"
+        return "⏳ WAIT", "No Signal"
+    except:
+        return "⏳ WAIT", "Error"
 
 # --- Main Update Function ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Super Scanner 2.0 – Starting...")
+    logging.info("🚀 AI Bro Scanner – 10-Min Update (15-Min Candle Strategy)")
     
     try:
         creds = Credentials.from_service_account_info(
@@ -179,61 +122,38 @@ def update_google_sheet():
         dash_sheet = sh.get_worksheet(0)
         logging.info("✅ Connected to Google Sheet")
         
-        results = fetch_all_stocks(UNIVERSE)
-        logging.info(f"📊 Fetched data for {len(results)} stocks")
-        
         ist = pytz.timezone('Asia/Kolkata')
         timestamp = dt.now(ist).strftime("%H:%M:%S")
         date_stamp = dt.now(ist).strftime("%Y-%m-%d")
         
-        results.sort(key=lambda x: x[2], reverse=True)
-        
         final_data = []
-        for sym, status, score, ltp, vol, traded_value, week_change, sma50, sma200, rsi, prev_close in results:
-            # --- Action Logic ---
-            if score >= 75:
-                action = "🚀 BUY NOW"
-            elif score >= 60:
-                action = "📈 WATCH"
-            elif score >= 40:
-                action = "⏳ HOLD"
-            else:
-                action = "📉 AVOID"
-            
-            # --- ENTRY DECISION Logic (New) ---
-            if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 and week_change > 0:
-                entry_decision = "✅ BUY NOW"
-            elif score >= 60 and ltp > sma50 and ltp > sma200 and rsi > 50:
-                entry_decision = "🟡 WATCH"
-            elif score >= 40:
-                entry_decision = "⏳ HOLD"
-            else:
-                entry_decision = "🔴 AVOID"
-            
-            final_data.append([
-                sym + ".NS",
-                ltp,
-                action,
-                status,
-                score,
-                f"{vol:,}",
-                f"₹{traded_value/1e7:.2f}Cr",
-                f"{week_change}%",
-                rsi,
-                f"{sma50:.2f}",
-                f"{sma200:.2f}",
-                f"PC:{prev_close:.2f}",
-                entry_decision,  # <-- ENTRY DECISION Column
-                timestamp
-            ])
         
-        # Clear and Update Sheet
+        # --- Index Signal (NIFTY) ---
+        index_signal, index_reason = get_15min_signal_index()
+        final_data.append([
+            "NIFTY_INDEX", "-", index_signal, index_reason, "-", "-", "-", "-", "-", "-", "-", "-", "-", timestamp
+        ])
+        
+        # --- Stocks Signals ---
+        for sym in UNIVERSE[:20]:  # Limit to 20 stocks for speed
+            try:
+                ticker = yf.Ticker(sym + ".NS")
+                signal, reason = get_15min_signal_stock(ticker)
+                final_data.append([
+                    sym + ".NS", "-", signal, reason, "-", "-", "-", "-", "-", "-", "-", "-", "-", timestamp
+                ])
+                time.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error processing {sym}: {e}")
+                continue
+        
+        # --- Update Sheet ---
         dash_sheet.clear()
         
-        header = [[f"📊 AI BRO SUPER SCANNER 2.0 - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        header = [[f"📊 AI BRO SCANNER - {date_stamp} (10-Min Update, 15-Min Candle)", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
-        header2 = [['Symbol', 'LTP', 'Action', 'Trend Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'ENTRY DECISION', 'Time']]
+        header2 = [['Symbol', 'LTP', 'Action', 'Reason', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'ENTRY DECISION', 'Time']]
         dash_sheet.update(range_name='A2', values=header2)
         
         if final_data:
