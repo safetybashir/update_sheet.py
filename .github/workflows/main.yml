@@ -1,12 +1,14 @@
-name: NSE-Auto-Sheet-Update
+name: AI-Bro-Scanner-10min
+
 on:
   schedule:
-    - cron: '*/10 * * * *'
-  workflow_dispatch:
+    - cron: '*/10 * * * *'   # Every 10 minutes
+  workflow_dispatch:          # Manual trigger
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
       - uses: actions/checkout@v3
       
@@ -17,9 +19,9 @@ jobs:
           
       - name: Install dependencies
         run: |
-          pip install nsepython yfinance gspread google-auth pandas pytz numpy
+          pip install yfinance gspread google-auth pandas numpy pytz requests
       
-      - name: Run script
+      - name: Run scanner
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
