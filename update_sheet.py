@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Super Scanner 2.0 (Complete)
+# update_sheet.py – AI Bro Super Scanner 2.0 with ENTRY DECISION
 import os
 import json
 import gspread
@@ -9,7 +9,7 @@ import numpy as np
 import logging
 import sys
 import time
-import requests  # Added for CSV fetch
+import requests
 from datetime import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
@@ -190,6 +190,7 @@ def update_google_sheet():
         
         final_data = []
         for sym, status, score, ltp, vol, traded_value, week_change, sma50, sma200, rsi, prev_close in results:
+            # --- Action Logic ---
             if score >= 75:
                 action = "🚀 BUY NOW"
             elif score >= 60:
@@ -198,6 +199,16 @@ def update_google_sheet():
                 action = "⏳ HOLD"
             else:
                 action = "📉 AVOID"
+            
+            # --- ENTRY DECISION Logic (New) ---
+            if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 and week_change > 0:
+                entry_decision = "✅ BUY NOW"
+            elif score >= 60 and ltp > sma50 and ltp > sma200 and rsi > 50:
+                entry_decision = "🟡 WATCH"
+            elif score >= 40:
+                entry_decision = "⏳ HOLD"
+            else:
+                entry_decision = "🔴 AVOID"
             
             final_data.append([
                 sym + ".NS",
@@ -212,15 +223,17 @@ def update_google_sheet():
                 f"{sma50:.2f}",
                 f"{sma200:.2f}",
                 f"PC:{prev_close:.2f}",
+                entry_decision,  # <-- ENTRY DECISION Column
                 timestamp
             ])
         
+        # Clear and Update Sheet
         dash_sheet.clear()
         
-        header = [[f"📊 AI BRO SUPER SCANNER 2.0 - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        header = [[f"📊 AI BRO SUPER SCANNER 2.0 - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
-        header2 = [['Symbol', 'LTP', 'Action', 'Trend Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Time']]
+        header2 = [['Symbol', 'LTP', 'Action', 'Trend Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'ENTRY DECISION', 'Time']]
         dash_sheet.update(range_name='A2', values=header2)
         
         if final_data:
