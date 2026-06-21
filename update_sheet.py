@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (With Exact Error Tracking)
+# update_sheet.py – AI Bro Scanner (Fixed Universe & Market Closed Support)
 import os
 import json
 import gspread
@@ -23,24 +23,24 @@ logging.basicConfig(
 try:
     GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
     SHEET_ID = os.environ.get('SHEET_ID', '1T0r-MG2oxImCyhJv0q98bdCEnjNschePHBhOtMmW9Bg')
-    if not GCP_CREDENTIALS:
-        logging.warning("⚠️ WARNING: GCP_CREDENTIALS_JSON environment variable is empty!")
 except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- DIVERSIFIED UNIVERSE ---
+# --- FIXED DIVERSIFIED UNIVERSE (Exact Yahoo Finance Tickers) ---
 UNIVERSE = [
-    'RELIANCE', 'ONGC', 'TCS', 'INFY', 'HCLTECH', 'HDFCBANK', 'ICICIBANK', 'SBIN',
-    'HINDUNILVR', 'ITC', 'MARUTI', 'TATAMOTORS', 'SUNPHARMA', 'DRREDDY', 'TATASTEEL',
-    'HINDALCO', 'BHARTIARTL', 'TITAN', 'NTPC', 'POWERGRID', 'DLF', 'ULTRACEMCO', 'INDIGO'
+    'RELIANCE.NS', 'ONGC.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 
+    'HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS', 'HINDUNILVR.NS', 'ITC.NS', 
+    'MARUTI.NS', 'TATAMOTORS.NS', 'SUNPHARMA.NS', 'DRREDDY.NS', 'TATASTEEL.NS', 
+    'HINDALCO.NS', 'BHARTIARTL.NS', 'TITAN.NS', 'NTPC.NS', 'POWERGRID.NS', 
+    'DLF.NS', 'ULTRACEMCO.NS', 'INDIGO.NS'
 ]
 
 NIFTY_SYMBOL = "^NSEI"
 
 def get_stock_data_with_signal(symbol):
     try:
-        ticker = yf.Ticker(symbol + ".NS")
+        ticker = yf.Ticker(symbol)
         df_daily = ticker.history(period="1y")
         if df_daily.empty or len(df_daily) < 2:
             logging.warning(f"⚠️ No daily data found for {symbol}")
@@ -49,7 +49,6 @@ def get_stock_data_with_signal(symbol):
         ltp = df_daily['Close'].iloc[-1]
         prev_close = df_daily['Close'].iloc[-2]
         vol = df_daily['Volume'].iloc[-1]
-        avg_vol = df_daily['Volume'].tail(20).mean()
         week_change = ((ltp - df_daily['Close'].iloc[-5]) / df_daily['Close'].iloc[-5]) * 100 if len(df_daily) >= 5 else 0
         
         sma50 = df_daily['Close'].rolling(50).mean().iloc[-1] if len(df_daily) >= 50 else ltp
@@ -85,10 +84,15 @@ def get_stock_data_with_signal(symbol):
         elif score >= 20: status = "📉 WEAK"
         else: status = "⚠️ DUMPING"
         
+        # Safe 15-Min candle data fetching
         df_15min = ticker.history(period="1d", interval="15m")
         signal = "⏳ WAIT"
         reason = "No Signal"
-        if len(df_15min) >= 3:
+        
+        if df_15min.empty or len(df_15min) < 3:
+            signal = "⏳ OFF-MARKET"
+            reason = "Market Closed / No Live Candle"
+        else:
             current_close = df_15min['Close'].iloc[-1]
             prev_high = df_15min['High'].iloc[-2]
             prev_low = df_15min['Low'].iloc[-2]
@@ -102,19 +106,11 @@ def get_stock_data_with_signal(symbol):
                 signal = "📉 BUY PUT"
                 reason = "Bearish Breakdown"
         
-        if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 and week_change > 0:
-            entry = "✅ BUY NOW"
-        elif score >= 60 and ltp > sma50 and ltp > sma200 and rsi > 50:
-            entry = "🟡 WATCH"
-        elif score >= 40:
-            entry = "⏳ HOLD"
-        else:
-            entry = "🔴 AVOID"
-            
+        entry = "✅ BUY NOW" if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 else ("🟡 WATCH" if score >= 60 else "⏳ HOLD")
         action = "🚀 BUY NOW" if score >= 75 else ("📈 WATCH" if score >= 60 else ("⏳ HOLD" if score >= 40 else "📉 AVOID"))
         
         return {
-            'symbol': symbol + ".NS", 'ltp': round(ltp, 2), 'action': action, 'status': status,
+            'symbol': symbol, 'ltp': round(ltp, 2), 'action': action, 'status': status,
             'score': score, 'volume': f"{vol:,}", 'traded_value': f"₹{traded_value/1e7:.2f}Cr",
             'week_change': f"{week_change:.2f}%", 'rsi': round(rsi, 2), 'sma50': round(sma50, 2),
             'sma200': round(sma200, 2), 'prev_close': round(prev_close, 2), 'entry': entry,
@@ -129,7 +125,6 @@ def get_index_data_with_signal():
         ticker = yf.Ticker(NIFTY_SYMBOL)
         df_daily = ticker.history(period="5d")
         if df_daily.empty:
-            logging.warning("⚠️ No daily data found for NIFTY")
             return None
         
         ltp = df_daily['Close'].iloc[-1]
@@ -137,9 +132,10 @@ def get_index_data_with_signal():
         vol = df_daily['Volume'].iloc[-1]
         
         df_15min = ticker.history(period="1d", interval="15m")
-        signal = "⏳ WAIT"
-        reason = "No Signal"
-        if len(df_15min) >= 3:
+        signal = "⏳ OFF-MARKET"
+        reason = "Market Closed"
+        
+        if not df_15min.empty and len(df_15min) >= 3:
             current_close = df_15min['Close'].iloc[-1]
             prev_high = df_15min['High'].iloc[-2]
             prev_low = df_15min['Low'].iloc[-2]
@@ -164,11 +160,11 @@ def get_index_data_with_signal():
         return None
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Starting Update Process")
+    logging.info("🚀 AI Bro Scanner – Starting Sheet Update Process")
     
     try:
-        if not GCP_CREDENTIALS:
-            logging.error("❌ Google Sheets credentials are empty! Fix your Environment Variables.")
+        if not GCP_CREDENTIALS or 'project_id' not in GCP_CREDENTIALS:
+            logging.error("❌ Secrets Error: GCP_CREDENTIALS_JSON variable is invalid or not loaded properly!")
             return False
             
         creds = Credentials.from_service_account_info(
@@ -178,7 +174,7 @@ def update_google_sheet():
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         dash_sheet = sh.get_worksheet(0)
-        logging.info("✅ Successfully connected to Google Sheet")
+        logging.info("✅ Google Sheet Connection: SUCCESS!")
         
         ist = pytz.timezone('Asia/Kolkata')
         timestamp = dt.now(ist).strftime("%H:%M:%S")
@@ -204,17 +200,15 @@ def update_google_sheet():
                     data['rsi'], data['sma50'], data['sma200'], data['prev_close'],
                     data['entry'], data['signal'] + " - " + data['reason'], timestamp
                 ])
-                logging.info(f"✔ Fetched data for {sym}")
-            time.sleep(0.2)
+                logging.info(f"✔ Successfully Fetched: {sym}")
+            time.sleep(0.1)
         
-        logging.info(f"📊 Total rows generated to upload: {len(final_data)}")
-        
-        if not final_data or len(final_data) <= 1:
-            logging.warning("⚠️ No data was fetched from Yahoo Finance. Sheet clear skip ho gaya.")
+        if len(final_data) <= 1:
+            logging.error("❌ No stock data could be fetched. Skipping sheet update.")
             return False
 
+        # Bulk Update
         dash_sheet.clear()
-        
         header = [[f"📊 AI BRO SCANNER - {date_stamp} (10-Min Update, 15-Min Candle)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
@@ -222,7 +216,7 @@ def update_google_sheet():
         dash_sheet.update(range_name='A2', values=header2)
         
         dash_sheet.update(range_name='A3', values=final_data)
-        logging.info(f"🚀 SUCCESS: Updated {len(final_data)} rows in Google Sheet!")
+        logging.info(f"🚀 BOOM! Sheet successfully updated with {len(final_data)} rows.")
         
         dash_sheet.freeze(rows=2)
         return True
