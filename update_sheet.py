@@ -10,7 +10,6 @@ import logging
 import sys
 import time
 from datetime import datetime as dt
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
 
 # --- Setup Logging ---
@@ -30,32 +29,9 @@ except Exception as e:
 
 # --- DIVERSIFIED UNIVERSE (1 Stock per Sector) ---
 UNIVERSE = [
-    # Energy
-    'RELIANCE', 'ONGC',
-    # IT
-    'TCS', 'INFY', 'HCLTECH',
-    # Banking
-    'HDFCBANK', 'ICICIBANK', 'SBIN',
-    # FMCG
-    'HINDUNILVR', 'ITC',
-    # Auto
-    'MARUTI', 'TATAMOTORS',
-    # Pharma
-    'SUNPHARMA', 'DRREDDY',
-    # Metals
-    'TATASTEEL', 'HINDALCO',
-    # Telecom
-    'BHARTIARTL',
-    # Consumer Durables
-    'TITAN',
-    # Power
-    'NTPC', 'POWERGRID',
-    # Real Estate
-    'DLF',
-    # Cement
-    'ULTRACEMCO',
-    # Aviation
-    'INDIGO'
+    'RELIANCE', 'ONGC', 'TCS', 'INFY', 'HCLTECH', 'HDFCBANK', 'ICICIBANK', 'SBIN',
+    'HINDUNILVR', 'ITC', 'MARUTI', 'TATAMOTORS', 'SUNPHARMA', 'DRREDDY', 'TATASTEEL',
+    'HINDALCO', 'BHARTIARTL', 'TITAN', 'NTPC', 'POWERGRID', 'DLF', 'ULTRACEMCO', 'INDIGO'
 ]
 
 # --- NIFTY Index ---
@@ -66,24 +42,26 @@ def get_stock_data_with_signal(symbol):
     try:
         ticker = yf.Ticker(symbol + ".NS")
         
-        # 1. Daily Data
-        df_daily = ticker.history(period="5d")
-        if df_daily.empty:
+        # FIXED BUG 1: Period changed from 5d to 1y to calculate 50/200 SMA and 14 RSI correctly
+        df_daily = ticker.history(period="1y")
+        if df_daily.empty or len(df_daily) < 2:
             return None
         
         ltp = df_daily['Close'].iloc[-1]
-        prev_close = df_daily['Close'].iloc[-2] if len(df_daily) > 1 else ltp
+        prev_close = df_daily['Close'].iloc[-2]
         vol = df_daily['Volume'].iloc[-1]
-        avg_vol = df_daily['Volume'].mean()
         
-        # Week Change
-        week_change = ((ltp - df_daily['Close'].iloc[0]) / df_daily['Close'].iloc[0]) * 100 if len(df_daily) >= 5 else 0
+        # Average Volume over last 20 days
+        avg_vol = df_daily['Volume'].tail(20).mean()
+        
+        # Week Change (last 5 trading days)
+        week_change = ((ltp - df_daily['Close'].iloc[-5]) / df_daily['Close'].iloc[-5]) * 100 if len(df_daily) >= 5 else 0
         
         # SMAs
         sma50 = df_daily['Close'].rolling(50).mean().iloc[-1] if len(df_daily) >= 50 else ltp
         sma200 = df_daily['Close'].rolling(200).mean().iloc[-1] if len(df_daily) >= 200 else ltp
         
-        # RSI
+        # Accurate RSI Calculation
         if len(df_daily) > 14:
             delta = df_daily['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -96,7 +74,7 @@ def get_stock_data_with_signal(symbol):
         # Traded Value
         traded_value = ltp * vol
         
-        # Score
+        # Scoring System
         score = 0
         if traded_value > 100_00_00_000:
             score += 40
@@ -107,36 +85,24 @@ def get_stock_data_with_signal(symbol):
         else:
             score += 5
         
-        if ltp > sma50:
-            score += 10
-        if ltp > sma200:
-            score += 10
-        if rsi > 60:
-            score += 20
-        elif rsi > 50:
-            score += 10
-        if week_change > 5:
-            score += 10
-        elif week_change > 2:
-            score += 5
+        if ltp > sma50: score += 10
+        if ltp > sma200: score += 10
+        if rsi > 60: score += 20
+        elif rsi > 50: score += 10
+        if week_change > 5: score += 10
+        elif week_change > 2: score += 5
         
-        score = min(100, score)
-        score = max(0, score)
+        score = min(100, max(0, score))
         
-        # Status
-        if score >= 75:
-            status = "🎯 STRONG BUY"
-        elif score >= 60:
-            status = "📈 BUY ZONE"
-        elif score >= 40:
-            status = "🛡️ RANGE-BOUND"
-        elif score >= 20:
-            status = "📉 WEAK"
-        else:
-            status = "⚠️ DUMPING"
+        # Status Label
+        if score >= 75: status = "🎯 STRONG BUY"
+        elif score >= 60: status = "📈 BUY ZONE"
+        elif score >= 40: status = "🛡️ RANGE-BOUND"
+        elif score >= 20: status = "📉 WEAK"
+        else: status = "⚠️ DUMPING"
         
-        # 2. 15-Minute Signal
-        df_15min = ticker.history(period="1h", interval="15m")
+        # 15-Minute Candle Strategy
+        df_15min = ticker.history(period="1d", interval="15m")
         signal = "⏳ WAIT"
         reason = "No Signal"
         if len(df_15min) >= 3:
@@ -162,16 +128,8 @@ def get_stock_data_with_signal(symbol):
             entry = "⏳ HOLD"
         else:
             entry = "🔴 AVOID"
-        
-        # Action
-        if score >= 75:
-            action = "🚀 BUY NOW"
-        elif score >= 60:
-            action = "📈 WATCH"
-        elif score >= 40:
-            action = "⏳ HOLD"
-        else:
-            action = "📉 AVOID"
+            
+        action = "🚀 BUY NOW" if score >= 75 else ("📈 WATCH" if score >= 60 else ("⏳ HOLD" if score >= 40 else "📉 AVOID"))
         
         return {
             'symbol': symbol + ".NS",
@@ -194,12 +152,10 @@ def get_stock_data_with_signal(symbol):
         logging.error(f"Error processing {symbol}: {e}")
         return None
 
-# --- NIFTY Index Data with 15-Min Signal ---
+# --- NIFTY Index Data ---
 def get_index_data_with_signal():
     try:
         ticker = yf.Ticker(NIFTY_SYMBOL)
-        
-        # Daily Data
         df_daily = ticker.history(period="5d")
         if df_daily.empty:
             return None
@@ -208,8 +164,7 @@ def get_index_data_with_signal():
         prev_close = df_daily['Close'].iloc[-2] if len(df_daily) > 1 else ltp
         vol = df_daily['Volume'].iloc[-1]
         
-        # 15-Minute Signal
-        df_15min = ticker.history(period="1h", interval="15m")
+        df_15min = ticker.history(period="1d", interval="15m")
         signal = "⏳ WAIT"
         reason = "No Signal"
         if len(df_15min) >= 3:
@@ -249,7 +204,7 @@ def get_index_data_with_signal():
 
 # --- Main Update Function ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – 10-Min Update (15-Min Candle Strategy)")
+    logging.info("🚀 AI Bro Scanner – Starting Update Process")
     
     try:
         creds = Credentials.from_service_account_info(
@@ -267,51 +222,29 @@ def update_google_sheet():
         
         final_data = []
         
-        # --- NIFTY Index ---
+        # 1. Fetch NIFTY
         index_data = get_index_data_with_signal()
         if index_data:
             final_data.append([
-                index_data['symbol'],
-                index_data['ltp'],
-                index_data['action'],
-                index_data['status'],
-                index_data['score'],
-                index_data['volume'],
-                index_data['traded_value'],
-                index_data['week_change'],
-                index_data['rsi'],
-                index_data['sma50'],
-                index_data['sma200'],
-                index_data['prev_close'],
-                index_data['entry'],
-                index_data['signal'] + " - " + index_data['reason'],
-                timestamp
+                index_data['symbol'], index_data['ltp'], index_data['action'], index_data['status'],
+                index_data['score'], index_data['volume'], index_data['traded_value'], index_data['week_change'],
+                index_data['rsi'], index_data['sma50'], index_data['sma200'], index_data['prev_close'],
+                index_data['entry'], index_data['signal'] + " - " + index_data['reason'], timestamp
             ])
         
-        # --- Stocks ---
+        # 2. Fetch All Stocks
         for sym in UNIVERSE:
             data = get_stock_data_with_signal(sym)
             if data:
                 final_data.append([
-                    data['symbol'],
-                    data['ltp'],
-                    data['action'],
-                    data['status'],
-                    data['score'],
-                    data['volume'],
-                    data['traded_value'],
-                    data['week_change'],
-                    data['rsi'],
-                    data['sma50'],
-                    data['sma200'],
-                    data['prev_close'],
-                    data['entry'],
-                    data['signal'] + " - " + data['reason'],
-                    timestamp
+                    data['symbol'], data['ltp'], data['action'], data['status'],
+                    data['score'], data['volume'], data['traded_value'], data['week_change'],
+                    data['rsi'], data['sma50'], data['sma200'], data['prev_close'],
+                    data['entry'], data['signal'] + " - " + data['reason'], timestamp
                 ])
-            time.sleep(0.3)
+            time.sleep(0.2) # API Rate limit control for Yahoo Finance
         
-        # --- Update Sheet ---
+        # 3. Clear and Update Sheet in Bulk
         dash_sheet.clear()
         
         header = [[f"📊 AI BRO SCANNER - {date_stamp} (10-Min Update, 15-Min Candle)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
@@ -322,10 +255,9 @@ def update_google_sheet():
         
         if final_data:
             dash_sheet.update(range_name='A3', values=final_data)
-            logging.info(f"✅ Updated {len(final_data)} rows")
+            logging.info(f"✅ Updated {len(final_data)} rows successfully!")
         
         dash_sheet.freeze(rows=2)
-        logging.info("✅ Update completed!")
         return True
         
     except Exception as e:
