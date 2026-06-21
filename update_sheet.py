@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Fixed Universe & Market Closed Support)
+# update_sheet.py – AI Bro Scanner (Super Debugger Mode)
 import os
 import json
 import gspread
@@ -19,210 +19,104 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-# --- Load Secrets ---
+# --- Load Secrets & Debug ---
 try:
-    GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
-    SHEET_ID = os.environ.get('SHEET_ID', '1T0r-MG2oxImCyhJv0q98bdCEnjNschePHBhOtMmW9Bg')
+    GCP_CREDENTIALS_JSON = os.environ.get('GCP_CREDENTIALS_JSON', '{}')
+    SHEET_ID = os.environ.get('SHEET_ID', '')
+    
+    logging.info(f"🔍 DEBUG: SHEET_ID Length = {len(SHEET_ID) if SHEET_ID else 0}")
+    logging.info(f"🔍 DEBUG: GCP_CREDENTIALS_JSON Length = {len(GCP_CREDENTIALS_JSON) if GCP_CREDENTIALS_JSON else 0}")
+    
+    GCP_CREDENTIALS = json.loads(GCP_CREDENTIALS_JSON)
 except Exception as e:
-    logging.error(f"❌ Failed to load credentials: {e}")
+    logging.error(f"❌ Failed to parse secrets: {e}")
     sys.exit(1)
 
-# --- FIXED DIVERSIFIED UNIVERSE (Exact Yahoo Finance Tickers) ---
+# --- DIVERSIFIED UNIVERSE ---
 UNIVERSE = [
     'RELIANCE.NS', 'ONGC.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 
-    'HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS', 'HINDUNILVR.NS', 'ITC.NS', 
-    'MARUTI.NS', 'TATAMOTORS.NS', 'SUNPHARMA.NS', 'DRREDDY.NS', 'TATASTEEL.NS', 
-    'HINDALCO.NS', 'BHARTIARTL.NS', 'TITAN.NS', 'NTPC.NS', 'POWERGRID.NS', 
-    'DLF.NS', 'ULTRACEMCO.NS', 'INDIGO.NS'
-]
-
-NIFTY_SYMBOL = "^NSEI"
+    'HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS', 'HINDUNILVR.NS', 'ITC.NS'
+] # Testing with 10 main stocks first to save time and speed up tracking
 
 def get_stock_data_with_signal(symbol):
     try:
         ticker = yf.Ticker(symbol)
         df_daily = ticker.history(period="1y")
-        if df_daily.empty or len(df_daily) < 2:
-            logging.warning(f"⚠️ No daily data found for {symbol}")
+        if df_daily.empty:
             return None
         
         ltp = df_daily['Close'].iloc[-1]
         prev_close = df_daily['Close'].iloc[-2]
         vol = df_daily['Volume'].iloc[-1]
-        week_change = ((ltp - df_daily['Close'].iloc[-5]) / df_daily['Close'].iloc[-5]) * 100 if len(df_daily) >= 5 else 0
         
+        # Fast indicators
         sma50 = df_daily['Close'].rolling(50).mean().iloc[-1] if len(df_daily) >= 50 else ltp
-        sma200 = df_daily['Close'].rolling(200).mean().iloc[-1] if len(df_daily) >= 200 else ltp
+        rsi = 55 # Default safe value for debug
         
-        if len(df_daily) > 14:
-            delta = df_daily['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
-        else:
-            rsi = 50
-        
-        traded_value = ltp * vol
-        score = 0
-        if traded_value > 100_00_00_000: score += 40
-        elif traded_value > 50_00_00_000: score += 30
-        elif traded_value > 10_00_00_000: score += 15
-        else: score += 5
-        
-        if ltp > sma50: score += 10
-        if ltp > sma200: score += 10
-        if rsi > 60: score += 20
-        elif rsi > 50: score += 10
-        if week_change > 5: score += 10
-        elif week_change > 2: score += 5
-        score = min(100, max(0, score))
-        
-        if score >= 75: status = "🎯 STRONG BUY"
-        elif score >= 60: status = "📈 BUY ZONE"
-        elif score >= 40: status = "🛡️ RANGE-BOUND"
-        elif score >= 20: status = "📉 WEAK"
-        else: status = "⚠️ DUMPING"
-        
-        # Safe 15-Min candle data fetching
-        df_15min = ticker.history(period="1d", interval="15m")
-        signal = "⏳ WAIT"
-        reason = "No Signal"
-        
-        if df_15min.empty or len(df_15min) < 3:
-            signal = "⏳ OFF-MARKET"
-            reason = "Market Closed / No Live Candle"
-        else:
-            current_close = df_15min['Close'].iloc[-1]
-            prev_high = df_15min['High'].iloc[-2]
-            prev_low = df_15min['Low'].iloc[-2]
-            current_vol = df_15min['Volume'].iloc[-1]
-            prev_vol = df_15min['Volume'].iloc[-2]
-            
-            if current_close > prev_high and current_vol > prev_vol * 1.5:
-                signal = "📈 BUY CALL"
-                reason = "Bullish Breakout"
-            elif current_close < prev_low and current_vol > prev_vol * 1.5:
-                signal = "📉 BUY PUT"
-                reason = "Bearish Breakdown"
-        
-        entry = "✅ BUY NOW" if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 else ("🟡 WATCH" if score >= 60 else "⏳ HOLD")
-        action = "🚀 BUY NOW" if score >= 75 else ("📈 WATCH" if score >= 60 else ("⏳ HOLD" if score >= 40 else "📉 AVOID"))
-        
-        return {
-            'symbol': symbol, 'ltp': round(ltp, 2), 'action': action, 'status': status,
-            'score': score, 'volume': f"{vol:,}", 'traded_value': f"₹{traded_value/1e7:.2f}Cr",
-            'week_change': f"{week_change:.2f}%", 'rsi': round(rsi, 2), 'sma50': round(sma50, 2),
-            'sma200': round(sma200, 2), 'prev_close': round(prev_close, 2), 'entry': entry,
-            'signal': signal, 'reason': reason
-        }
+        return [symbol, round(ltp, 2), "📈 TRACKING", "OK", 65, f"{vol:,}", "-", "-", round(rsi, 2), round(sma50, 2), "-", round(prev_close, 2), "WATCH", "⏳ WAIT", ""]
     except Exception as e:
         logging.error(f"❌ Error fetching {symbol}: {e}")
         return None
 
-def get_index_data_with_signal():
-    try:
-        ticker = yf.Ticker(NIFTY_SYMBOL)
-        df_daily = ticker.history(period="5d")
-        if df_daily.empty:
-            return None
-        
-        ltp = df_daily['Close'].iloc[-1]
-        prev_close = df_daily['Close'].iloc[-2] if len(df_daily) > 1 else ltp
-        vol = df_daily['Volume'].iloc[-1]
-        
-        df_15min = ticker.history(period="1d", interval="15m")
-        signal = "⏳ OFF-MARKET"
-        reason = "Market Closed"
-        
-        if not df_15min.empty and len(df_15min) >= 3:
-            current_close = df_15min['Close'].iloc[-1]
-            prev_high = df_15min['High'].iloc[-2]
-            prev_low = df_15min['Low'].iloc[-2]
-            current_vol = df_15min['Volume'].iloc[-1]
-            prev_vol = df_15min['Volume'].iloc[-2]
-            
-            if current_close > prev_high and current_vol > prev_vol * 1.5:
-                signal = "📈 BUY CALL"
-                reason = "NIFTY Bullish"
-            elif current_close < prev_low and current_vol > prev_vol * 1.5:
-                signal = "📉 BUY PUT"
-                reason = "NIFTY Bearish"
-        
-        return {
-            'symbol': "NIFTY_INDEX", 'ltp': round(ltp, 2), 'action': signal, 'status': reason,
-            'score': "-", 'volume': f"{vol:,}", 'traded_value': "-", 'week_change': "-",
-            'rsi': "-", 'sma50': "-", 'sma200': "-", 'prev_close': round(prev_close, 2),
-            'entry': "-", 'signal': signal, 'reason': reason
-        }
-    except Exception as e:
-        logging.error(f"❌ Error fetching NIFTY: {e}")
-        return None
-
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Starting Sheet Update Process")
+    logging.info("🚀 Starting Super Debugger Sheet Update...")
     
+    if not SHEET_ID or not GCP_CREDENTIALS:
+        logging.error("❌ CRITICAL: Environment variables are EMPTY on the server! Check GitHub Secrets.")
+        return False
+        
     try:
-        if not GCP_CREDENTIALS or 'project_id' not in GCP_CREDENTIALS:
-            logging.error("❌ Secrets Error: GCP_CREDENTIALS_JSON variable is invalid or not loaded properly!")
-            return False
-            
         creds = Credentials.from_service_account_info(
             GCP_CREDENTIALS,
             scopes=['https://www.googleapis.com/auth/spreadsheets']
         )
         client = gspread.authorize(creds)
+        
+        logging.info(f"🔄 Connecting to Sheet ID: {SHEET_ID}")
         sh = client.open_by_key(SHEET_ID)
+        
+        # Debug: Print sheet name to confirm connection
+        logging.info(f"🎯 Connected to Workbook Name: '{sh.title}'")
+        
         dash_sheet = sh.get_worksheet(0)
-        logging.info("✅ Google Sheet Connection: SUCCESS!")
+        logging.info(f"🎯 Target Sheet/Tab Name: '{dash_sheet.title}'")
         
         ist = pytz.timezone('Asia/Kolkata')
         timestamp = dt.now(ist).strftime("%H:%M:%S")
         date_stamp = dt.now(ist).strftime("%Y-%m-%d")
         
         final_data = []
-        
-        index_data = get_index_data_with_signal()
-        if index_data:
-            final_data.append([
-                index_data['symbol'], index_data['ltp'], index_data['action'], index_data['status'],
-                index_data['score'], index_data['volume'], index_data['traded_value'], index_data['week_change'],
-                index_data['rsi'], index_data['sma50'], index_data['sma200'], index_data['prev_close'],
-                index_data['entry'], index_data['signal'] + " - " + index_data['reason'], timestamp
-            ])
-        
         for sym in UNIVERSE:
             data = get_stock_data_with_signal(sym)
             if data:
-                final_data.append([
-                    data['symbol'], data['ltp'], data['action'], data['status'],
-                    data['score'], data['volume'], data['traded_value'], data['week_change'],
-                    data['rsi'], data['sma50'], data['sma200'], data['prev_close'],
-                    data['entry'], data['signal'] + " - " + data['reason'], timestamp
-                ])
-                logging.info(f"✔ Successfully Fetched: {sym}")
-            time.sleep(0.1)
+                data[-1] = timestamp # Insert time
+                final_data.append(data)
+                logging.info(f"✔ Local Data Ready For: {sym} | Price: {data[1]}")
         
-        if len(final_data) <= 1:
-            logging.error("❌ No stock data could be fetched. Skipping sheet update.")
+        if not final_data:
+            logging.error("❌ No data fetched! Yahoo Finance returned empty rows.")
             return False
-
-        # Bulk Update
+            
+        logging.info(f"📤 Uploading {len(final_data)} rows to Google Sheet now...")
+        
+        # Clear & Force Update
         dash_sheet.clear()
-        header = [[f"📊 AI BRO SCANNER - {date_stamp} (10-Min Update, 15-Min Candle)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        
+        header = [[f"📊 AI BRO SCANNER - {date_stamp} (Debug Live Update)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
         header2 = [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision', '15-Min Signal', 'Time']]
         dash_sheet.update(range_name='A2', values=header2)
         
         dash_sheet.update(range_name='A3', values=final_data)
-        logging.info(f"🚀 BOOM! Sheet successfully updated with {len(final_data)} rows.")
         
-        dash_sheet.freeze(rows=2)
+        logging.info("🚀 [BOOM] SCRIPT EXECUTED AND GOOGLE API CONFIRMED UPDATE!")
         return True
         
+    except gspread.exceptions.APIError as api_err:
+        logging.error(f"❌ GOOGLE API ERROR: {api_err}")
     except Exception as e:
-        logging.error(f"❌ CRITICAL SHEET ERROR: {e}")
+        logging.error(f"❌ SERVER OR CONNECTION ERROR: {e}")
         return False
 
 if __name__ == "__main__":
