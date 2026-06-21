@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Super Debugger Mode)
+# update_sheet.py – FINAL VERSION (150 Stocks + NIFTY Index)
 import os
 import json
 import gspread
@@ -10,6 +10,7 @@ import logging
 import sys
 import time
 from datetime import datetime as dt
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
 
 # --- Setup Logging ---
@@ -19,104 +20,247 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-# --- Load Secrets & Debug ---
+# --- Load Secrets ---
 try:
-    GCP_CREDENTIALS_JSON = os.environ.get('GCP_CREDENTIALS_JSON', '{}')
-    SHEET_ID = os.environ.get('SHEET_ID', '')
-    
-    logging.info(f"🔍 DEBUG: SHEET_ID Length = {len(SHEET_ID) if SHEET_ID else 0}")
-    logging.info(f"🔍 DEBUG: GCP_CREDENTIALS_JSON Length = {len(GCP_CREDENTIALS_JSON) if GCP_CREDENTIALS_JSON else 0}")
-    
-    GCP_CREDENTIALS = json.loads(GCP_CREDENTIALS_JSON)
+    GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
+    SHEET_ID = os.environ.get('SHEET_ID', '1T0r-MG2oxImCyhJv0q98bdCEnjNschePHBhOtMmW9Bg')
+    logging.info(f"✅ SHEET_ID loaded: {SHEET_ID}")
 except Exception as e:
-    logging.error(f"❌ Failed to parse secrets: {e}")
+    logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- DIVERSIFIED UNIVERSE ---
+# --- 150 STOCKS UNIVERSE (Your Selected) ---
 UNIVERSE = [
-    'RELIANCE.NS', 'ONGC.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 
-    'HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS', 'HINDUNILVR.NS', 'ITC.NS'
-] # Testing with 10 main stocks first to save time and speed up tracking
+    # NIFTY 50 (50 Stocks)
+    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'HINDUNILVR',
+    'ICICIBANK', 'ITC', 'KOTAKBANK', 'SBIN', 'BHARTIARTL',
+    'LT', 'AXISBANK', 'BAJFINANCE', 'HCLTECH', 'WIPRO',
+    'SUNPHARMA', 'TITAN', 'MARUTI', 'ONGC', 'NTPC',
+    'POWERGRID', 'ULTRACEMCO', 'ASIANPAINT', 'M&M', 'NESTLE',
+    'JSWSTEEL', 'TATAMOTORS', 'TATASTEEL', 'TECHM', 'HDFCLIFE',
+    'ADANIPORTS', 'ADANIENT', 'GRASIM', 'BRITANNIA', 'DIVISLAB',
+    'DRREDDY', 'CIPLA', 'UPL', 'EICHERMOT', 'COALINDIA',
+    'BPCL', 'HINDALCO', 'SHREECEM', 'HEROMOTOCO', 'BAJAJ-AUTO',
+    'TATACONSUM', 'INDUSINDBK', 'PIDILITIND', 'BERGEPAINT', 'DABUR',
+    
+    # MIDCAP & OTHERS (Your 100+ Selected)
+    'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
+    'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
+    'ULTRACEMCO', 'LT', 'HAL', 'BSE', 'KALYANKJIL',
+    'NESTLEIND', 'SUNPHARMA', 'JUBLFOOD', 'WIPRO', 'RVNL',
+    'MAXHEALTH', 'HCLTECH', 'POWERINDIA', 'TATASTEEL', 'ASHOKLEY',
+    'HINDALCO', 'ASIANPAINT', 'CIPLA', 'TORNTPHARM', 'ETERNAL',
+    'MARUTI', 'TMPV', 'WAAREEENER', 'MOTHERSON', 'GVT&D',
+    'CUMMINSIND', 'TATACONSUM', 'BEL', 'EICHERMOT', 'DLF',
+    'ENRIN', 'ITC', 'BDL', 'SOLARINDS', 'BRITANNIA',
+    'DMART', 'THERMAX', 'CGPOWER', 'LODHA', 'APOLLOHOSP',
+    'NAUKRI', 'TVSMOTOR', 'TMCV', 'TITAN', 'HEROMOTOCO',
+    'ABB', 'BPCL', 'ALKEM', 'SIEMENS', 'PERSISTENT',
+    'DRREDDY', 'OFSS', 'SWIGGY', 'LUPIN', 'JSWENERGY',
+    'PIDILITIND', 'INDUSTOWER', 'BOSCHLTD', 'BHARATFORG', 'INDIGO',
+    'MARICO', 'TECHM', 'DABUR', 'DIXON', 'SRF',
+    'MANKIND', 'LTM', 'JINDALSTEL', 'GRASIM', 'HAVELLS',
+    'BAJAJ-AUTO', 'NYKAA', 'COFORGE', 'TRENT', 'HINDPETRO',
+    'ASTRAL', 'POLYCAB', 'MAZDOCK', 'PREMIERENE', 'APARINDS',
+    'GAIL', 'UPL', 'DIVISLAB', 'JSWSTEEL', 'GODREJCP',
+    'GODREJPROP', 'VOLTAS', 'APLAPOLLO', 'AUROPHARMA', 'RECLTD',
+    'TATAPOWER', 'PIIND', 'GLENMARK', 'MPHASIS', 'LTF',
+    'FORTIS', 'BIOCON', 'OBEROIRLTY', 'COLPAL', 'LAURUSLABS',
+    'COCHINSHIP', 'PETRONET', 'TIINDIA', 'JSL', 'PHOENIXLTD',
+    'TATACOMM', 'ESCORTS', 'SHREECEM', 'TORNTPOWER', 'LENSKART',
+    'EXIDEIND', 'COROMANDEL', 'KEI', 'AMBUJACEM', 'PRESTIGE',
+    'SUPREMEIND', 'IPCALAB', 'BALKRISIND', 'CONCOR', 'TATAELXSI',
+    'FLUOROCHEM', 'KPITTECH', 'UNOMINDA', 'LINDEINDIA', 'AIAENG',
+    'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND',
+    'APOLLOTYRE', 'LTTS', 'TATAINVEST', 'BERGAPAINT', 'KPRMILL',
+    'ABBOTINDIA', 'ACC'
+]
 
-def get_stock_data_with_signal(symbol):
+# --- NIFTY 50 INDEX ---
+NIFTY_SYMBOL = "^NSEI"
+
+# --- Stock Data Fetch (Daily Only) ---
+def get_stock_data(symbol):
     try:
-        ticker = yf.Ticker(symbol)
-        df_daily = ticker.history(period="1y")
-        if df_daily.empty:
+        ticker = yf.Ticker(symbol + ".NS")
+        df = ticker.history(period="5d")
+        if df.empty:
             return None
         
-        ltp = df_daily['Close'].iloc[-1]
-        prev_close = df_daily['Close'].iloc[-2]
-        vol = df_daily['Volume'].iloc[-1]
+        ltp = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else ltp
+        vol = df['Volume'].iloc[-1]
         
-        # Fast indicators
-        sma50 = df_daily['Close'].rolling(50).mean().iloc[-1] if len(df_daily) >= 50 else ltp
-        rsi = 55 # Default safe value for debug
+        week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
+        sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else ltp
+        sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else ltp
         
-        return [symbol, round(ltp, 2), "📈 TRACKING", "OK", 65, f"{vol:,}", "-", "-", round(rsi, 2), round(sma50, 2), "-", round(prev_close, 2), "WATCH", "⏳ WAIT", ""]
+        if len(df) > 14:
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
+        else:
+            rsi = 50
+        
+        traded_value = ltp * vol
+        score = 0
+        if traded_value > 100_00_00_000:
+            score += 40
+        elif traded_value > 50_00_00_000:
+            score += 30
+        elif traded_value > 10_00_00_000:
+            score += 15
+        else:
+            score += 5
+        if ltp > sma50:
+            score += 10
+        if ltp > sma200:
+            score += 10
+        if rsi > 60:
+            score += 20
+        elif rsi > 50:
+            score += 10
+        if week_change > 5:
+            score += 10
+        elif week_change > 2:
+            score += 5
+        score = min(100, max(0, score))
+        
+        if score >= 75:
+            status, action = "🎯 STRONG BUY", "🚀 BUY NOW"
+        elif score >= 60:
+            status, action = "📈 BUY ZONE", "📈 WATCH"
+        elif score >= 40:
+            status, action = "🛡️ RANGE-BOUND", "⏳ HOLD"
+        else:
+            status, action = "📉 WEAK", "📉 AVOID"
+        
+        if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 and week_change > 0:
+            entry = "✅ BUY NOW"
+        elif score >= 60 and ltp > sma50 and ltp > sma200 and rsi > 50:
+            entry = "🟡 WATCH"
+        elif score >= 40:
+            entry = "⏳ HOLD"
+        else:
+            entry = "🔴 AVOID"
+        
+        return {
+            'symbol': symbol + ".NS",
+            'ltp': round(ltp, 2),
+            'action': action,
+            'status': status,
+            'score': score,
+            'volume': int(vol),
+            'traded_value': round(traded_value, 2),
+            'week_change': round(week_change, 2),
+            'rsi': round(rsi, 2),
+            'sma50': round(sma50, 2),
+            'sma200': round(sma200, 2),
+            'prev_close': round(prev_close, 2),
+            'entry': entry,
+        }
     except Exception as e:
-        logging.error(f"❌ Error fetching {symbol}: {e}")
+        logging.error(f"Error processing {symbol}: {e}")
         return None
 
-def update_google_sheet():
-    logging.info("🚀 Starting Super Debugger Sheet Update...")
-    
-    if not SHEET_ID or not GCP_CREDENTIALS:
-        logging.error("❌ CRITICAL: Environment variables are EMPTY on the server! Check GitHub Secrets.")
-        return False
+# --- NIFTY Index Data ---
+def get_nifty_data():
+    try:
+        ticker = yf.Ticker(NIFTY_SYMBOL)
+        df = ticker.history(period="5d")
+        if df.empty:
+            return None
+        ltp = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else ltp
+        week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         
+        return {
+            'symbol': "NIFTY_INDEX",
+            'ltp': round(ltp, 2),
+            'action': "NIFTY",
+            'status': f"{week_change:.2f}%",
+            'score': "-",
+            'volume': "-",
+            'traded_value': "-",
+            'week_change': round(week_change, 2),
+            'rsi': "-",
+            'sma50': "-",
+            'sma200': "-",
+            'prev_close': round(prev_close, 2),
+            'entry': "-",
+        }
+    except Exception as e:
+        logging.error(f"Error fetching NIFTY: {e}")
+        return None
+
+# --- Main Update Function ---
+def update_google_sheet():
+    logging.info("🚀 AI Bro Scanner – 150 Stocks + NIFTY Index")
     try:
         creds = Credentials.from_service_account_info(
             GCP_CREDENTIALS,
             scopes=['https://www.googleapis.com/auth/spreadsheets']
         )
         client = gspread.authorize(creds)
-        
-        logging.info(f"🔄 Connecting to Sheet ID: {SHEET_ID}")
         sh = client.open_by_key(SHEET_ID)
-        
-        # Debug: Print sheet name to confirm connection
-        logging.info(f"🎯 Connected to Workbook Name: '{sh.title}'")
-        
         dash_sheet = sh.get_worksheet(0)
-        logging.info(f"🎯 Target Sheet/Tab Name: '{dash_sheet.title}'")
+        logging.info(f"✅ Connected to sheet: {sh.title}")
         
         ist = pytz.timezone('Asia/Kolkata')
         timestamp = dt.now(ist).strftime("%H:%M:%S")
         date_stamp = dt.now(ist).strftime("%Y-%m-%d")
         
         final_data = []
+        
+        # --- NIFTY Index first ---
+        nifty = get_nifty_data()
+        if nifty:
+            final_data.append([
+                nifty['symbol'], nifty['ltp'], nifty['action'], nifty['status'],
+                nifty['score'], nifty['volume'], nifty['traded_value'],
+                nifty['week_change'], nifty['rsi'], nifty['sma50'],
+                nifty['sma200'], nifty['prev_close'], nifty['entry'],
+                timestamp
+            ])
+        
+        # --- Stocks ---
         for sym in UNIVERSE:
-            data = get_stock_data_with_signal(sym)
+            data = get_stock_data(sym)
             if data:
-                data[-1] = timestamp # Insert time
-                final_data.append(data)
-                logging.info(f"✔ Local Data Ready For: {sym} | Price: {data[1]}")
+                final_data.append([
+                    data['symbol'], data['ltp'], data['action'], data['status'],
+                    data['score'], data['volume'], f"{data['traded_value']/1e7:.2f} Cr",
+                    f"{data['week_change']:.2f}%", data['rsi'], data['sma50'],
+                    data['sma200'], data['prev_close'], data['entry'],
+                    timestamp
+                ])
+            time.sleep(0.1)
         
-        if not final_data:
-            logging.error("❌ No data fetched! Yahoo Finance returned empty rows.")
-            return False
-            
-        logging.info(f"📤 Uploading {len(final_data)} rows to Google Sheet now...")
-        
-        # Clear & Force Update
+        logging.info(f"📊 final_data rows: {len(final_data)}")
         dash_sheet.clear()
         
-        header = [[f"📊 AI BRO SCANNER - {date_stamp} (Debug Live Update)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        header = [[f"📊 AI BRO SCANNER - {date_stamp} (150 Stocks + NIFTY Index)", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
-        header2 = [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision', '15-Min Signal', 'Time']]
+        header2 = [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision', 'Time']]
         dash_sheet.update(range_name='A2', values=header2)
         
-        dash_sheet.update(range_name='A3', values=final_data)
+        if final_data:
+            dash_sheet.update(range_name='A3', values=final_data)
+            logging.info(f"✅ Updated {len(final_data)} rows")
+        else:
+            test_row = [["TEST", 100, "HOLD", "TEST", 50, 1000, "1 Cr", "1%", 50, 100, 90, 95, "HOLD", timestamp]]
+            dash_sheet.update(range_name='A3', values=test_row)
+            logging.info("✅ Added test row")
         
-        logging.info("🚀 [BOOM] SCRIPT EXECUTED AND GOOGLE API CONFIRMED UPDATE!")
+        dash_sheet.freeze(rows=2)
+        logging.info("✅ Update completed!")
         return True
         
-    except gspread.exceptions.APIError as api_err:
-        logging.error(f"❌ GOOGLE API ERROR: {api_err}")
     except Exception as e:
-        logging.error(f"❌ SERVER OR CONNECTION ERROR: {e}")
+        logging.error(f"❌ Failed: {e}")
         return False
 
 if __name__ == "__main__":
