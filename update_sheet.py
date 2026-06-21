@@ -1,11 +1,10 @@
-# update_sheet.py – DEBUGGING VERSION
+# update_sheet.py – DEBUGGING VERSION (Sirf 5 Stocks)
 import os
 import json
 import gspread
 import yfinance as yf
 import pytz
 import pandas as pd
-import numpy as np
 import logging
 import sys
 import time
@@ -28,28 +27,25 @@ except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- UNIVERSE (Debug: Sirf 5 stocks test ke liye) ---
+# --- Sirf 5 Test Stocks ---
 UNIVERSE = ['RELIANCE', 'TCS', 'INFY', 'BHARTIARTL', 'HINDUNILVR']
 
-NIFTY_SYMBOL = "^NSEI"
-
-def get_stock_data_with_signal(symbol):
+def test_stock(symbol):
     try:
         ticker = yf.Ticker(symbol + ".NS")
-        df = ticker.history(period="5d")
+        df = ticker.history(period="2d")
         if df.empty:
-            logging.warning(f"⚠️ No data for {symbol}")
             return None
         ltp = df['Close'].iloc[-1]
         return {
-            'symbol': symbol + ".NS",
+            'symbol': symbol,
             'ltp': round(ltp, 2),
             'action': "⏳ HOLD",
             'status': "TEST",
             'score': 50,
-            'volume': "1,000",
-            'traded_value': "₹100Cr",
-            'week_change': "1.00%",
+            'volume': 1000,
+            'traded_value': 10000000,
+            'week_change': 1.0,
             'rsi': 50,
             'sma50': 100,
             'sma200': 90,
@@ -76,7 +72,7 @@ def update_google_sheet():
 
         final_data = []
         for sym in UNIVERSE:
-            data = get_stock_data_with_signal(sym)
+            data = test_stock(sym)
             if data:
                 final_data.append([
                     data['symbol'], data['ltp'], data['action'], data['status'],
