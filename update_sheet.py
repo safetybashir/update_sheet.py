@@ -1,4 +1,4 @@
-# update_sheet.py – FINAL WORKING (No 15-Min Strategy)
+# update_sheet.py – Data Type Fixed Version
 import os
 import json
 import gspread
@@ -23,13 +23,13 @@ logging.basicConfig(
 try:
     GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
     SHEET_ID = os.environ.get('SHEET_ID', '1T0r-MG2oxImCyhJv0q98bdCEnjNschePHBhOtMmW9Bg')
+    logging.info(f"✅ SHEET_ID loaded")
 except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- UNIVERSE (Original + Diversified, No Banks/Financials) ---
+# --- UNIVERSE (Original + Diversified) ---
 UNIVERSE = [
-    # Original
     'BHARTIARTL', 'INFY', 'RELIANCE', 'NATIONALUM',
     'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
     'ULTRACEMCO', 'LT', 'HAL', 'KALYANKJIL',
@@ -90,6 +90,7 @@ def get_stock_data(symbol):
         
         traded_value = ltp * vol
         
+        # Score
         score = 0
         if traded_value > 100_00_00_000:
             score += 40
@@ -116,6 +117,7 @@ def get_stock_data(symbol):
         score = min(100, score)
         score = max(0, score)
         
+        # Status
         if score >= 75:
             status = "🎯 STRONG BUY"
             action = "🚀 BUY NOW"
@@ -125,13 +127,11 @@ def get_stock_data(symbol):
         elif score >= 40:
             status = "🛡️ RANGE-BOUND"
             action = "⏳ HOLD"
-        elif score >= 20:
+        else:
             status = "📉 WEAK"
             action = "📉 AVOID"
-        else:
-            status = "⚠️ DUMPING"
-            action = "📉 AVOID"
         
+        # Entry Decision
         if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 and week_change > 0:
             entry = "✅ BUY NOW"
         elif score >= 60 and ltp > sma50 and ltp > sma200 and rsi > 50:
@@ -141,20 +141,21 @@ def get_stock_data(symbol):
         else:
             entry = "🔴 AVOID"
         
+        # --- RETURN WITH PROPER DATA TYPES ---
         return {
-            'symbol': symbol + ".NS",
-            'ltp': round(ltp, 2),
-            'action': action,
-            'status': status,
-            'score': score,
-            'volume': f"{vol:,}",
-            'traded_value': f"₹{traded_value/1e7:.2f}Cr",
-            'week_change': f"{week_change:.2f}%",
-            'rsi': round(rsi, 2),
-            'sma50': round(sma50, 2),
-            'sma200': round(sma200, 2),
-            'prev_close': round(prev_close, 2),
-            'entry': entry
+            'symbol': str(symbol + ".NS"),
+            'ltp': float(round(ltp, 2)),
+            'action': str(action),
+            'status': str(status),
+            'score': int(score),
+            'volume': int(vol),
+            'traded_value': float(round(traded_value, 2)),
+            'week_change': float(round(week_change, 2)),
+            'rsi': float(round(rsi, 2)),
+            'sma50': float(round(sma50, 2)),
+            'sma200': float(round(sma200, 2)),
+            'prev_close': float(round(prev_close, 2)),
+            'entry': str(entry)
         }
     except Exception as e:
         logging.error(f"Error processing {symbol}: {e}")
@@ -179,21 +180,30 @@ def update_google_sheet():
         date_stamp = dt.now(ist).strftime("%Y-%m-%d")
         
         final_data = []
-        
         for sym in UNIVERSE:
             data = get_stock_data(sym)
             if data:
                 final_data.append([
-                    data['symbol'], data['ltp'], data['action'], data['status'],
-                    data['score'], data['volume'], data['traded_value'],
-                    data['week_change'], data['rsi'], data['sma50'],
-                    data['sma200'], data['prev_close'], data['entry'],
+                    data['symbol'],
+                    data['ltp'],
+                    data['action'],
+                    data['status'],
+                    data['score'],
+                    data['volume'],
+                    f"{data['traded_value']/1e7:.2f} Cr",
+                    f"{data['week_change']:.2f}%",
+                    data['rsi'],
+                    data['sma50'],
+                    data['sma200'],
+                    data['prev_close'],
+                    data['entry'],
                     timestamp
                 ])
-            time.sleep(0.2)
+            time.sleep(0.1)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
+        # --- Update Sheet ---
         dash_sheet.clear()
         
         header = [[f"📊 AI BRO SCANNER - {date_stamp} (10-Min Update)", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
@@ -207,8 +217,7 @@ def update_google_sheet():
             logging.info(f"✅ Updated {len(final_data)} rows")
         else:
             logging.warning("⚠️ No data to update")
-            # Fallback test row
-            test_row = [["TEST", "100", "HOLD", "TEST", "50", "1000", "₹1Cr", "1%", "50", "100", "90", "95", "HOLD", timestamp]]
+            test_row = [["TEST", 100, "HOLD", "TEST", 50, 1000, "1 Cr", "1%", 50, 100, 90, 95, "HOLD", timestamp]]
             dash_sheet.update(range_name='A3', values=test_row)
             logging.info("✅ Added test row")
         
