@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Original 148+ Stocks + NIFTY Index + 15-Min Candle)
+# update_sheet.py – AI Bro Scanner (Diversified Stocks + NIFTY Index + 15-Min Candle)
 import os
 import json
 import gspread
@@ -28,38 +28,34 @@ except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- ORIGINAL UNIVERSE (148+ Stocks) ---
+# --- DIVERSIFIED UNIVERSE (1 Stock per Sector) ---
 UNIVERSE = [
-    'BHARTIARTL', 'INFY', 'RELIANCE', 'MCX', 'NATIONALUM',
-    'COALINDIA', 'HYUNDAI', 'HINDUNILVR', 'TCS', 'M&M',
-    'ULTRACEMCO', 'LT', 'HAL', 'BSE', 'KALYANKJIL',
-    'NESTLEIND', 'SUNPHARMA', 'JUBLFOOD', 'WIPRO', 'RVNL',
-    'MAXHEALTH', 'HCLTECH', 'POWERINDIA', 'TATASTEEL', 'ASHOKLEY',
-    'HINDALCO', 'ASIANPAINT', 'CIPLA', 'TORNTPHARM', 'ETERNAL',
-    'MARUTI', 'TMPV', 'WAAREEENER', 'MOTHERSON', 'GVT&D',
-    'CUMMINSIND', 'TATACONSUM', 'BEL', 'EICHERMOT', 'DLF',
-    'ENRIN', 'ITC', 'BDL', 'SOLARINDS', 'BRITANNIA',
-    'DMART', 'THERMAX', 'CGPOWER', 'LODHA', 'APOLLOHOSP',
-    'NAUKRI', 'TVSMOTOR', 'TMCV', 'TITAN', 'HEROMOTOCO',
-    'ABB', 'BPCL', 'ALKEM', 'SIEMENS', 'PERSISTENT',
-    'DRREDDY', 'OFSS', 'SWIGGY', 'LUPIN', 'JSWENERGY',
-    'PIDILITIND', 'INDUSTOWER', 'BOSCHLTD', 'BHARATFORG', 'INDIGO',
-    'MARICO', 'TECHM', 'DABUR', 'DIXON', 'SRF',
-    'MANKIND', 'LTM', 'JINDALSTEL', 'GRASIM', 'HAVELLS',
-    'BAJAJ-AUTO', 'NYKAA', 'COFORGE', 'TRENT', 'HINDPETRO',
-    'ASTRAL', 'POLYCAB', 'MAZDOCK', 'PREMIERENE', 'APARINDS',
-    'GAIL', 'UPL', 'DIVISLAB', 'JSWSTEEL', 'GODREJCP',
-    'GODREJPROP', 'VOLTAS', 'APLAPOLLO', 'AUROPHARMA', 'RECLTD',
-    'TATAPOWER', 'PIIND', 'GLENMARK', 'MPHASIS', 'LTF',
-    'FORTIS', 'BIOCON', 'OBEROIRLTY', 'COLPAL', 'LAURUSLABS',
-    'COCHINSHIP', 'PETRONET', 'TIINDIA', 'JSL', 'PHOENIXLTD',
-    'TATACOMM', 'ESCORTS', 'SHREECEM', 'TORNTPOWER', 'LENSKART',
-    'EXIDEIND', 'COROMANDEL', 'KEI', 'AMBUJACEM', 'PRESTIGE',
-    'SUPREMEIND', 'IPCALAB', 'BALKRISIND', 'CONCOR', 'TATAELXSI',
-    'FLUOROCHEM', 'KPITTECH', 'UNOMINDA', 'LINDEINDIA', 'AIAENG',
-    'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND',
-    'APOLLOTYRE', 'LTTS', 'TATAINVEST', 'BERGAPAINT', 'KPRMILL',
-    'ABBOTINDIA', 'ACC', 'ONGC', 'DRREDDY', 'TATAMOTORS'
+    # Energy
+    'RELIANCE', 'ONGC',
+    # IT
+    'TCS', 'INFY', 'HCLTECH',
+    # Banking
+    'HDFCBANK', 'ICICIBANK', 'SBIN',
+    # FMCG
+    'HINDUNILVR', 'ITC',
+    # Auto
+    'MARUTI', 'TATAMOTORS',
+    # Pharma
+    'SUNPHARMA', 'DRREDDY',
+    # Metals
+    'TATASTEEL', 'HINDALCO',
+    # Telecom
+    'BHARTIARTL',
+    # Consumer Durables
+    'TITAN',
+    # Power
+    'NTPC', 'POWERGRID',
+    # Real Estate
+    'DLF',
+    # Cement
+    'ULTRACEMCO',
+    # Aviation
+    'INDIGO'
 ]
 
 # --- NIFTY Index ---
