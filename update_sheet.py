@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Diversified Stocks + NIFTY Index + 15-Min Candle)
+# update_sheet.py – AI Bro Scanner (No Banks/Financials + NIFTY Index + 15-Min Candle)
 import os
 import json
 import gspread
@@ -28,34 +28,47 @@ except Exception as e:
     logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- DIVERSIFIED UNIVERSE (1 Stock per Sector) ---
+# --- UNIVERSE (No Banks/Financials) ---
 UNIVERSE = [
-    # Energy
-    'RELIANCE', 'ONGC',
-    # IT
-    'TCS', 'INFY', 'HCLTECH',
-    # Banking
-    'HDFCBANK', 'ICICIBANK', 'SBIN',
+    # Energy / Oil & Gas
+    'RELIANCE', 'ONGC', 'BPCL', 'GAIL', 'PETRONET',
+    # IT / Technology
+    'TCS', 'INFY', 'HCLTECH', 'WIPRO', 'TECHM', 'LTTS', 'MPHASIS', 'PERSISTENT', 'COFORGE', 'OFSS',
     # FMCG
-    'HINDUNILVR', 'ITC',
+    'HINDUNILVR', 'ITC', 'BRITANNIA', 'NESTLEIND', 'MARICO', 'DABUR', 'COLPAL', 'GODREJCP',
     # Auto
-    'MARUTI', 'TATAMOTORS',
+    'MARUTI', 'TATAMOTORS', 'M&M', 'EICHERMOT', 'HEROMOTOCO', 'BAJAJ-AUTO', 'ASHOKLEY', 'TVSMOTOR', 'MOTHERSON',
     # Pharma
-    'SUNPHARMA', 'DRREDDY',
+    'SUNPHARMA', 'DRREDDY', 'CIPLA', 'TORNTPHARM', 'DIVISLAB', 'LUPIN', 'ALKEM', 'BIOCON', 'GLENMARK', 'APOLLOHOSP', 'FORTIS', 'MAXHEALTH',
     # Metals
-    'TATASTEEL', 'HINDALCO',
+    'TATASTEEL', 'JSWSTEEL', 'HINDALCO', 'NATIONALUM', 'JINDALSTEL', 'COALINDIA',
     # Telecom
-    'BHARTIARTL',
+    'BHARTIARTL', 'TATACOMM',
     # Consumer Durables
-    'TITAN',
+    'TITAN', 'HAVELLS', 'VOLTAS', 'DIXON',
     # Power
-    'NTPC', 'POWERGRID',
-    # Real Estate
-    'DLF',
+    'NTPC', 'POWERGRID', 'TATAPOWER', 'JSWENERGY', 'TORNTPOWER',
     # Cement
-    'ULTRACEMCO',
+    'ULTRACEMCO', 'SHREECEM', 'AMBUJACEM', 'ACC',
+    # Real Estate
+    'DLF', 'GODREJPROP', 'OBEROIRLTY', 'PRESTIGE', 'PHOENIXLTD',
     # Aviation
-    'INDIGO'
+    'INDIGO',
+    # Defence
+    'HAL', 'BEL', 'MAZDOCK', 'COCHINSHIP', 'BDL',
+    # Chemicals
+    'PIDILITIND', 'SRF', 'UPL', 'ASTRAL', 'APLAPOLLO', 'SUPREMEIND',
+    # Others
+    'MCX', 'BSE', 'SWIGGY', 'DMART', 'NAUKRI',
+    'TATACONSUM', 'TATAELXSI', 'TATAINVEST',
+    'ABB', 'SIEMENS', 'BOSCHLTD', 'THERMAX', 'CGPOWER', 'KEI',
+    'LODHA', 'ESCORTS', 'EXIDEIND', 'LENSKART', 'PIIND',
+    'FLUOROCHEM', 'KPITTECH', 'UNOMINDA', 'LINDEINDIA', 'AIAENG',
+    'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND',
+    'APOLLOTYRE', 'BERGEPAINT', 'KPRMILL', 'ABBOTINDIA',
+    'TORNTPHARM', 'ETERNAL', 'WAAREEENER', 'GVT&D',
+    'CUMMINSIND', 'SOLARINDS', 'KALYANKJIL', 'NYKAA',
+    'MANKIND', 'LT', 'JUBLFOOD', 'POWERINDIA', 'RVNL'
 ]
 
 # --- NIFTY Index ---
@@ -66,7 +79,7 @@ def get_stock_data_with_signal(symbol):
     try:
         ticker = yf.Ticker(symbol + ".NS")
         
-        # 1. Daily Data
+        # Daily Data
         df_daily = ticker.history(period="5d")
         if df_daily.empty:
             return None
@@ -76,14 +89,11 @@ def get_stock_data_with_signal(symbol):
         vol = df_daily['Volume'].iloc[-1]
         avg_vol = df_daily['Volume'].mean()
         
-        # Week Change
         week_change = ((ltp - df_daily['Close'].iloc[0]) / df_daily['Close'].iloc[0]) * 100 if len(df_daily) >= 5 else 0
         
-        # SMAs
         sma50 = df_daily['Close'].rolling(50).mean().iloc[-1] if len(df_daily) >= 50 else ltp
         sma200 = df_daily['Close'].rolling(200).mean().iloc[-1] if len(df_daily) >= 200 else ltp
         
-        # RSI
         if len(df_daily) > 14:
             delta = df_daily['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -93,10 +103,9 @@ def get_stock_data_with_signal(symbol):
         else:
             rsi = 50
         
-        # Traded Value
         traded_value = ltp * vol
         
-        # Score
+        # Score Calculation
         score = 0
         if traded_value > 100_00_00_000:
             score += 40
@@ -123,7 +132,6 @@ def get_stock_data_with_signal(symbol):
         score = min(100, score)
         score = max(0, score)
         
-        # Status
         if score >= 75:
             status = "🎯 STRONG BUY"
         elif score >= 60:
@@ -135,7 +143,7 @@ def get_stock_data_with_signal(symbol):
         else:
             status = "⚠️ DUMPING"
         
-        # 2. 15-Minute Signal
+        # 15-Minute Signal
         df_15min = ticker.history(period="1h", interval="15m")
         signal = "⏳ WAIT"
         reason = "No Signal"
@@ -163,7 +171,6 @@ def get_stock_data_with_signal(symbol):
         else:
             entry = "🔴 AVOID"
         
-        # Action
         if score >= 75:
             action = "🚀 BUY NOW"
         elif score >= 60:
@@ -194,12 +201,10 @@ def get_stock_data_with_signal(symbol):
         logging.error(f"Error processing {symbol}: {e}")
         return None
 
-# --- NIFTY Index Data with 15-Min Signal ---
+# --- NIFTY Index Data ---
 def get_index_data_with_signal():
     try:
         ticker = yf.Ticker(NIFTY_SYMBOL)
-        
-        # Daily Data
         df_daily = ticker.history(period="5d")
         if df_daily.empty:
             return None
@@ -208,7 +213,6 @@ def get_index_data_with_signal():
         prev_close = df_daily['Close'].iloc[-2] if len(df_daily) > 1 else ltp
         vol = df_daily['Volume'].iloc[-1]
         
-        # 15-Minute Signal
         df_15min = ticker.history(period="1h", interval="15m")
         signal = "⏳ WAIT"
         reason = "No Signal"
@@ -267,7 +271,7 @@ def update_google_sheet():
         
         final_data = []
         
-        # --- NIFTY Index ---
+        # NIFTY Index
         index_data = get_index_data_with_signal()
         if index_data:
             final_data.append([
@@ -288,7 +292,7 @@ def update_google_sheet():
                 timestamp
             ])
         
-        # --- Stocks ---
+        # Stocks
         for sym in UNIVERSE:
             data = get_stock_data_with_signal(sym)
             if data:
@@ -311,7 +315,7 @@ def update_google_sheet():
                 ])
             time.sleep(0.3)
         
-        # --- Update Sheet ---
+        # Update Sheet
         dash_sheet.clear()
         
         header = [[f"📊 AI BRO SCANNER - {date_stamp} (10-Min Update, 15-Min Candle)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
