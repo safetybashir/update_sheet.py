@@ -1,4 +1,4 @@
-# update_sheet.py – HYBRID REAL LOGIC (FINAL)
+# update_sheet.py – AI Bro Scanner (Sirf 12 Columns)
 import os
 import json
 import gspread
@@ -19,6 +19,7 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
+# --- FULL UNIVERSE (F&O Stocks Only) ---
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
     'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
@@ -92,23 +93,11 @@ def scan_stock(symbol):
             'action': action,
             'status': status,
             'score': score,
-            'volume': volume,
-            'traded_value': traded_value,
-            'week_change': round(week_change, 2),
-            'rsi': 50,
-            'sma50': price,
-            'sma200': price,
-            'prev_close': round(prev_close, 2),
             'entry': entry,
-            'ema21': price,
-            'vwap': price,
-            'bb_squeeze': 0.02,
             'momentum_burst': "❌",
             'consolidation': "❌",
             'breakout': "✅ B/O" if is_breakout else "NO B/O",
             'swing': "➡️ Neutral",
-            'high_52w': round(high_52w, 2),
-            'low_52w': round(ticker.info.get('fiftyTwoWeekLow', price), 2)
         }
     except Exception as e:
         logging.error(f"Error scanning {symbol}: {e}")
@@ -127,30 +116,18 @@ def get_nifty_data():
             'action': "NIFTY",
             'status': "INDEX",
             'score': "-",
-            'volume': "-",
-            'traded_value': "-",
-            'week_change': 0,
-            'rsi': "-",
-            'sma50': "-",
-            'sma200': "-",
-            'prev_close': round(df['Close'].iloc[-2], 2) if len(df) > 1 else price,
             'entry': "-",
-            'ema21': "-",
-            'vwap': "-",
-            'bb_squeeze': "-",
             'momentum_burst': "-",
             'consolidation': "-",
             'breakout': "-",
             'swing': "-",
-            'high_52w': "-",
-            'low_52w': "-"
         }
     except Exception as e:
         logging.error(f"Error fetching NIFTY: {e}")
         return None
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – HYBRID REAL LOGIC (FINAL)")
+    logging.info("🚀 AI Bro Scanner – FINAL (12 Columns)")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -164,38 +141,34 @@ def update_google_sheet():
         
         nifty = get_nifty_data()
         if nifty:
-            final_data.append([nifty['symbol'], nifty['ltp'], nifty['action'], nifty['status'], nifty['score'],
-                              nifty['volume'], nifty['traded_value'], nifty['week_change'], nifty['rsi'],
-                              nifty['sma50'], nifty['sma200'], nifty['prev_close'], nifty['entry'],
-                              nifty['ema21'], nifty['vwap'], nifty['bb_squeeze'], nifty['momentum_burst'],
-                              nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
-                              nifty['low_52w'], timestamp])
+            final_data.append([
+                nifty['symbol'], nifty['ltp'], nifty['action'], nifty['status'],
+                nifty['score'], nifty['entry'], nifty['momentum_burst'],
+                nifty['consolidation'], nifty['breakout'], nifty['swing'], timestamp
+            ])
         
         for sym in UNIVERSE:
             data = scan_stock(sym)
             if data:
-                final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
-                                  data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
-                                  data['rsi'], data['sma50'], data['sma200'], data['prev_close'], data['entry'],
-                                  data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
-                                  data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
-                                  data['low_52w'], timestamp])
+                final_data.append([
+                    data['symbol'], data['ltp'], data['action'], data['status'],
+                    data['score'], data['entry'], data['momentum_burst'],
+                    data['consolidation'], data['breakout'], data['swing'], timestamp
+                ])
             time.sleep(0.02)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (HYBRID REAL LOGIC)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
-                                 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
-                                 'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
-                                 'Breakout', 'Swing', '52W High', '52W Low', 'Time']])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (FINAL)", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision',
+                                 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', 'Time']])
         
         if final_data:
             dash_sheet.update('A3', final_data)
             logging.info(f"✅ Updated {len(final_data)} rows")
         else:
-            dash_sheet.update('A3', [["TEST", 100, "HOLD", "TEST", 50, 1000, "1 Cr", "1%", 50, 100, 90, 95, "HOLD", 100, 95, 0.02, "✅", "✅", "NO B/O", "➡️ Neutral", 110, 90, timestamp]])
+            dash_sheet.update('A3', [["TEST", 100, "HOLD", "TEST", 50, "HOLD", "✅", "✅", "NO B/O", "➡️ Neutral", timestamp]])
             logging.info("✅ Added test row")
         
         dash_sheet.freeze(rows=2)
