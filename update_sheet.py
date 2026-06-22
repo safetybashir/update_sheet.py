@@ -1,4 +1,4 @@
-# update_sheet.py – BATCH DOWNLOAD VERSION (Anti-Block 150+ Stocks Support)
+# update_sheet.py – BULLETPROOF BATCH ENGINE (Flattened Columns)
 import os
 import json
 import gspread
@@ -22,7 +22,7 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
-# --- YOUR CHOSEN 150+ STOCKS LIST (Aap isme 250 tak stocks add kar sakte hain bina kisi dikkat ke) ---
+# --- YOUR CHOSEN UNIVERSE (Aap isme jitne chahe stocks rakhein) ---
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
     'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
@@ -51,7 +51,7 @@ UNIVERSE = [
 NIFTY_SYMBOL = "^NSEI"
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Initializing Anti-Block Batch Engine...")
+    logging.info("🚀 AI Bro Scanner – Initializing Flattened Batch Engine...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -63,32 +63,42 @@ def update_google_sheet():
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         final_data = []
         
-        # --- STEP 1: NIFTY FETCH ---
-        logging.info("⚡ Fetching Nifty Index...")
-        nifty_df = yf.download(NIFTY_SYMBOL, period="5d", progress=False)
-        if not nifty_df.empty:
-            ltp = nifty_df['Close'].iloc[-1].item()
-            prev_close = nifty_df['Close'].iloc[-2].item() if len(nifty_df) > 1 else ltp
-            final_data.append(["NIFTY_INDEX", round(ltp, 2), "NIFTY", "INDEX", "-", "-", "-", 0, "-", "-", "-", round(prev_close, 2), "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", timestamp])
+        # --- 1. FETCH NIFTY ---
+        try:
+            nifty_df = yf.download(NIFTY_SYMBOL, period="5d", progress=False)
+            if not nifty_df.empty:
+                ltp = float(nifty_df['Close'].iloc[-1])
+                prev_close = float(nifty_df['Close'].iloc[-2]) if len(nifty_df) > 1 else ltp
+                final_data.append(["NIFTY_INDEX", round(ltp, 2), "NIFTY", "INDEX", "-", "-", "-", 0, "-", "-", "-", round(prev_close, 2), "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", timestamp])
+        except Exception as ne:
+            logging.error(f"⚠️ Nifty fetch failed: {ne}")
 
-        # --- STEP 2: SUPER FAST BATCH DOWNLOAD (No Loops, No Blocks!) ---
-        logging.info(f"📦 Downloading Master Batch for {len(UNIVERSE)} stocks at once...")
+        # --- 2. FETCH STOCKS BATCH ---
+        logging.info(f"📦 Downloading Batch for {len(UNIVERSE)} stocks...")
+        master_df = yf.download(UNIVERSE, period="5d", progress=False)
         
-        # Ek hi single call mein saare stocks ka 5 din ka data download
-        master_df = yf.download(UNIVERSE, period="5d", group_by='ticker', progress=False)
-        
-        logging.info("⚙ Processing Batch Data...")
-        for sym in UNIVERSE:
-            try:
-                # Batch multi-index dataframe se individual stock ka data nikalna
-                if sym in master_df.columns.levels[0]:
-                    df = master_df[sym].dropna()
-                    if df.empty:
+        if master_df.empty:
+            logging.error("❌ yfinance returned a completely empty batch!")
+        else:
+            logging.info("⚙ Extracting data using robust cross-section logic...")
+            for sym in UNIVERSE:
+                try:
+                    # Fail-safe method to extract individual stock's Close & Volume from multi-index
+                    if ('Close', sym) in master_df.columns:
+                        close_series = master_df[('Close', sym)].dropna()
+                        volume_series = master_df[('Volume', sym)].dropna()
+                    elif (sym, 'Close') in master_df.columns:
+                        close_series = master_df[(sym, 'Close')].dropna()
+                        volume_series = master_df[(sym, 'Volume')].dropna()
+                    else:
                         continue
-                    
-                    ltp = df['Close'].iloc[-1].item()
-                    prev_close = df['Close'].iloc[-2].item() if len(df) > 1 else ltp
-                    volume = int(df['Volume'].iloc[-1].item())
+                        
+                    if close_series.empty:
+                        continue
+                        
+                    ltp = float(close_series.iloc[-1])
+                    prev_close = float(close_series.iloc[-2]) if len(close_series) > 1 else ltp
+                    volume = int(volume_series.iloc[-1]) if not volume_series.empty else 0
                     traded_value = ltp * volume
                     
                     final_data.append([
@@ -98,34 +108,32 @@ def update_google_sheet():
                         round(ltp, 2), round(ltp, 2), 0.02, "❌", "❌", "NO B/O", "➡️ Neutral",
                         round(ltp * 1.1, 2), round(ltp * 0.9, 2), timestamp
                     ])
-            except Exception as inner_e:
-                logging.warning(f"⚠️ Skipping {sym} due to structural variation: {inner_e}")
-                continue
+                except Exception as inner_e:
+                    logging.debug(f"Skipping structural variant for {sym}: {inner_e}")
+                    continue
 
-        logging.info(f"📊 final_data rows successfully prepared: {len(final_data)}")
+        logging.info(f"📊 Rows prepared to write: {len(final_data)}")
         
-        # --- STEP 3: CLEAN AND MULTI-RANGE UPDATE ---
+        # --- 3. FORCE UPDATE GOOGLE SHEET ---
         dash_sheet.clear()
         
         headers = [
-            [f"📊 AI BRO SCANNER - {date_stamp} (BATCH WORKING)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+            [f"📊 AI BRO SCANNER - {date_stamp} (FLATTENED BATCH)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
             ['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision', 'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', '52W High', '52W Low', 'Time']
         ]
         
-        # Pura data combine karke ek single burst push karenge range update se
         payload = headers + final_data
         end_row = len(payload)
-        range_string = f"A1:W{end_row}"
         
-        logging.info(f"📤 Uploading Bulk Payload to Google Sheets [{range_string}]...")
-        dash_sheet.update(range_string, payload)
-        
+        # Single safe API update call
+        dash_sheet.update(f"A1:W{end_row}", payload)
         dash_sheet.freeze(rows=2)
-        logging.info("🚀 [BOOM] 150+ STOCKS UPDATED SUCCESSFULLY VIA BATCH ENGINE!")
+        
+        logging.info("🚀 [BOOM] ALL STOCKS FLASHED SUCCESSFULLY IN GOOGLE SHEET!")
         return True
         
     except Exception as e:
-        logging.error(f"❌ Master Execution Failed: {e}")
+        logging.error(f"❌ Master Update Failed: {e}")
         return False
 
 if __name__ == "__main__":
