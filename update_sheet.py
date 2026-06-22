@@ -213,7 +213,7 @@ def scan_nifty():
             'vwap': "-",
             'bb_squeeze': "-",
             'momentum_burst': "-",
-            'consolidation": "-",
+            'consolidation': "-",
             'breakout': "-",
             'swing': "-",
             'high_52w': "-",
@@ -245,7 +245,6 @@ def update_google_sheet():
                               nifty['ema21'], nifty['vwap'], nifty['bb_squeeze'], nifty['momentum_burst'],
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
-            logging.info("✅ NIFTY data added")
         
         for sym in UNIVERSE:
             data = scan_stock(sym)
@@ -256,7 +255,6 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
-                logging.info(f"✅ Added {data['symbol']}")
             time.sleep(0.1)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
