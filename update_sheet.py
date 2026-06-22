@@ -1,4 +1,4 @@
-# update_sheet.py – HYBRID (Real Logic + Fast Execution)
+# update_sheet.py – FINAL WORKING (Test Logic + Real Score)
 import os
 import json
 import gspread
@@ -8,7 +8,6 @@ import logging
 import sys
 import time
 from datetime import datetime as dt
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
 
 # --- Setup Logging ---
@@ -51,8 +50,8 @@ UNIVERSE = [
 # --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Scan Stock (Hybrid: Fast + Real Logic) ---
-def scan_stock_hybrid(symbol):
+# --- Scan Stock (Test Logic + Real Score) ---
+def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d")
@@ -67,25 +66,25 @@ def scan_stock_hybrid(symbol):
         # Week Change
         week_change = ((price - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         
-        # Score (0-100)
+        # Simple Score (0-100)
         score = 0
         if price > prev_close:
             score += 20
         if week_change > 2:
             score += 30
-        elif week_change > 1:
+        elif week_change > 0:
             score += 15
         if traded_value > 100_00_00_000:
             score += 30
         elif traded_value > 50_00_00_000:
             score += 15
-        if volume > 1000000:  # 10 Lakh
+        if volume > 1000000:
             score += 20
         elif volume > 500000:
             score += 10
         score = min(100, max(0, score))
         
-        # Status
+        # Action & Status
         if score >= 75:
             action, status = "🚀 BUY NOW", "🎯 STRONG BUY"
         elif score >= 60:
@@ -95,7 +94,6 @@ def scan_stock_hybrid(symbol):
         else:
             action, status = "📉 AVOID", "📉 WEAK"
         
-        # Entry Decision
         if score >= 75:
             entry = "✅ BUY NOW"
         elif score >= 60:
@@ -176,7 +174,7 @@ def scan_nifty():
 
 # --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – HYBRID (Real Logic + Fast)")
+    logging.info("🚀 AI Bro Scanner – FINAL WORKING (Test Logic + Real Score)")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -198,7 +196,7 @@ def update_google_sheet():
                               nifty['low_52w'], timestamp])
         
         for sym in UNIVERSE:
-            data = scan_stock_hybrid(sym)
+            data = scan_stock(sym)
             if data:
                 final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
                                   data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
@@ -206,12 +204,12 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
-            time.sleep(0.03)
+            time.sleep(0.02)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (HYBRID)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (FINAL WORKING)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
