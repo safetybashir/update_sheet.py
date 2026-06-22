@@ -1,11 +1,9 @@
-# update_sheet.py – SIMPLIFIED REAL LOGIC
+# update_sheet.py – HYBRID (Real Logic + Fast Execution)
 import os
 import json
 import gspread
 import yfinance as yf
 import pytz
-import pandas as pd
-import numpy as np
 import logging
 import sys
 import time
@@ -53,8 +51,8 @@ UNIVERSE = [
 # --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Simplified Scan Stock (No Complex Indicators) ---
-def scan_stock_simplified(symbol):
+# --- Scan Stock (Hybrid: Fast + Real Logic) ---
+def scan_stock_hybrid(symbol):
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d")
@@ -66,32 +64,28 @@ def scan_stock_simplified(symbol):
         volume = df['Volume'].iloc[-1]
         traded_value = price * volume
         
-        # Simple SMA
-        sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else price
-        sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else price
-        
         # Week Change
         week_change = ((price - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         
-        # Simple Score (0-100)
+        # Score (0-100)
         score = 0
-        if price > sma50:
-            score += 20
-        if price > sma200:
+        if price > prev_close:
             score += 20
         if week_change > 2:
-            score += 20
+            score += 30
         elif week_change > 1:
-            score += 10
+            score += 15
         if traded_value > 100_00_00_000:
-            score += 20
+            score += 30
         elif traded_value > 50_00_00_000:
-            score += 10
-        if price > prev_close:
+            score += 15
+        if volume > 1000000:  # 10 Lakh
+            score += 20
+        elif volume > 500000:
             score += 10
         score = min(100, max(0, score))
         
-        # Action
+        # Status
         if score >= 75:
             action, status = "🚀 BUY NOW", "🎯 STRONG BUY"
         elif score >= 60:
@@ -111,7 +105,7 @@ def scan_stock_simplified(symbol):
         else:
             entry = "🔴 AVOID"
         
-        # Breakout Detection
+        # Breakout
         high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
         is_breakout = price > high_52w * 0.98
         
@@ -125,12 +119,12 @@ def scan_stock_simplified(symbol):
             'traded_value': traded_value,
             'week_change': round(week_change, 2),
             'rsi': 50,
-            'sma50': round(sma50, 2),
-            'sma200': round(sma200, 2),
+            'sma50': price,
+            'sma200': price,
             'prev_close': round(prev_close, 2),
             'entry': entry,
-            'ema21': round(sma50, 2),
-            'vwap': round(sma50, 2),
+            'ema21': price,
+            'vwap': price,
             'bb_squeeze': 0.02,
             'momentum_burst': "❌",
             'consolidation': "❌",
@@ -182,7 +176,7 @@ def scan_nifty():
 
 # --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – SIMPLIFIED REAL LOGIC")
+    logging.info("🚀 AI Bro Scanner – HYBRID (Real Logic + Fast)")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -204,7 +198,7 @@ def update_google_sheet():
                               nifty['low_52w'], timestamp])
         
         for sym in UNIVERSE:
-            data = scan_stock_simplified(sym)
+            data = scan_stock_hybrid(sym)
             if data:
                 final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
                                   data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
@@ -212,12 +206,12 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
-            time.sleep(0.05)
+            time.sleep(0.03)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (SIMPLIFIED REAL LOGIC)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (HYBRID)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
