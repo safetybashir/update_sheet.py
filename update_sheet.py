@@ -1,4 +1,4 @@
-# update_sheet.py – FINAL WORKING (Test Logic + Full Universe)
+# update_sheet.py – FINAL HYBRID (Fast Fetch + Real Logic)
 import os
 import json
 import gspread
@@ -10,10 +10,8 @@ import time
 from datetime import datetime as dt
 from google.oauth2.service_account import Credentials
 
-# --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Load Secrets ---
 try:
     GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
     SHEET_ID = os.environ.get('SHEET_ID', '1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg')
@@ -21,7 +19,6 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
-# --- FULL UNIVERSE (F&O Stocks Only) ---
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
     'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
@@ -47,59 +44,86 @@ UNIVERSE = [
     'HINDPETRO.NS', 'PETRONET.NS'
 ]
 
-# --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Simple Stock Data Fetch (Test Logic) ---
-def get_simple_stock_data(symbol):
+def scan_stock(symbol):
     try:
-        logging.debug(f"🔍 Fetching {symbol}...")
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d")
         if df.empty:
-            logging.warning(f"⚠️ No data for {symbol}")
             return None
-        ltp = df['Close'].iloc[-1]
-        logging.info(f"✅ {symbol} LTP: {ltp}")
+        
+        price = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else price
+        volume = df['Volume'].iloc[-1]
+        traded_value = price * volume
+        week_change = ((price - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
+        
+        # --- REAL SCORE ---
+        score = 0
+        if price > prev_close: score += 20
+        if week_change > 2: score += 30
+        elif week_change > 0: score += 15
+        if traded_value > 100_00_00_000: score += 30
+        elif traded_value > 50_00_00_000: score += 15
+        if volume > 1000000: score += 20
+        elif volume > 500000: score += 10
+        score = min(100, max(0, score))
+        
+        # --- REAL ACTION & STATUS ---
+        if score >= 75:
+            action, status = "🚀 BUY NOW", "🎯 STRONG BUY"
+        elif score >= 60:
+            action, status = "📈 WATCH", "📈 BUY ZONE"
+        elif score >= 40:
+            action, status = "⏳ HOLD", "🛡️ RANGE-BOUND"
+        else:
+            action, status = "📉 AVOID", "📉 WEAK"
+        
+        entry = "✅ BUY NOW" if score >= 75 else "🟡 WATCH" if score >= 60 else "⏳ HOLD" if score >= 40 else "🔴 AVOID"
+        
+        # --- BREAKOUT ---
+        high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
+        is_breakout = price > high_52w * 0.98
+        
         return {
             'symbol': symbol,
-            'ltp': round(ltp, 2),
-            'action': "⏳ HOLD",
-            'status': "TEST",
-            'score': 50,
-            'volume': int(df['Volume'].iloc[-1]),
-            'traded_value': ltp * df['Volume'].iloc[-1],
-            'week_change': 0,
+            'ltp': round(price, 2),
+            'action': action,
+            'status': status,
+            'score': score,
+            'volume': volume,
+            'traded_value': traded_value,
+            'week_change': round(week_change, 2),
             'rsi': 50,
-            'sma50': ltp,
-            'sma200': ltp,
-            'prev_close': df['Close'].iloc[-2] if len(df) > 1 else ltp,
-            'entry': "⏳ HOLD",
-            'ema21': ltp,
-            'vwap': ltp,
+            'sma50': price,
+            'sma200': price,
+            'prev_close': round(prev_close, 2),
+            'entry': entry,
+            'ema21': price,
+            'vwap': price,
             'bb_squeeze': 0.02,
             'momentum_burst': "❌",
             'consolidation': "❌",
-            'breakout': "NO B/O",
+            'breakout': "✅ B/O" if is_breakout else "NO B/O",
             'swing': "➡️ Neutral",
-            'high_52w': ltp * 1.1,
-            'low_52w': ltp * 0.9
+            'high_52w': round(high_52w, 2),
+            'low_52w': round(ticker.info.get('fiftyTwoWeekLow', price), 2)
         }
     except Exception as e:
-        logging.error(f"❌ Error in {symbol}: {e}")
+        logging.error(f"Error scanning {symbol}: {e}")
         return None
 
-# --- NIFTY Index ---
 def get_nifty_data():
     try:
         ticker = yf.Ticker(NIFTY_SYMBOL)
         df = ticker.history(period="5d")
         if df.empty:
             return None
-        ltp = df['Close'].iloc[-1]
+        price = df['Close'].iloc[-1]
         return {
             'symbol': "NIFTY_INDEX",
-            'ltp': round(ltp, 2),
+            'ltp': round(price, 2),
             'action': "NIFTY",
             'status': "INDEX",
             'score': "-",
@@ -109,7 +133,7 @@ def get_nifty_data():
             'rsi': "-",
             'sma50': "-",
             'sma200': "-",
-            'prev_close': round(df['Close'].iloc[-2], 2) if len(df) > 1 else ltp,
+            'prev_close': round(df['Close'].iloc[-2], 2) if len(df) > 1 else price,
             'entry': "-",
             'ema21': "-",
             'vwap': "-",
@@ -125,9 +149,8 @@ def get_nifty_data():
         logging.error(f"Error fetching NIFTY: {e}")
         return None
 
-# --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – FINAL WORKING (Test Logic + Full Universe)")
+    logging.info("🚀 AI Bro Scanner – FINAL HYBRID (Fast + Real Logic)")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -139,7 +162,6 @@ def update_google_sheet():
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         final_data = []
         
-        # NIFTY
         nifty = get_nifty_data()
         if nifty:
             final_data.append([nifty['symbol'], nifty['ltp'], nifty['action'], nifty['status'], nifty['score'],
@@ -149,9 +171,8 @@ def update_google_sheet():
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
         
-        # Stocks
         for sym in UNIVERSE:
-            data = get_simple_stock_data(sym)
+            data = scan_stock(sym)
             if data:
                 final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
                                   data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
@@ -159,12 +180,12 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
-            time.sleep(0.05)  # Reduced delay
+            time.sleep(0.02)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (FINAL WORKING)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (FINAL HYBRID)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
