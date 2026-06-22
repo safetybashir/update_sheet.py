@@ -322,7 +322,7 @@ def update_google_sheet():
             ['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
              'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
              'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
-             'Breakout', 'Swing', '52W High', '52W Low', 'Time']
+             'Breakout', 'Swing']
         ]
         dash_sheet.update(range_name='A2', values=header2)
         
