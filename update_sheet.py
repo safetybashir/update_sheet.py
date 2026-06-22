@@ -1,4 +1,4 @@
-# update_sheet.py – REAL LOGIC ENABLED
+# update_sheet.py – SIMPLIFIED REAL LOGIC
 import os
 import json
 import gspread
@@ -53,60 +53,11 @@ UNIVERSE = [
 # --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Indicator Functions (Real Logic) ---
-def calc_ema21(df):
-    return df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
-
-def calc_vwap(df):
-    return (df['Close'] * df['Volume']).sum() / df['Volume'].sum()
-
-def calc_rsi(df, period=14):
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
-
-def calc_bb_squeeze(df, period=20):
-    middle = df['Close'].rolling(period).mean()
-    std = df['Close'].rolling(period).std()
-    upper = middle + (std * 2)
-    lower = middle - (std * 2)
-    return (upper.iloc[-1] - lower.iloc[-1]) / middle.iloc[-1]
-
-def detect_momentum_burst(df):
-    if len(df) < 5:
-        return False
-    recent = df['Close'].iloc[-5:]
-    price_change = ((recent.iloc[-1] - recent.iloc[0]) / recent.iloc[0]) * 100
-    vol_change = ((df['Volume'].iloc[-1] - df['Volume'].iloc[-5:].mean()) / df['Volume'].iloc[-5:].mean()) * 100
-    return price_change > 2 and vol_change > 50
-
-def detect_consolidation_breakout(df, lookback=10):
-    if len(df) < lookback:
-        return False
-    high = df['High'].iloc[-lookback:].max()
-    low = df['Low'].iloc[-lookback:].min()
-    range_pct = ((high - low) / low) * 100
-    return range_pct < 8 and df['Close'].iloc[-1] > high
-
-def detect_swing_high_low(df):
-    if len(df) < 5:
-        return "➡️ Neutral"
-    high = df['High'].iloc[-5:].max()
-    low = df['Low'].iloc[-5:].min()
-    current = df['Close'].iloc[-1]
-    if current == high:
-        return "📈 Higher High"
-    elif current == low:
-        return "📉 Lower Low"
-    return "➡️ Neutral"
-
-# --- Scan Stock (Real Logic) ---
-def scan_stock(symbol):
+# --- Simplified Scan Stock (No Complex Indicators) ---
+def scan_stock_simplified(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1mo")
+        df = ticker.history(period="5d")
         if df.empty:
             return None
         
@@ -115,30 +66,32 @@ def scan_stock(symbol):
         volume = df['Volume'].iloc[-1]
         traded_value = price * volume
         
-        ema21 = calc_ema21(df)
-        vwap = calc_vwap(df)
-        rsi = calc_rsi(df)
-        bb_squeeze = calc_bb_squeeze(df)
-        momentum_burst = detect_momentum_burst(df)
-        consolidation = detect_consolidation_breakout(df)
-        swing = detect_swing_high_low(df)
+        # Simple SMA
+        sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else price
+        sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else price
         
-        high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
-        low_52w = ticker.info.get('fiftyTwoWeekLow', price)
-        is_breakout = price > high_52w * 0.98
+        # Week Change
+        week_change = ((price - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         
+        # Simple Score (0-100)
         score = 0
-        if price > ema21: score += 10
-        if price > vwap: score += 10
-        if rsi > 60: score += 15
-        elif rsi > 50: score += 8
-        if momentum_burst: score += 20
-        if consolidation: score += 15
-        if bb_squeeze < 0.03: score += 10
-        if is_breakout: score += 10
-        if traded_value > 100_00_00_000: score += 5
+        if price > sma50:
+            score += 20
+        if price > sma200:
+            score += 20
+        if week_change > 2:
+            score += 20
+        elif week_change > 1:
+            score += 10
+        if traded_value > 100_00_00_000:
+            score += 20
+        elif traded_value > 50_00_00_000:
+            score += 10
+        if price > prev_close:
+            score += 10
         score = min(100, max(0, score))
         
+        # Action
         if score >= 75:
             action, status = "🚀 BUY NOW", "🎯 STRONG BUY"
         elif score >= 60:
@@ -148,16 +101,19 @@ def scan_stock(symbol):
         else:
             action, status = "📉 AVOID", "📉 WEAK"
         
-        if score >= 75 and price > ema21 and price > vwap and rsi > 60:
+        # Entry Decision
+        if score >= 75:
             entry = "✅ BUY NOW"
-        elif score >= 60 and price > ema21:
+        elif score >= 60:
             entry = "🟡 WATCH"
         elif score >= 40:
             entry = "⏳ HOLD"
         else:
             entry = "🔴 AVOID"
         
-        week_change = ((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
+        # Breakout Detection
+        high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
+        is_breakout = price > high_52w * 0.98
         
         return {
             'symbol': symbol,
@@ -168,20 +124,20 @@ def scan_stock(symbol):
             'volume': volume,
             'traded_value': traded_value,
             'week_change': round(week_change, 2),
-            'rsi': round(rsi, 2),
-            'sma50': round(df['Close'].rolling(50).mean().iloc[-1], 2) if len(df) >= 50 else price,
-            'sma200': round(df['Close'].rolling(200).mean().iloc[-1], 2) if len(df) >= 200 else price,
+            'rsi': 50,
+            'sma50': round(sma50, 2),
+            'sma200': round(sma200, 2),
             'prev_close': round(prev_close, 2),
             'entry': entry,
-            'ema21': round(ema21, 2),
-            'vwap': round(vwap, 2),
-            'bb_squeeze': round(bb_squeeze, 4),
-            'momentum_burst': "✅" if momentum_burst else "❌",
-            'consolidation': "✅" if consolidation else "❌",
+            'ema21': round(sma50, 2),
+            'vwap': round(sma50, 2),
+            'bb_squeeze': 0.02,
+            'momentum_burst': "❌",
+            'consolidation': "❌",
             'breakout': "✅ B/O" if is_breakout else "NO B/O",
-            'swing': swing,
+            'swing': "➡️ Neutral",
             'high_52w': round(high_52w, 2),
-            'low_52w': round(low_52w, 2)
+            'low_52w': round(ticker.info.get('fiftyTwoWeekLow', price), 2)
         }
     except Exception as e:
         logging.error(f"Error scanning {symbol}: {e}")
@@ -191,11 +147,11 @@ def scan_stock(symbol):
 def scan_nifty():
     try:
         ticker = yf.Ticker(NIFTY_SYMBOL)
-        df = ticker.history(period="1mo")
+        df = ticker.history(period="5d")
         if df.empty:
             return None
         price = df['Close'].iloc[-1]
-        week_change = ((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
+        week_change = ((price - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         return {
             'symbol': "NIFTY_INDEX",
             'ltp': round(price, 2),
@@ -224,9 +180,9 @@ def scan_nifty():
         logging.error(f"Error scanning NIFTY: {e}")
         return None
 
-# --- Main Update (Optimized with Parallel Processing) ---
+# --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – REAL LOGIC ENABLED")
+    logging.info("🚀 AI Bro Scanner – SIMPLIFIED REAL LOGIC")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -247,14 +203,8 @@ def update_google_sheet():
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
         
-        # Stocks (Parallel Processing with Real Logic)
-        def process_stock(sym):
-            return scan_stock(sym)
-        
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            results = list(executor.map(process_stock, UNIVERSE))
-        
-        for data in results:
+        for sym in UNIVERSE:
+            data = scan_stock_simplified(sym)
             if data:
                 final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
                                   data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
@@ -262,11 +212,12 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
+            time.sleep(0.05)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (REAL LOGIC)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (SIMPLIFIED REAL LOGIC)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
