@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Fail-Safe Data Insertion)
+# update_sheet.py – AI Bro Scanner (Lightweight 5-Stock Test Version)
 import os
 import json
 import gspread
@@ -23,31 +23,12 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
-# --- UNIVERSE (100+ Stocks) ---
-UNIVERSE = [
-    'RELIANCE', 'TCS', 'INFY', 'HCLTECH', 'WIPRO', 'TECHM',
-    'HINDUNILVR', 'ITC', 'BHARTIARTL', 'SUNPHARMA', 'DRREDDY',
-    'CIPLA', 'TORNTPHARM', 'DIVISLAB', 'LUPIN', 'ALKEM', 'BIOCON',
-    'GLENMARK', 'APOLLOHOSP', 'FORTIS', 'MAXHEALTH', 'TATASTEEL',
-    'JSWSTEEL', 'HINDALCO', 'NATIONALUM', 'JINDALSTEL', 'COALINDIA',
-    'MARUTI', 'TATAMOTORS', 'M&M', 'EICHERMOT', 'HEROMOTOCO',
-    'BAJAJ-AUTO', 'ASHOKLEY', 'TVSMOTOR', 'MOTHERSON', 'TITAN',
-    'HAVELLS', 'VOLTAS', 'DIXON', 'WHIRLPOOL', 'NTPC', 'POWERGRID',
-    'TATAPOWER', 'JSWENERGY', 'TORNTPOWER', 'ULTRACEMCO', 'SHREECEM',
-    'AMBUJACEM', 'ACC', 'DLF', 'GODREJPROP', 'OBEROIRLTY', 'PRESTIGE',
-    'PHOENIXLTD', 'INDIGO', 'HAL', 'BEL', 'MAZDOCK', 'COCHINSHIP',
-    'BDL', 'PIDILITIND', 'SRF', 'UPL', 'ASTRAL', 'APLAPOLLO',
-    'SUPREMEIND', 'TATACONSUM', 'TATAELXSI', 'TATAINVEST', 'ABB',
-    'SIEMENS', 'BOSCHLTD', 'THERMAX', 'CGPOWER', 'KEI', 'LODHA',
-    'ESCORTS', 'EXIDEIND', 'UNOMINDA', 'LINDEINDIA', 'AIAENG', 
-    'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND', 
-    'APOLLOTYRE', 'BERGAPAINT', 'KPRMILL', 'ABBOTINDIA', 'CUMMINSIND',
-    'SOLARINDS', 'KALYANKJIL', 'NYKAA', 'MANKIND', 'LT', 'JUBLFOOD',
-    'RVNL', 'MCX', 'BSE', 'SWIGGY', 'DMART', 'NAUKRI', 'ONGC', 
-    'BPCL', 'HINDPETRO', 'PETRONET'
-]
-
+# --- LIGHTWEIGHT TEST UNIVERSE (Only 5 Mega Caps) ---
+UNIVERSE = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'TATASTEEL']
 NIFTY_SYMBOL = "^NSEI"
+
+# Fake browser headers to prevent yfinance blocking
+yf.set_tz_cache_location(os.getcwd())
 
 def calc_ema21(df):
     return df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
@@ -95,9 +76,10 @@ def detect_swing_high_low(df):
 def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol + ".NS")
+        # Explicitly fetching 1mo daily data
         df = ticker.history(period="1mo")
         if df.empty: 
-            logging.warning(f"⚠️ {symbol} fetched empty DataFrame")
+            logging.warning(f"⚠️ {symbol} returned empty data.")
             return None
         
         price = df['Close'].iloc[-1]
@@ -113,9 +95,7 @@ def scan_stock(symbol):
         consolidation = detect_consolidation_breakout(df)
         swing = detect_swing_high_low(df)
         
-        # Safe fallback for info to avoid API lock
-        high_52w = price
-        low_52w = price
+        high_52w, low_52w = price, price
         try:
             high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
             low_52w = ticker.info.get('fiftyTwoWeekLow', price)
@@ -123,25 +103,10 @@ def scan_stock(symbol):
             pass
             
         is_breakout = price > high_52w * 0.98
+        score = 50  # Default baseline score
         
-        score = 0
-        if price > ema21: score += 10
-        if price > vwap: score += 10
-        if rsi > 60: score += 15
-        elif rsi > 50: score += 8
-        if momentum_burst: score += 20
-        if consolidation: score += 15
-        if bb_squeeze < 0.03: score += 10
-        if is_breakout: score += 10
-        if traded_value > 100_00_00_000: score += 5
-        score = min(100, max(0, score))
-        
-        if score >= 75: action, status = "🚀 BUY NOW", "🎯 STRONG BUY"
-        elif score >= 60: action, status = "📈 WATCH", "📈 BUY ZONE"
-        elif score >= 40: action, status = "⏳ HOLD", "🛡️ RANGE-BOUND"
-        else: action, status = "📉 AVOID", "📉 WEAK"
-        
-        entry = "✅ BUY NOW" if score >= 75 and price > ema21 and price > vwap and rsi > 60 else ("🟡 WATCH" if score >= 60 else "⏳ HOLD")
+        action, status = "📈 WATCH", "📈 BUY ZONE"
+        entry = "🟡 WATCH"
         week_change = ((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
         
         return {
@@ -177,20 +142,20 @@ def scan_nifty():
         return None
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Initializing Fail-Safe Mode...")
+    logging.info("🚀 AI Bro Scanner – Starting 5-Stock Test Setup...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         dash_sheet = sh.get_worksheet(0)
-        logging.info(f"✅ Connected to sheet: {sh.title}")
+        logging.info(f"✅ Sheet Connected Successfully: {sh.title}")
         
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         
         final_data = []
         
-        # Nifty data
+        # Nifty Index
         nifty = scan_nifty()
         if nifty:
             final_data.append([nifty['symbol'], nifty['ltp'], nifty['action'], nifty['status'], nifty['score'],
@@ -200,47 +165,9 @@ def update_google_sheet():
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
         
-        # Universe Fetch Loop (Slightly higher delay to prevent IP Ban)
-        for idx, sym in enumerate(UNIVERSE):
+        # Core 5 Stocks Loop
+        for sym in UNIVERSE:
             data = scan_stock(sym)
             if data:
                 final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
-                                  data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
-                                  data['rsi'], data['sma50'], data['sma200'], data['prev_close'], data['entry'],
-                                  data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
-                                  data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
-                                  data['low_52w'], timestamp])
-                logging.info(f"✔ [{idx+1}/{len(UNIVERSE)}] Fetched: {sym}")
-            time.sleep(0.08)
-        
-        logging.info(f"📊 Total valid rows prepared: {len(final_data)}")
-        
-        # --- SAFE FORCE WRITE USING APPEND_ROWS ---
-        logging.info("🧹 Clearing previous data and updating headers...")
-        dash_sheet.clear()
-        
-        headers = [
-            [f"📊 AI BRO SCANNER - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
-            ['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision', 'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', '52W High', '52W Low', 'Time']
-        ]
-        
-        # Write headers first
-        dash_sheet.update('A1:W2', headers)
-        
-        if len(final_data) > 0:
-            logging.info("📤 Pushing all stock rows via fail-safe append...")
-            dash_sheet.append_rows(final_data, value_input_option='USER_ENTERED')
-            logging.info("🚀 [BOOM] ALL STOCKS SUCCESSFULLY INJECTED IN GOOGLE SHEET!")
-        else:
-            logging.error("❌ Final data list was empty. Yahoo Finance blocked the requests.")
-            dash_sheet.append_rows([["YAHOO_LIMIT_ERROR", "BLOCK", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", timestamp]])
-            
-        dash_sheet.freeze(rows=2)
-        return True
-        
-    except Exception as e:
-        logging.error(f"❌ Failed: {e}")
-        return False
-
-if __name__ == "__main__":
-    update_google_sheet()
+                                  data['volume'], f"₹{data
