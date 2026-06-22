@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner FINAL VERSION (Real Logic)
+# update_sheet.py – AI Bro Scanner OPTIMIZED FINAL VERSION
 import os
 import json
 import gspread
@@ -10,6 +10,7 @@ import logging
 import sys
 import time
 from datetime import datetime as dt
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.oauth2.service_account import Credentials
 
 # --- Setup Logging ---
@@ -53,7 +54,7 @@ UNIVERSE = [
 # --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Indicator Functions (Real Logic) ---
+# --- Indicator Functions (Test Version + Real Logic) ---
 def calc_ema21(df):
     return df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
 
@@ -102,12 +103,13 @@ def detect_swing_high_low(df):
         return "📉 Lower Low"
     return "➡️ Neutral"
 
-# --- Scan Stock (Real Logic) ---
+# --- Scan Stock (Test Version + Real Logic) ---
 def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1mo")
         if df.empty:
+            logging.warning(f"⚠️ No data for {symbol}")
             return None
         
         price = df['Close'].iloc[-1]
@@ -115,6 +117,7 @@ def scan_stock(symbol):
         volume = df['Volume'].iloc[-1]
         traded_value = price * volume
         
+        # Real Logic
         ema21 = calc_ema21(df)
         vwap = calc_vwap(df)
         rsi = calc_rsi(df)
@@ -184,7 +187,7 @@ def scan_stock(symbol):
             'low_52w': round(low_52w, 2)
         }
     except Exception as e:
-        logging.error(f"Error scanning {symbol}: {e}")
+        logging.error(f"❌ Error scanning {symbol}: {e}")
         return None
 
 # --- NIFTY Index ---
@@ -224,9 +227,9 @@ def scan_nifty():
         logging.error(f"Error scanning NIFTY: {e}")
         return None
 
-# --- Main Update ---
+# --- Main Update (Optimized with Parallel Processing) ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – FINAL VERSION (Real Logic)")
+    logging.info("🚀 AI Bro Scanner – OPTIMIZED FINAL VERSION")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -238,6 +241,7 @@ def update_google_sheet():
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         final_data = []
         
+        # NIFTY
         nifty = scan_nifty()
         if nifty:
             final_data.append([nifty['symbol'], nifty['ltp'], nifty['action'], nifty['status'], nifty['score'],
@@ -247,21 +251,30 @@ def update_google_sheet():
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
         
-        for sym in UNIVERSE:
+        # Stocks (Parallel Processing)
+        def process_stock(sym):
             data = scan_stock(sym)
             if data:
-                final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
-                                  data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
-                                  data['rsi'], data['sma50'], data['sma200'], data['prev_close'], data['entry'],
-                                  data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
-                                  data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
-                                  data['low_52w'], timestamp])
-            time.sleep(0.1)
+                return [data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
+                        data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr", data['week_change'],
+                        data['rsi'], data['sma50'], data['sma200'], data['prev_close'], data['entry'],
+                        data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
+                        data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
+                        data['low_52w'], timestamp]
+            return None
+        
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(process_stock, UNIVERSE))
+        
+        for result in results:
+            if result:
+                final_data.append(result)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
+        # Update Sheet
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (FINAL VERSION)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (OPTIMIZED FINAL)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
