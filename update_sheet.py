@@ -1,4 +1,4 @@
-# update_sheet.py – FINAL AI Bro Scanner (150+ Stocks)
+# update_sheet.py – AI Bro Scanner (F&O Stocks Only)
 import os
 import json
 import gspread
@@ -23,29 +23,30 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
-# --- FINAL UNIVERSE (150+ Stocks with .NS) ---
+# --- F&O UNIVERSE (No Banks/Financials/Liquor/Cigarettes) ---
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
-    'HINDUNILVR.NS', 'ITC.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
-    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS', 'BIOCON.NS',
-    'GLENMARK.NS', 'APOLLOHOSP.NS', 'FORTIS.NS', 'MAXHEALTH.NS', 'TATASTEEL.NS',
+    'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
+    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS',
+    'BIOCON.NS', 'APOLLOHOSP.NS', 'FORTIS.NS', 'MAXHEALTH.NS', 'TATASTEEL.NS',
     'JSWSTEEL.NS', 'HINDALCO.NS', 'NATIONALUM.NS', 'JINDALSTEL.NS', 'COALINDIA.NS',
     'MARUTI.NS', 'TATAMOTORS.NS', 'M&M.NS', 'EICHERMOT.NS', 'HEROMOTOCO.NS',
     'BAJAJ-AUTO.NS', 'ASHOKLEY.NS', 'TVSMOTOR.NS', 'MOTHERSON.NS', 'TITAN.NS',
     'HAVELLS.NS', 'VOLTAS.NS', 'DIXON.NS', 'WHIRLPOOL.NS', 'NTPC.NS', 'POWERGRID.NS',
-    'TATAPOWER.NS', 'JSWENERGY.NS', 'TORNTPOWER.NS', 'ULTRACEMCO.NS', 'SHREECEM.NS',
-    'AMBUJACEM.NS', 'ACC.NS', 'DLF.NS', 'GODREJPROP.NS', 'OBEROIRLTY.NS', 'PRESTIGE.NS',
-    'PHOENIXLTD.NS', 'INDIGO.NS', 'HAL.NS', 'BEL.NS', 'MAZDOCK.NS', 'COCHINSHIP.NS',
-    'BDL.NS', 'PIDILITIND.NS', 'SRF.NS', 'UPL.NS', 'ASTRAL.NS', 'APLAPOLLO.NS',
-    'SUPREMEIND.NS', 'TATACONSUM.NS', 'TATAELXSI.NS', 'TATAINVEST.NS', 'ABB.NS',
-    'SIEMENS.NS', 'BOSCHLTD.NS', 'THERMAX.NS', 'CGPOWER.NS', 'KEI.NS', 'LODHA.NS',
-    'ESCORTS.NS', 'EXIDEIND.NS', 'LENSKART.NS', 'PIIND.NS', 'UNOMINDA.NS',
-    'LINDEINDIA.NS', 'AIAENG.NS', 'IRCTC.NS', 'AJANTPHARM.NS', 'GLAXO.NS',
-    'JKCEMENT.NS', 'GODREJIND.NS', 'APOLLOTYRE.NS', 'BERGAPAINT.NS', 'KPRMILL.NS',
-    'ABBOTINDIA.NS', 'ETERNAL.NS', 'WAAREEENER.NS', 'GVT&D.NS', 'CUMMINSIND.NS',
-    'SOLARINDS.NS', 'KALYANKJIL.NS', 'NYKAA.NS', 'MANKIND.NS', 'LT.NS', 'JUBLFOOD.NS',
-    'POWERINDIA.NS', 'RVNL.NS', 'MCX.NS', 'BSE.NS', 'SWIGGY.NS', 'DMART.NS', 'NAUKRI.NS',
-    'ONGC.NS', 'BPCL.NS', 'HINDPETRO.NS', 'PETRONET.NS'
+    'TATAPOWER.NS', 'JSWENERGY.NS', 'ULTRACEMCO.NS', 'SHREECEM.NS',
+    'AMBUJACEM.NS', 'ACC.NS', 'DLF.NS', 'GODREJPROP.NS', 'OBEROIRLTY.NS',
+    'PRESTIGE.NS', 'PHOENIXLTD.NS', 'INDIGO.NS', 'HAL.NS', 'BEL.NS',
+    'PIDILITIND.NS', 'SRF.NS', 'ASTRAL.NS', 'APLAPOLLO.NS',
+    'SUPREMEIND.NS', 'TATACONSUM.NS', 'TATAELXSI.NS', 'TATAINVEST.NS',
+    'ABB.NS', 'SIEMENS.NS', 'BOSCHLTD.NS', 'CGPOWER.NS', 'KEI.NS',
+    'LODHA.NS', 'ESCORTS.NS', 'EXIDEIND.NS', 'LENSKART.NS', 'PIIND.NS',
+    'UNOMINDA.NS', 'LINDEINDIA.NS', 'AIAENG.NS', 'IRCTC.NS', 'GLAXO.NS',
+    'JKCEMENT.NS', 'GODREJIND.NS', 'APOLLOTYRE.NS', 'BERGAPAINT.NS',
+    'KPRMILL.NS', 'ABBOTINDIA.NS', 'ETERNAL.NS', 'CUMMINSIND.NS',
+    'SOLARINDS.NS', 'KALYANKJIL.NS', 'NYKAA.NS', 'MANKIND.NS', 'LT.NS',
+    'JUBLFOOD.NS', 'POWERINDIA.NS', 'RVNL.NS', 'MCX.NS', 'BSE.NS',
+    'SWIGGY.NS', 'DMART.NS', 'NAUKRI.NS', 'ONGC.NS', 'BPCL.NS',
+    'HINDPETRO.NS', 'PETRONET.NS'
 ]
 
 # --- NIFTY 50 Index ---
@@ -212,7 +213,7 @@ def scan_nifty():
             'vwap': "-",
             'bb_squeeze': "-",
             'momentum_burst': "-",
-            'consolidation': "-",
+            'consolidation": "-",
             'breakout': "-",
             'swing': "-",
             'high_52w': "-",
@@ -224,7 +225,7 @@ def scan_nifty():
 
 # --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – FINAL VERSION")
+    logging.info("🚀 AI Bro Scanner – F&O Stocks Only")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -244,6 +245,7 @@ def update_google_sheet():
                               nifty['ema21'], nifty['vwap'], nifty['bb_squeeze'], nifty['momentum_burst'],
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
+            logging.info("✅ NIFTY data added")
         
         for sym in UNIVERSE:
             data = scan_stock(sym)
@@ -254,12 +256,13 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
+                logging.info(f"✅ Added {data['symbol']}")
             time.sleep(0.1)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (F&O Stocks)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
