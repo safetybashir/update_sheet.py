@@ -86,7 +86,7 @@ def detect_swing_high_low(df):
 # --- Scan Stock ---
 def scan_stock(symbol):
     try:
-        ticker = yf.Ticker(symbol + ".NS")
+        ticker = yf.Ticker(symbol)  # ✅ .NS pehle se add hai
         df = ticker.history(period="1mo")
         if df.empty:
             return None
