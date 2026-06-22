@@ -1,21 +1,28 @@
-name: Cleanup Old Workflow Runs
+name: AI-Bro-Scanner-10min
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Har raat 12:00 AM (IST) ko chalega
-  workflow_dispatch:       # Manual trigger bhi rakh sakte hain
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
 
 jobs:
-  delete-old-runs:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Delete old workflow runs
-        uses: yanovation/delete-old-actions@v1
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          days-ago: 30         # 30 din se purani runs delete karo
-          keep-latest: 10      # Hamesha last 10 runs ko rakhna
+          python-version: '3.12'
+          
+      - name: Install dependencies
+        run: |
+          pip install yfinance gspread google-auth pandas numpy pytz
+      
+      - name: Run scanner
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python update_sheet.py
