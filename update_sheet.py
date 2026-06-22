@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Super Scanner 2.0 (DEBUGGING)
+# update_sheet.py – AI Bro Scanner (15-Minute Candle Strategy)
 import os
 import json
 import gspread
@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 
 # --- Setup Logging ---
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
@@ -23,54 +23,167 @@ logging.basicConfig(
 try:
     GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
     SHEET_ID = os.environ.get('SHEET_ID', '1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg')
-    logging.info(f"✅ SHEET_ID: {SHEET_ID}")
 except Exception as e:
-    logging.error(f"❌ Failed to load secrets: {e}")
+    logging.error(f"❌ Failed to load credentials: {e}")
     sys.exit(1)
 
-# --- UNIVERSE (Sirf 5 stocks test ke liye) ---
-UNIVERSE = ['RELIANCE', 'TCS', 'INFY', 'BHARTIARTL', 'HINDUNILVR']
+# --- UNIVERSE (150+ Stocks) ---
+UNIVERSE = [
+    'RELIANCE', 'TCS', 'INFY', 'BHARTIARTL', 'HINDUNILVR',
+    'HCLTECH', 'WIPRO', 'TECHM', 'LTTS', 'MPHASIS',
+    'PERSISTENT', 'COFORGE', 'OFSS', 'MARUTI', 'TATAMOTORS',
+    'M&M', 'EICHERMOT', 'HEROMOTOCO', 'BAJAJ-AUTO', 'ASHOKLEY',
+    'TVSMOTOR', 'MOTHERSON', 'SUNPHARMA', 'DRREDDY', 'CIPLA',
+    'TORNTPHARM', 'DIVISLAB', 'LUPIN', 'ALKEM', 'BIOCON',
+    'GLENMARK', 'APOLLOHOSP', 'FORTIS', 'MAXHEALTH', 'LAURUSLABS',
+    'IPCALAB', 'TATASTEEL', 'JSWSTEEL', 'HINDALCO', 'NATIONALUM',
+    'JINDALSTEL', 'COALINDIA', 'TATACOMM', 'TITAN', 'HAVELLS',
+    'VOLTAS', 'DIXON', 'WHIRLPOOL', 'NTPC', 'POWERGRID',
+    'TATAPOWER', 'JSWENERGY', 'TORNTPOWER', 'ULTRACEMCO', 'SHREECEM',
+    'AMBUJACEM', 'ACC', 'DLF', 'GODREJPROP', 'OBEROIRLTY',
+    'PRESTIGE', 'PHOENIXLTD', 'INDIGO', 'HAL', 'BEL',
+    'MAZDOCK', 'COCHINSHIP', 'BDL', 'PIDILITIND', 'SRF',
+    'UPL', 'ASTRAL', 'APLAPOLLO', 'SUPREMEIND', 'JSL',
+    'FLUOROCHEM', 'KPITTECH', 'TATACONSUM', 'TATAELXSI', 'TATAINVEST',
+    'ABB', 'SIEMENS', 'BOSCHLTD', 'THERMAX', 'CGPOWER',
+    'KEI', 'LODHA', 'ESCORTS', 'EXIDEIND', 'LENSKART',
+    'PIIND', 'UNOMINDA', 'LINDEINDIA', 'AIAENG', 'IRCTC',
+    'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND', 'APOLLOTYRE',
+    'BERGAPAINT', 'KPRMILL', 'ABBOTINDIA', 'ETERNAL', 'WAAREEENER',
+    'GVT&D', 'CUMMINSIND', 'SOLARINDS', 'KALYANKJIL', 'NYKAA',
+    'MANKIND', 'LT', 'JUBLFOOD', 'POWERINDIA', 'RVNL',
+    'MCX', 'BSE', 'SWIGGY', 'DMART', 'NAUKRI'
+]
 
 # --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Simple Stock Data Fetch (Debug) ---
-def get_simple_stock_data(symbol):
+# --- 15-Minute Candle Signal ---
+def get_15min_signal(symbol):
     try:
-        logging.debug(f"🔍 Fetching {symbol}...")
+        ticker = yf.Ticker(symbol + ".NS")
+        df = ticker.history(period="1h", interval="15m")
+        if len(df) < 3:
+            return "⏳ WAIT", "No Data"
+        
+        # Current 15-min candle
+        current_close = df['Close'].iloc[-1]
+        prev_high = df['High'].iloc[-2]
+        prev_low = df['Low'].iloc[-2]
+        current_vol = df['Volume'].iloc[-1]
+        prev_vol = df['Volume'].iloc[-2]
+        
+        # Buy Call Signal
+        if current_close > prev_high and current_vol > prev_vol * 1.5:
+            return "📈 BUY CALL", "Bullish Breakout"
+        # Buy Put Signal
+        elif current_close < prev_low and current_vol > prev_vol * 1.5:
+            return "📉 BUY PUT", "Bearish Breakdown"
+        else:
+            return "⏳ WAIT", "No Signal"
+    except Exception as e:
+        logging.error(f"Error getting 15-min signal for {symbol}: {e}")
+        return "⏳ WAIT", "Error"
+
+# --- Stock Data Fetch ---
+def get_stock_data(symbol):
+    try:
         ticker = yf.Ticker(symbol + ".NS")
         df = ticker.history(period="5d")
         if df.empty:
-            logging.warning(f"⚠️ No data for {symbol}")
             return None
+        
         ltp = df['Close'].iloc[-1]
-        logging.info(f"✅ {symbol} LTP: {ltp}")
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else ltp
+        vol = df['Volume'].iloc[-1]
+        
+        week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
+        sma50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else ltp
+        sma200 = df['Close'].rolling(200).mean().iloc[-1] if len(df) >= 200 else ltp
+        
+        if len(df) > 14:
+            delta = df['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
+        else:
+            rsi = 50
+        
+        traded_value = ltp * vol
+        
+        # Score
+        score = 0
+        if traded_value > 100_00_00_000:
+            score += 40
+        elif traded_value > 50_00_00_000:
+            score += 30
+        elif traded_value > 10_00_00_000:
+            score += 15
+        else:
+            score += 5
+        
+        if ltp > sma50:
+            score += 10
+        if ltp > sma200:
+            score += 10
+        if rsi > 60:
+            score += 20
+        elif rsi > 50:
+            score += 10
+        if week_change > 5:
+            score += 10
+        elif week_change > 2:
+            score += 5
+        
+        score = min(100, max(0, score))
+        
+        # Status
+        if score >= 75:
+            status = "🎯 STRONG BUY"
+            action = "🚀 BUY NOW"
+        elif score >= 60:
+            status = "📈 BUY ZONE"
+            action = "📈 WATCH"
+        elif score >= 40:
+            status = "🛡️ RANGE-BOUND"
+            action = "⏳ HOLD"
+        else:
+            status = "📉 WEAK"
+            action = "📉 AVOID"
+        
+        # Entry Decision
+        if score >= 75 and ltp > sma50 and ltp > sma200 and rsi > 60 and week_change > 0:
+            entry = "✅ BUY NOW"
+        elif score >= 60 and ltp > sma50 and ltp > sma200 and rsi > 50:
+            entry = "🟡 WATCH"
+        elif score >= 40:
+            entry = "⏳ HOLD"
+        else:
+            entry = "🔴 AVOID"
+        
+        # 15-Minute Signal
+        signal_15min, reason_15min = get_15min_signal(symbol)
+        
         return {
             'symbol': symbol + ".NS",
             'ltp': round(ltp, 2),
-            'action': "⏳ HOLD",
-            'status': "TEST",
-            'score': 50,
-            'volume': int(df['Volume'].iloc[-1]),
-            'traded_value': ltp * df['Volume'].iloc[-1],
-            'week_change': 0,
-            'rsi': 50,
-            'sma50': ltp,
-            'sma200': ltp,
-            'prev_close': df['Close'].iloc[-2] if len(df) > 1 else ltp,
-            'entry': "⏳ HOLD",
-            'ema21': ltp,
-            'vwap': ltp,
-            'bb_squeeze': 0.02,
-            'momentum_burst': "❌",
-            'consolidation': "❌",
-            'breakout': "❌",
-            'swing': "➡️ Neutral",
-            'high_52w': ltp * 1.1,
-            'low_52w': ltp * 0.9
+            'action': action,
+            'status': status,
+            'score': score,
+            'volume': int(vol),
+            'traded_value': round(traded_value, 2),
+            'week_change': round(week_change, 2),
+            'rsi': round(rsi, 2),
+            'sma50': round(sma50, 2),
+            'sma200': round(sma200, 2),
+            'prev_close': round(prev_close, 2),
+            'entry': entry,
+            'signal_15min': signal_15min,
+            'reason_15min': reason_15min
         }
     except Exception as e:
-        logging.error(f"❌ Error in {symbol}: {e}")
+        logging.error(f"Error processing {symbol}: {e}")
         return None
 
 # --- NIFTY Index Data ---
@@ -80,30 +193,30 @@ def get_nifty_data():
         df = ticker.history(period="5d")
         if df.empty:
             return None
+        
         ltp = df['Close'].iloc[-1]
+        prev_close = df['Close'].iloc[-2] if len(df) > 1 else ltp
+        week_change = ((ltp - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
+        
+        # 15-Minute Signal for NIFTY
+        signal_15min, reason_15min = get_15min_signal("^NSEI")
+        
         return {
             'symbol': "NIFTY_INDEX",
             'ltp': round(ltp, 2),
             'action': "NIFTY",
-            'status': "INDEX",
+            'status': f"{week_change:.2f}%",
             'score': "-",
             'volume': "-",
             'traded_value': "-",
-            'week_change': 0,
+            'week_change': round(week_change, 2),
             'rsi': "-",
             'sma50': "-",
             'sma200': "-",
-            'prev_close': round(df['Close'].iloc[-2], 2) if len(df) > 1 else ltp,
+            'prev_close': round(prev_close, 2),
             'entry': "-",
-            'ema21': "-",
-            'vwap': "-",
-            'bb_squeeze': "-",
-            'momentum_burst': "-",
-            'consolidation': "-",
-            'breakout': "-",
-            'swing': "-",
-            'high_52w': "-",
-            'low_52w': "-"
+            'signal_15min': signal_15min,
+            'reason_15min': reason_15min
         }
     except Exception as e:
         logging.error(f"Error fetching NIFTY: {e}")
@@ -111,7 +224,7 @@ def get_nifty_data():
 
 # --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 DEBUG: Starting update...")
+    logging.info("🚀 AI Bro Scanner – 15-Minute Candle Strategy")
     try:
         creds = Credentials.from_service_account_info(
             GCP_CREDENTIALS,
@@ -136,30 +249,22 @@ def update_google_sheet():
                 nifty['score'], nifty['volume'], nifty['traded_value'],
                 nifty['week_change'], nifty['rsi'], nifty['sma50'],
                 nifty['sma200'], nifty['prev_close'], nifty['entry'],
-                nifty['ema21'], nifty['vwap'], nifty['bb_squeeze'],
-                nifty['momentum_burst'], nifty['consolidation'], nifty['breakout'],
-                nifty['swing'], nifty['high_52w'], nifty['low_52w'],
+                nifty['signal_15min'], nifty['reason_15min'],
                 timestamp
             ])
-            logging.info("✅ NIFTY data added")
         
         # --- Stocks ---
         for sym in UNIVERSE:
-            data = get_simple_stock_data(sym)
+            data = get_stock_data(sym)
             if data:
                 final_data.append([
                     data['symbol'], data['ltp'], data['action'], data['status'],
-                    data['score'], data['volume'], f"₹{data['traded_value']/1e7:.2f}Cr",
+                    data['score'], data['volume'], f"{data['traded_value']/1e7:.2f}Cr",
                     data['week_change'], data['rsi'], data['sma50'],
                     data['sma200'], data['prev_close'], data['entry'],
-                    data['ema21'], data['vwap'], data['bb_squeeze'],
-                    data['momentum_burst'], data['consolidation'], data['breakout'],
-                    data['swing'], data['high_52w'], data['low_52w'],
+                    data['signal_15min'], data['reason_15min'],
                     timestamp
                 ])
-                logging.info(f"✅ Added {data['symbol']}")
-            else:
-                logging.warning(f"⚠️ No data for {sym}")
             time.sleep(0.1)
         
         logging.info(f"📊 final_data rows: {len(final_data)}")
@@ -167,14 +272,13 @@ def update_google_sheet():
         # --- Update Sheet ---
         dash_sheet.clear()
         
-        header = [[f"📊 AI BRO SUPER SCANNER 2.0 - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        header = [[f"📊 AI BRO SCANNER - {date_stamp} (15-Min Candle Strategy)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
         header2 = [
             ['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
              'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
-             'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
-             'Breakout', 'Swing', '52W High', '52W Low', 'Time']
+             '15-Min Signal', 'Signal Reason', 'Time']
         ]
         dash_sheet.update(range_name='A2', values=header2)
         
@@ -182,9 +286,8 @@ def update_google_sheet():
             dash_sheet.update(range_name='A3', values=final_data)
             logging.info(f"✅ Updated {len(final_data)} rows")
         else:
-            test_row = [["TEST", 100, "HOLD", "TEST", 50, 1000, "1 Cr", "1%", 50, 100, 90, 95, "HOLD", 100, 95, 0.02, "✅", "✅", "✅", "📈 Higher High", 110, 90, timestamp]]
+            test_row = [["TEST", 100, "HOLD", "TEST", 50, 1000, "1 Cr", "1%", 50, 100, 90, 95, "HOLD", "⏳ WAIT", "No Signal", timestamp]]
             dash_sheet.update(range_name='A3', values=test_row)
-            logging.info("✅ Added test row")
         
         dash_sheet.freeze(rows=2)
         logging.info("✅ Update completed!")
