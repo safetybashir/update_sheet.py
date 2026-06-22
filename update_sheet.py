@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Full Breakout Columns + NIFTY_50 Index)
+# update_sheet.py – AI Bro Scanner (All Breakout Columns Visible)
 import os
 import json
 import gspread
@@ -40,7 +40,7 @@ UNIVERSE = [
     'ADANIPORTS', 'ADANIENT', 'GRASIM', 'BRITANNIA', 'DIVISLAB',
     'DRREDDY', 'CIPLA', 'UPL', 'EICHERMOT', 'COALINDIA',
     'BPCL', 'HINDALCO', 'SHREECEM', 'HEROMOTOCO', 'BAJAJ-AUTO',
-    'TATACONSUM', 'INDUSINDBK', 'PIDILITIND', 'BERGEPAINT', 'DABUR',
+    'TATACONSUM', 'INDUSINDBK', 'PIDILITIND', 'BERGAPAINT', 'DABUR',
     'MCX', 'NATIONALUM', 'HYUNDAI', 'HAL', 'BSE', 'KALYANKJIL',
     'NESTLEIND', 'JUBLFOOD', 'RVNL', 'MAXHEALTH', 'POWERINDIA',
     'ASHOKLEY', 'HINDALCO', 'CIPLA', 'TORNTPHARM', 'ETERNAL',
@@ -73,15 +73,13 @@ UNIVERSE = [
 # --- NIFTY 50 Index ---
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Function: EMA 21 ---
+# --- Indicator Functions ---
 def calc_ema21(df):
     return df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
 
-# --- Function: VWAP ---
 def calc_vwap(df):
     return (df['Close'] * df['Volume']).sum() / df['Volume'].sum()
 
-# --- Function: RSI ---
 def calc_rsi(df, period=14):
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -90,7 +88,6 @@ def calc_rsi(df, period=14):
     rsi = 100 - (100 / (1 + rs.iloc[-1])) if loss.iloc[-1] != 0 else 70
     return rsi
 
-# --- Function: BB Squeeze ---
 def calc_bb_squeeze(df, period=20):
     middle = df['Close'].rolling(period).mean()
     std = df['Close'].rolling(period).std()
@@ -99,7 +96,6 @@ def calc_bb_squeeze(df, period=20):
     bandwidth = (upper.iloc[-1] - lower.iloc[-1]) / middle.iloc[-1]
     return bandwidth
 
-# --- Function: Momentum Burst ---
 def detect_momentum_burst(df):
     if len(df) < 5:
         return False
@@ -108,7 +104,6 @@ def detect_momentum_burst(df):
     vol_change = ((df['Volume'].iloc[-1] - df['Volume'].iloc[-5:].mean()) / df['Volume'].iloc[-5:].mean()) * 100
     return price_change > 2 and vol_change > 50
 
-# --- Function: Consolidation Breakout ---
 def detect_consolidation_breakout(df, lookback=10):
     if len(df) < lookback:
         return False
@@ -118,7 +113,6 @@ def detect_consolidation_breakout(df, lookback=10):
     recent_close = df['Close'].iloc[-1]
     return range_pct < 8 and recent_close > high
 
-# --- Function: Swing Points ---
 def detect_swing_high_low(df):
     if len(df) < 5:
         return "➡️ Neutral"
@@ -196,6 +190,9 @@ def scan_stock(symbol):
         else:
             entry = "🔴 AVOID"
         
+        # Week Change
+        week_change = ((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
+        
         return {
             'symbol': symbol + ".NS",
             'ltp': round(price, 2),
@@ -204,7 +201,7 @@ def scan_stock(symbol):
             'score': score,
             'volume': volume,
             'traded_value': traded_value,
-            'week_change': round(((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100, 2) if len(df) >= 5 else 0,
+            'week_change': round(week_change, 2),
             'rsi': round(rsi, 2),
             'sma50': round(df['Close'].rolling(50).mean().iloc[-1], 2) if len(df) >= 50 else price,
             'sma200': round(df['Close'].rolling(200).mean().iloc[-1], 2) if len(df) >= 200 else price,
@@ -235,15 +232,16 @@ def scan_nifty():
         ema21 = calc_ema21(df)
         vwap = calc_vwap(df)
         rsi = calc_rsi(df)
+        week_change = ((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
         return {
             'symbol': "NIFTY_INDEX",
             'ltp': round(price, 2),
             'action': "NIFTY",
-            'status': f"{round(((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100, 2)}%",
+            'status': f"{round(week_change, 2)}%",
             'score': "-",
             'volume': "-",
             'traded_value': "-",
-            'week_change': round(((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100, 2) if len(df) >= 5 else 0,
+            'week_change': round(week_change, 2),
             'rsi': round(rsi, 2),
             'sma50': "-",
             'sma200': "-",
@@ -265,7 +263,7 @@ def scan_nifty():
 
 # --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Full Breakout Columns + NIFTY_50 Index")
+    logging.info("🚀 AI Bro Scanner – All Breakout Columns Visible")
     try:
         creds = Credentials.from_service_account_info(
             GCP_CREDENTIALS,
@@ -317,7 +315,7 @@ def update_google_sheet():
         # --- Update Sheet ---
         dash_sheet.clear()
         
-        header = [[f"📊 AI BRO SCANNER - {date_stamp} (Full Breakout Columns)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
+        header = [[f"📊 AI BRO SCANNER - {date_stamp} (All Breakout Columns)", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
         dash_sheet.update(range_name='A1', values=header)
         
         header2 = [
