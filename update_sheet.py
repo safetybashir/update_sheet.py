@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (Fixed with Chunk-Based API Upload)
+# update_sheet.py – AI Bro Scanner (Fail-Safe Data Insertion)
 import os
 import json
 import gspread
@@ -23,7 +23,7 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
-# --- UNIVERSE (150+ Stocks) ---
+# --- UNIVERSE (100+ Stocks) ---
 UNIVERSE = [
     'RELIANCE', 'TCS', 'INFY', 'HCLTECH', 'WIPRO', 'TECHM',
     'HINDUNILVR', 'ITC', 'BHARTIARTL', 'SUNPHARMA', 'DRREDDY',
@@ -39,18 +39,16 @@ UNIVERSE = [
     'BDL', 'PIDILITIND', 'SRF', 'UPL', 'ASTRAL', 'APLAPOLLO',
     'SUPREMEIND', 'TATACONSUM', 'TATAELXSI', 'TATAINVEST', 'ABB',
     'SIEMENS', 'BOSCHLTD', 'THERMAX', 'CGPOWER', 'KEI', 'LODHA',
-    'ESCORTS', 'EXIDEIND', 'LENSKART', 'PIIND', 'UNOMINDA',
-    'LINDEINDIA', 'AIAENG', 'IRCTC', 'AJANTPHARM', 'GLAXO',
-    'JKCEMENT', 'GODREJIND', 'APOLLOTYRE', 'BERGAPAINT', 'KPRMILL',
-    'ABBOTINDIA', 'ETERNAL', 'WAAREEENER', 'GVT&D', 'CUMMINSIND',
+    'ESCORTS', 'EXIDEIND', 'UNOMINDA', 'LINDEINDIA', 'AIAENG', 
+    'IRCTC', 'AJANTPHARM', 'GLAXO', 'JKCEMENT', 'GODREJIND', 
+    'APOLLOTYRE', 'BERGAPAINT', 'KPRMILL', 'ABBOTINDIA', 'CUMMINSIND',
     'SOLARINDS', 'KALYANKJIL', 'NYKAA', 'MANKIND', 'LT', 'JUBLFOOD',
-    'POWERINDIA', 'RVNL', 'MCX', 'BSE', 'SWIGGY', 'DMART', 'NAUKRI',
-    'ONGC', 'BPCL', 'HINDPETRO', 'PETRONET'
+    'RVNL', 'MCX', 'BSE', 'SWIGGY', 'DMART', 'NAUKRI', 'ONGC', 
+    'BPCL', 'HINDPETRO', 'PETRONET'
 ]
 
 NIFTY_SYMBOL = "^NSEI"
 
-# --- Indicator Functions ---
 def calc_ema21(df):
     return df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
 
@@ -94,12 +92,13 @@ def detect_swing_high_low(df):
     elif current == low: return "📉 Lower Low"
     return "➡️ Neutral"
 
-# --- Scan Stock ---
 def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol + ".NS")
         df = ticker.history(period="1mo")
-        if df.empty: return None
+        if df.empty: 
+            logging.warning(f"⚠️ {symbol} fetched empty DataFrame")
+            return None
         
         price = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else price
@@ -114,8 +113,15 @@ def scan_stock(symbol):
         consolidation = detect_consolidation_breakout(df)
         swing = detect_swing_high_low(df)
         
-        high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
-        low_52w = ticker.info.get('fiftyTwoWeekLow', price)
+        # Safe fallback for info to avoid API lock
+        high_52w = price
+        low_52w = price
+        try:
+            high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
+            low_52w = ticker.info.get('fiftyTwoWeekLow', price)
+        except:
+            pass
+            
         is_breakout = price > high_52w * 0.98
         
         score = 0
@@ -170,9 +176,8 @@ def scan_nifty():
         logging.error(f"Error scanning NIFTY: {e}")
         return None
 
-# --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Starting Chunk-Based Process...")
+    logging.info("🚀 AI Bro Scanner – Initializing Fail-Safe Mode...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -182,6 +187,7 @@ def update_google_sheet():
         
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
+        
         final_data = []
         
         # Nifty data
@@ -194,8 +200,8 @@ def update_google_sheet():
                               nifty['consolidation'], nifty['breakout'], nifty['swing'], nifty['high_52w'],
                               nifty['low_52w'], timestamp])
         
-        # Universe Fetch Loop
-        for sym in UNIVERSE:
+        # Universe Fetch Loop (Slightly higher delay to prevent IP Ban)
+        for idx, sym in enumerate(UNIVERSE):
             data = scan_stock(sym)
             if data:
                 final_data.append([data['symbol'], data['ltp'], data['action'], data['status'], data['score'],
@@ -204,42 +210,32 @@ def update_google_sheet():
                                   data['ema21'], data['vwap'], data['bb_squeeze'], data['momentum_burst'],
                                   data['consolidation'], data['breakout'], data['swing'], data['high_52w'],
                                   data['low_52w'], timestamp])
-                logging.info(f"✔ Fetched Local Data: {sym}")
-            time.sleep(0.05)
+                logging.info(f"✔ [{idx+1}/{len(UNIVERSE)}] Fetched: {sym}")
+            time.sleep(0.08)
         
-        logging.info(f"📊 Total Rows Generated: {len(final_data)}")
+        logging.info(f"📊 Total valid rows prepared: {len(final_data)}")
         
-        if not final_data:
-            logging.error("❌ No data fetched! Stopping.")
-            return False
-
-        # --- SAFE BULK UPLOAD WITH CHUNKS ---
+        # --- SAFE FORCE WRITE USING APPEND_ROWS ---
+        logging.info("🧹 Clearing previous data and updating headers...")
         dash_sheet.clear()
         
-        # 1. Update Headers First
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value',
-                                  'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision',
-                                  'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation',
-                                  'Breakout', 'Swing', '52W High', '52W Low', 'Time']])
+        headers = [
+            [f"📊 AI BRO SCANNER - {date_stamp}", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+            ['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Volume', 'Traded Value', 'Week %', 'RSI', 'SMA50', 'SMA200', 'Prev Close', 'Entry Decision', 'EMA21', 'VWAP', 'BB Squeeze', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', '52W High', '52W Low', 'Time']
+        ]
         
-        # 2. Upload Data in Chunks of 30 rows
-        chunk_size = 30
-        start_row = 3
+        # Write headers first
+        dash_sheet.update('A1:W2', headers)
         
-        for i in range(0, len(final_data), chunk_size):
-            chunk = final_data[i:i + chunk_size]
-            end_row = start_row + len(chunk) - 1
-            range_string = f"A{start_row}:W{end_row}"
+        if len(final_data) > 0:
+            logging.info("📤 Pushing all stock rows via fail-safe append...")
+            dash_sheet.append_rows(final_data, value_input_option='USER_ENTERED')
+            logging.info("🚀 [BOOM] ALL STOCKS SUCCESSFULLY INJECTED IN GOOGLE SHEET!")
+        else:
+            logging.error("❌ Final data list was empty. Yahoo Finance blocked the requests.")
+            dash_sheet.append_rows([["YAHOO_LIMIT_ERROR", "BLOCK", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", timestamp]])
             
-            logging.info(f"📤 Uploading chunk {i//chunk_size + 1}... Range: {range_string}")
-            dash_sheet.update(range_string, chunk)
-            
-            start_row = end_row + 1
-            time.sleep(1) # Small cool-down to prevent API block
-        
         dash_sheet.freeze(rows=2)
-        logging.info("🚀 [BOOM] ALL CHUNKS SUCCESSFUL. GOOGLE SHEET COMPLETELY UPDATED!")
         return True
         
     except Exception as e:
