@@ -20,7 +20,7 @@ except Exception as e:
     sys.exit(1)
 
 # --- FULL UNIVERSE (F&O Stocks Only) ---
-UNIVERSE = [
+UNIVERSE = ['NIFTY_50',
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
     'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
     'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS',
@@ -105,16 +105,16 @@ def scan_stock(symbol):
 
 def get_nifty_data():
     try:
-        ticker = yf.Ticker(NIFTY_SYMBOL)
+        ticker = yf.Ticker(NIFTY_50)
         df = ticker.history(period="5d")
         if df.empty:
             return None
         price = df['Close'].iloc[-1]
         return {
-            'symbol': "NIFTY_INDEX",
+            'symbol': "NIFTY_50",
             'ltp': round(price, 2),
             'action': "NIFTY",
-            'status': "INDEX",
+            'status': "50",
             'score': "-",
             'entry': "-",
             'momentum_burst': "-",
