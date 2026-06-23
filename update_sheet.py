@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (11 Columns COMPACT VERSION - No Grid Shift)
+# update_sheet.py – AI Bro Scanner (12 Columns COMPACT VERSION WITH TIME)
 import os
 import json
 import gspread
@@ -97,7 +97,7 @@ def scan_stock(symbol):
         
         entry = "✅ BUY NOW" if score >= 75 else "🟡 WATCH" if score >= 60 else "⏳ HOLD" if score >= 40 else "🔴 AVOID"
         
-        # 52W Breakout calculation (Background Only)
+        # 52W Breakout calculation
         high_52w = price
         try:
             high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
@@ -105,7 +105,7 @@ def scan_stock(symbol):
             pass
         is_breakout = price > high_52w * 0.98
         
-        # Exact 11 Elements (No extra price columns)
+        # 11 Elements for Stock Data
         return [
             symbol, round(price, 2), action, status, score, entry,
             "❌", "❌", "✅ B/O" if is_breakout else "NO B/O", "➡️ Neutral", bb_status
@@ -154,37 +154,40 @@ def get_nifty_options_data():
     return rows
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Initializing Clean 11 Column Dashboard...")
+    logging.info("🚀 AI Bro Scanner – Initializing 12 Column Dashboard with Time...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         dash_sheet = sh.get_worksheet(0)
         
+        timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         final_data = []
         
-        # 1. Fetch Nifty Rows
+        # 1. Fetch Nifty Rows aur Time add kijiye
         nifty_rows = get_nifty_options_data()
         for r in nifty_rows:
+            r.append(timestamp)  # Column 12 -> Time
             final_data.append(r)
             
-        # 2. Fetch Stock Universe
+        # 2. Fetch Stock Universe aur Time add kijiye
         for idx, sym in enumerate(UNIVERSE):
             data = scan_stock(sym)
             if data:
+                data.append(timestamp)  # Column 12 -> Time
                 final_data.append(data)
                 logging.info(f"✅ [{idx+1}/{len(UNIVERSE)}] Fetched: {sym}")
             time.sleep(0.04)
         
-        # 3. Push to Sheet
+        # 3. Push to Sheet (12 Columns Space Grid)
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (COMPACT 11 COLS)", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', 'BB Squeeze']])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (COMPACT WITH TIME)", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', 'BB Squeeze', 'Time']])
         
         if final_data:
             dash_sheet.update('A3', final_data)
-            logging.info(f"🚀 [BOOM] 11 Columns Compact Sheet Flashed Perfectly!")
+            logging.info(f"🚀 [BOOM] 12 Columns Grid Flashed Perfectly with Live Time!")
         
         dash_sheet.freeze(rows=2)
         return True
