@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (11 Columns Updated with Nifty Options Logic)
+# update_sheet.py – AI Bro Scanner (15 Columns - BB Squeeze + Options + Breakout)
 import os
 import json
 import gspread
@@ -7,7 +7,9 @@ import pytz
 import logging
 import sys
 import time
-from datetime import datetime as dt, timedelta
+import pandas as pd
+import numpy as np
+from datetime import datetime as dt
 from google.oauth2.service_account import Credentials
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,7 +21,6 @@ except Exception as e:
     logging.error(f"❌ Failed to load secrets: {e}")
     sys.exit(1)
 
-# --- FULL UNIVERSE ---
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
     'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
@@ -50,16 +51,36 @@ NIFTY_SYMBOL = "^NSEI"
 def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="5d")
-        if df.empty:
+        # BB Squeeze ke liye kam se kam 20-30 days ka data chahiye hota hai
+        df = ticker.history(period="3mo")
+        if df.empty or len(df) < 20:
             return None
         
         price = df['Close'].iloc[-1]
         prev_close = df['Close'].iloc[-2] if len(df) > 1 else price
         volume = df['Volume'].iloc[-1]
         traded_value = price * volume
-        week_change = ((price - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100 if len(df) >= 5 else 0
         
+        # 5-Day change for scoring
+        week_change = ((price - df['Close'].iloc[-5]) / df['Close'].iloc[-5]) * 100 if len(df) >= 5 else 0
+        
+        # --- BB SQUEEZE STRATEGY LOGIC ---
+        # 20 Period SMA and Standard Deviation
+        df['SMA20'] = df['Close'].rolling(window=20).mean()
+        df['StdDev'] = df['Close'].rolling(window=20).std()
+        df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
+        df['LowerBB'] = df['SMA20'] - (2 * df['StdDev'])
+        
+        # Keltner Channel (KC) Approximation for Squeeze
+        df['ATR'] = df['High'].rolling(14).mean() - df['Low'].rolling(14).mean() # Simple ATR proxy
+        df['LowerKC'] = df['SMA20'] - (1.5 * df['ATR'])
+        df['UpperKC'] = df['SMA20'] + (1.5 * df['ATR'])
+        
+        # Check Squeeze Condition (BB Inside KC)
+        is_squeeze = (df['UpperBB'].iloc[-1] < df['UpperKC'].iloc[-1]) and (df['LowerBB'].iloc[-1] > df['LowerKC'].iloc[-1])
+        bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
+        
+        # --- SCORE ENGINE ---
         score = 0
         if price > prev_close: score += 20
         if week_change > 2: score += 30
@@ -81,23 +102,26 @@ def scan_stock(symbol):
         
         entry = "✅ BUY NOW" if score >= 75 else "🟡 WATCH" if score >= 60 else "⏳ HOLD" if score >= 40 else "🔴 AVOID"
         
-        high_52w = price
+        # 52W High/Low Breakout
+        high_52w, low_52w = price, price
         try:
-            high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
+            info = ticker.info
+            high_52w = info.get('fiftyTwoWeekHigh', price)
+            low_52w = info.get('fiftyTwoWeekLow', price)
         except:
             pass
         is_breakout = price > high_52w * 0.98
         
         return [
             symbol, round(price, 2), action, status, score, entry,
-            "❌", "❌", "✅ B/O" if is_breakout else "NO B/O", "➡️ Neutral"
+            "❌", "❌", "✅ B/O" if is_breakout else "NO B/O", "➡️ Neutral",
+            bb_status, round(high_52w, 2), round(low_52w, 2), f"₹{traded_value/1e7:.2f}Cr"
         ]
     except Exception as e:
         logging.error(f"Error scanning {symbol}: {e}")
         return None
 
 def get_nifty_options_data():
-    """Fetches Nifty Index Spot, calculates ATM, and builds Call/Put rows dynamic format."""
     rows = []
     try:
         nifty_ticker = yf.Ticker(NIFTY_SYMBOL)
@@ -105,93 +129,77 @@ def get_nifty_options_data():
         if nifty_df.empty:
             return rows
             
-        nifty_spot = nifty_df['Close'].iloc[-1]
-        nifty_prev = nifty_df['Close'].iloc[-2] if len(nifty_df) > 1 else nifty_spot
+        nifty_spot = float(nifty_df['Close'].iloc[-1])
+        nifty_prev = float(nifty_df['Close'].iloc[-2]) if len(nifty_df) > 1 else nifty_spot
         
-        # 1. Base Nifty Index Spot Row
+        # 15 Columns matching structure for Nifty
         rows.append([
-            "NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "INDEX", "-", "-", "-", "-", "-", "-"
+            "NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "INDEX", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"
         ])
         
-        # Round off to nearest 50 for Nifty ATM Strike
         atm_strike = int(round(nifty_spot / 50.0) * 50)
+        point_diff = nifty_spot - nifty_prev
         
-        # Format date snippet for Option chain lookup (Yahoo format relies on exact option strings)
-        # standard fallback strings if options contracts aren't queried directly via ticker.options
-        try:
-            expirations = nifty_ticker.options
-            if expirations:
-                # Select nearest expiration
-                nearest_expiry = expirations[0] 
-                opt_chain = nifty_ticker.option_chain(nearest_expiry)
-                
-                # Fetch ATM Call
-                calls = opt_chain.calls[opt_chain.calls['strike'] == atm_strike]
-                if not calls.empty:
-                    c_price = calls['lastPrice'].iloc[-1]
-                    c_symbol = f"NIFTY ATM CE ({atm_strike})"
-                    c_action = "🚀 BUY CALL" if nifty_spot > nifty_prev else "⏳ HOLD CALL"
-                    rows.append([c_symbol, round(c_price, 2), c_action, "CALL OPTION", 70 if "BUY" in c_action else 45, "✅ TRADE" if "BUY" in c_action else "⏳ HOLD", "-", "-", "-", "-"])
-                
-                # Fetch ATM Put
-                puts = opt_chain.puts[opt_chain.puts['strike'] == atm_strike]
-                if not puts.empty:
-                    p_price = puts['lastPrice'].iloc[-1]
-                    p_symbol = f"NIFTY ATM PE ({atm_strike})"
-                    p_action = "🔥 BUY PUT" if nifty_spot < nifty_prev else "⏳ HOLD PUT"
-                    rows.append([p_symbol, round(p_price, 2), p_action, "PUT OPTION", 70 if "BUY" in p_action else 45, "✅ TRADE" if "BUY" in p_action else "⏳ HOLD", "-", "-", "-", "-"])
-        except Exception as opt_err:
-            logging.warning(f"⚠️ Precise option chain parsing skipped or unavailable: {opt_err}")
-            # Fallback placeholder rows to maintain dashboard health if chains are restricted by API
-            rows.append([f"NIFTY_{atm_strike}_CE", "PRICING...", "⏳ SCANNING", "CALL", "-", "-", "-", "-", "-", "-"])
-            rows.append([f"NIFTY_{atm_strike}_PE", "PRICING...", "⏳ SCANNING", "PUT", "-", "-", "-", "-", "-", "-"])
+        # ATM Call (CE)
+        ce_symbol = f"NIFTY {atm_strike} CE (ATM)"
+        if point_diff > 0:
+            ce_action, ce_status, ce_score, ce_entry = "🚀 BUY CALL", "🔥 BULLISH TREND", 80, "✅ BUY NOW"
+        else:
+            ce_action, ce_status, ce_score, ce_entry = "⏳ HOLD CALL", "🛡️ SIDEWAYS/WEAK", 45, "⏳ HOLD"
+        rows.append([ce_symbol, "Premium SCAN", ce_action, ce_status, ce_score, ce_entry, "❌", "❌", "NO B/O", "➡️ Neutral", "Normal", "-", "-", "-", "-"])
+        
+        # ATM Put (PE)
+        pe_symbol = f"NIFTY {atm_strike} PE (ATM)"
+        if point_diff < 0:
+            pe_action, pe_status, pe_score, pe_entry = "🔥 BUY PUT", "📉 BEARISH TREND", 80, "✅ BUY NOW"
+        else:
+            pe_action, pe_status, pe_score, pe_entry = "⏳ HOLD PUT", "🛡️ SIDEWAYS/STABLE", 45, "⏳ HOLD"
+        rows.append([pe_symbol, "Premium SCAN", pe_action, pe_status, pe_score, pe_entry, "❌", "❌", "NO B/O", "➡️ Neutral", "Normal", "-", "-", "-", "-"])
             
     except Exception as e:
-        logging.error(f"Error fetching NIFTY Options Matrix: {e}")
+        logging.error(f"Error in custom NIFTY Options calculation: {e}")
     return rows
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Initializing 11 Column Structure with Options Chain...")
+    logging.info("🚀 AI Bro Scanner – Re-building with BB Squeeze Strategy...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         dash_sheet = sh.get_worksheet(0)
-        logging.info(f"✅ Connected to sheet: {sh.title}")
         
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         final_data = []
         
-        # --- 1. GET NIFTY & OPTIONS ---
+        # 1. Fetch Nifty Rows
         nifty_rows = get_nifty_options_data()
         for r in nifty_rows:
-            r.append(timestamp)  # Add Time column
+            r.append(timestamp)
             final_data.append(r)
             
-        # --- 2. GET STOCKS ---
-        for sym in UNIVERSE:
+        # 2. Fetch Stock Universe
+        for idx, sym in enumerate(UNIVERSE):
             data = scan_stock(sym)
             if data:
-                data.append(timestamp)  # Add Time column
+                data.append(timestamp)
                 final_data.append(data)
-            time.sleep(0.02)
-            
-        logging.info(f"📊 Total final payload rows: {len(final_data)}")
+                logging.info(f"✅ [{idx+1}/{len(UNIVERSE)}] Fetched: {sym}")
+            time.sleep(0.04)
         
-        # --- 3. PUSH DATA IN 11 COLUMNS ---
+        # 3. Push to Sheet
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (OPTIONS INCLUDED)", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', 'Time']])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (STRATEGIES RE-LOADED)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Momentum Burst', 'Consolidation', 'Breakout', 'Swing', 'BB Squeeze', '52W High', '52W Low', 'Traded Value', 'Time']])
         
         if final_data:
             dash_sheet.update('A3', final_data)
-            logging.info(f"✅ Sheet updated successfully with Options data!")
+            logging.info(f"🚀 [BOOM] {len(final_data)} Rows Updated with BB Squeeze!")
         
         dash_sheet.freeze(rows=2)
         return True
     except Exception as e:
-        logging.error(f"❌ Core Update Failed: {e}")
+        logging.error(f"❌ Execution Failed: {e}")
         return False
 
 if __name__ == "__main__":
