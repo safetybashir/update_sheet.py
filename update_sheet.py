@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (12 Columns MULTI-TIMEFRAME MASTER VERSION)
+# update_sheet.py – AI Bro Scanner (12 Columns MULTI-TIMEFRAME WITH AUTO-TOP SORTING)
 import os
 import json
 import gspread
@@ -51,8 +51,6 @@ NIFTY_SYMBOL = "^NSEI"
 def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        
-        # 1. Daily/Weekly/Monthly Data ek sath fetch karne ke liye 1 saal ka data lenge
         df = ticker.history(period="1y") 
         if df.empty or len(df) < 50:
             return None
@@ -62,14 +60,9 @@ def scan_stock(symbol):
         volume = df['Volume'].iloc[-1]
         traded_value = price * volume
         
-        # --- MULTI-TIMEFRAME TREND FILTER ---
-        # Weekly Trend Check (Pichle 5 trading days ka start vs abhi ka price)
         weekly_bullish = price > df['Close'].iloc[-5] if len(df) >= 5 else True
-        
-        # Monthly Trend Check (Pichle 20 trading days ka start vs abhi ka price)
         monthly_bullish = price > df['Close'].iloc[-20] if len(df) >= 20 else True
         
-        # --- TECHNICAL INDICATORS (DAILY) ---
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['StdDev'] = df['Close'].rolling(window=20).std()
         df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
@@ -83,7 +76,6 @@ def scan_stock(symbol):
         df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
         df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
         
-        # --- CONDITIONS ---
         is_squeeze = (df['UpperBB'].iloc[-1] < df['UpperKC'].iloc[-1]) and (df['LowerBB'].iloc[-1] > df['LowerKC'].iloc[-1])
         bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
         
@@ -91,7 +83,6 @@ def scan_stock(symbol):
         volume_spike = volume > (df['VolSMA20'].iloc[-1] * 1.5)
         daily_trend_bullish = price > df['EMA20'].iloc[-1] and df['EMA20'].iloc[-1] > df['EMA50'].iloc[-1]
         
-        # --- SCORE ENGINE WITH TIMEFRAME WEIGHTS ---
         score = 0
         if price > prev_close: score += 10
         if weekly_bullish: score += 20
@@ -101,12 +92,10 @@ def scan_stock(symbol):
         if volume > df['VolSMA20'].iloc[-1]: score += 15
         score = min(100, max(0, score))
         
-        # --- MASTER SIGNAL: MULTI-TIMEFRAME CONFLUENCE ---
         if is_squeeze:
             master_signal = "⏳ SQUEEZING (Wait)"
             action, status, entry = "⏳ HOLD", "🛡️ COMPRESSING", "⏳ HOLD"
         elif bb_breakout and volume_spike and daily_trend_bullish and weekly_bullish and monthly_bullish:
-            # 90% Probability Jackpot Setup (All Timeframes Aligned + Squeeze Release)
             master_signal = "🔥 ALPHA BLAST (90%)"
             action, status, entry = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW"
             score = 100
@@ -163,7 +152,7 @@ def get_nifty_options_data():
     return rows
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Deploying Ultimate Multi-Timeframe Super Strategy...")
+    logging.info("🚀 AI Bro Scanner – Initializing Multi-Timeframe Matrix with Auto-Top Sorting...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -172,28 +161,40 @@ def update_google_sheet():
         
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
-        final_data = []
         
+        # 1. Fetch Nifty Rows (Hamesha top par rahenge)
         nifty_rows = get_nifty_options_data()
         for r in nifty_rows:
             r.append(timestamp)
-            final_data.append(r)
             
+        # 2. Fetch Stock Universe
+        stock_rows = []
         for idx, sym in enumerate(UNIVERSE):
             data = scan_stock(sym)
             if data:
                 data.append(timestamp)
-                final_data.append(data)
+                stock_rows.append(data)
                 logging.info(f"✅ [{idx+1}/{len(UNIVERSE)}] Fetched: {sym}")
             time.sleep(0.04)
         
+        # --- 🔥 CRITICAL MAGIC: AUTO-TOP SORTING LOGIC ---
+        # Stocks ko prioritize karenge unke Master Signal (Column Index 9) ke basis par
+        alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[9]]
+        squeezings = [row for row in stock_rows if "⏳ SQUEEZING" in row[9]]
+        neutrals = [row for row in stock_rows if "➡️ Neutral" in row[9]]
+        
+        # Final priority list assemble karenge
+        final_stock_order = alpha_blasts + squeezings + neutrals
+        final_data = nifty_rows + final_stock_order
+        
+        # 3. Push to Sheet
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (SUPER TIMEFRAME MERGED)", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (AUTO-TOP SORTED LIVE)", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Momentum Burst', 'Consolidation', 'Breakout', 'Master Signal', 'BB Squeeze', 'Time']])
         
         if final_data:
             dash_sheet.update('A3', final_data)
-            logging.info(f"🚀 [BOOM] 90% Accuracy Super Cockpit Is Live!")
+            logging.info(f"🚀 [BOOM] Grid sorted with Alpha & Squeeze on TOP flawlessly!")
         
         dash_sheet.freeze(rows=2)
         return True
