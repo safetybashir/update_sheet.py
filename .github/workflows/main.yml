@@ -5,10 +5,15 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
+# System ko saaf rakhne ke liye: Agar naya run aaye toh purane phanse hue run ko khud cancel kar de
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # <--- YEH LINE ADD KAREIN
+    timeout-minutes: 8   # <--- 8 minute ka hard timeout taaki 10 min ke loop se pehle safe exit ho jaye
 
     steps:
       - uses: actions/checkout@v3
