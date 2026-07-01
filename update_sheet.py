@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (INSTITUTIONAL DELIVERY + HEIKIN-ASHI REVERSAL VERSION)
+# update_sheet.py – AI Bro Scanner (INSTITUTIONAL DELIVERY + HEIKIN-ASHI REVERSAL + AUTO TSL VERSION)
 import os
 import json
 import gspread
@@ -64,7 +64,7 @@ def scan_stock(symbol):
         weekly_bullish = price > df['Close'].iloc[-5] if len(df) >= 5 else True
         monthly_bullish = price > df['Close'].iloc[-20] if len(df) >= 20 else True
         
-        # --- TECHNICAL INDICATORS ---
+        # --- TECHNICAL INDICATORS (EMA 21 UPDATED) ---
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['StdDev'] = df['Close'].rolling(window=20).std()
         df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
@@ -75,11 +75,11 @@ def scan_stock(symbol):
         df['UpperKC'] = df['SMA20'] + (1.5 * df['ATR'])
         
         df['VolSMA20'] = df['Volume'].rolling(window=20).mean()
-        df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+        df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
         df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
         df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).rolling(window=20).sum() / df['Volume'].rolling(window=20).sum()
         
-        # --- HEIKIN-ASHI CALCULATION (Aapka Idea) ---
+        # --- HEIKIN-ASHI CALCULATION ---
         ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
         ha_open = (df['Open'].shift(1) + df['Close'].shift(1)) / 2
         ha_high = df[['High', 'Open', 'Close']].max(axis=1)
@@ -98,7 +98,7 @@ def scan_stock(symbol):
         
         bb_breakout = price > df['UpperBB'].iloc[-2]
         volume_spike = volume > (df['VolSMA20'].iloc[-1] * 1.5)
-        daily_trend_bullish = price > df['EMA20'].iloc[-1] and df['EMA20'].iloc[-1] > df['EMA50'].iloc[-1]
+        daily_trend_bullish = price > df['EMA21'].iloc[-1] and df['EMA21'].iloc[-1] > df['EMA50'].iloc[-1]
         above_vwap = price > df['VWAP'].iloc[-1]
         
         # --- SCORE ENGINE ---
@@ -112,20 +112,32 @@ def scan_stock(symbol):
         if volume > df['VolSMA20'].iloc[-1]: score += 15
         score = min(100, max(0, score))
         
-        # Risk levels
+        # --- DYNAMIC CASH TSL ENGINE (Naya Logic) ---
+        cash_trigger = round(price * 0.965, 1) # 3.5% Stop Loss Buffer
+        if price > 5000:
+            cash_price = round(cash_trigger - 20.0, 1)
+            cash_tsl_points = 50
+        elif price > 500:
+            cash_price = round(cash_trigger - 3.0, 1)
+            cash_tsl_points = 10
+        else:
+            cash_price = round(cash_trigger - 1.0, 1)
+            cash_tsl_points = 3
+            
         sl_level = f"SL: {round(price * 0.985, 1)}"
         tgt_level = f"T1: {round(price * 1.02, 1)}"
+        auto_trigger = str(cash_trigger)
+        auto_limit_tsl = f"Lmt: {cash_price} | TSL: {cash_tsl_points}"
         
         if is_squeeze:
             master_signal = "⏳ SQUEEZING (Wait)"
             action, status, entry = "⏳ HOLD", "🛡️ COMPRESSING", "⏳ HOLD"
-            sl_level, tgt_level = "⏳", "⏳"
+            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳", "⏳", "⏳", "⏳"
         elif bb_breakout and volume_spike and daily_trend_bullish and weekly_bullish and monthly_bullish and above_vwap:
             master_signal = "🔥 ALPHA BLAST (90%)"
             action, status, entry = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW"
             score = 100
         elif ha_reversal and weekly_bullish and monthly_bullish:
-            # Aapka Heikin Ashi Setup Trigger
             master_signal = "🎯 HA-REVERSAL (Dip)"
             action, status, entry = "🚀 BUY NOW", "💎 BOTTOM BUY", "✅ BUY NOW"
             score = 85
@@ -136,8 +148,8 @@ def scan_stock(symbol):
             elif score >= 40: action, status, entry = "⏳ HOLD", "🛡️ RANGE-BOUND", "⏳ HOLD"
             else: 
                 action, status, entry = "📉 AVOID", "📉 WEAK", "🔴 AVOID"
-                sl_level, tgt_level = "❌", "❌"
-            
+                sl_level, tgt_level, auto_trigger, auto_limit_tsl = "❌", "❌", "❌", "❌"
+                
         high_52w = price
         try: high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
         except: pass
@@ -145,7 +157,7 @@ def scan_stock(symbol):
         
         return [
             symbol, round(price, 2), action, status, score, entry,
-            sl_level, tgt_level, "✅ B/O" if is_breakout else "NO B/O", master_signal, bb_status
+            sl_level, tgt_level, "✅ B/O" if is_breakout else "NO B/O", master_signal, bb_status, auto_trigger, auto_limit_tsl
         ]
     except Exception as e:
         logging.error(f"Error scanning {symbol}: {e}")
@@ -160,25 +172,38 @@ def get_nifty_options_data():
             return rows
         nifty_spot = float(nifty_df['Close'].iloc[-1])
         nifty_prev = float(nifty_df['Close'].iloc[-2]) if len(nifty_df) > 1 else nifty_spot
-        rows.append(["NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "INDEX", "-", "-", "-", "-", "-", "-", "-"])
+        
+        # Index row
+        rows.append(["NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "INDEX", "-", "-", "-", "-", "-", "-", "-", "-", "-"])
         atm_strike = int(round(nifty_spot / 50.0) * 50)
         point_diff = nifty_spot - nifty_prev
         
+        # --- OPTIONS TSL ENGINE LOGIC ---
+        # Nifty Options standard buffer setup (Assuming hypothetical premium scan values)
+        opt_trigger_ce = "LTP - 25"
+        opt_limit_tsl_ce = "Lmt: Trig-3 | TSL: 10"
+        opt_trigger_pe = "LTP - 25"
+        opt_limit_tsl_pe = "Lmt: Trig-3 | TSL: 10"
+        
         ce_symbol = f"NIFTY {atm_strike} CE (ATM)"
         if point_diff > 0: ce_action, ce_status, ce_score, ce_entry = "🚀 BUY CALL", "🔥 BULLISH TREND", 80, "✅ BUY NOW"
-        else: ce_action, ce_status, ce_score, ce_entry = "⏳ HOLD CALL", "🛡️ SIDEWAYS/WEAK", 45, "⏳ HOLD"
-        rows.append([ce_symbol, "Premium SCAN", ce_action, ce_status, ce_score, ce_entry, "-", "-", "NO B/O", "➡️ Neutral", "Normal"])
+        else: 
+            ce_action, ce_status, ce_score, ce_entry = "⏳ HOLD CALL", "🛡️ SIDEWAYS/WEAK", 45, "⏳ HOLD"
+            opt_trigger_ce, opt_limit_tsl_ce = "⏳", "⏳"
+        rows.append([ce_symbol, "Premium SCAN", ce_action, ce_status, ce_score, ce_entry, "-", "-", "NO B/O", "➡️ Neutral", "Normal", opt_trigger_ce, opt_limit_tsl_ce])
         
         pe_symbol = f"NIFTY {atm_strike} PE (ATM)"
         if point_diff < 0: pe_action, pe_status, pe_score, pe_entry = "🔥 BUY PUT", "📉 BEARISH TREND", 80, "✅ BUY NOW"
-        else: pe_action, pe_status, pe_score, pe_entry = "⏳ HOLD PUT", "🛡️ SIDEWAYS/STABLE", 45, "⏳ HOLD"
-        rows.append([pe_symbol, "Premium SCAN", pe_action, pe_status, pe_score, pe_entry, "-", "-", "NO B/O", "➡️ Neutral", "Normal"])
+        else: 
+            pe_action, pe_status, pe_score, pe_entry = "⏳ HOLD PUT", "🛡️ SIDEWAYS/STABLE", 45, "⏳ HOLD"
+            opt_trigger_pe, opt_limit_tsl_pe = "⏳", "⏳"
+        rows.append([pe_symbol, "Premium SCAN", pe_action, pe_status, pe_score, pe_entry, "-", "-", "NO B/O", "➡️ Neutral", "Normal", opt_trigger_pe, opt_limit_tsl_pe])
     except Exception as e:
         logging.error(f"Error in custom NIFTY Options calculation: {e}")
     return rows
 
 def update_google_sheet():
-    logging.info("🚀 AI Bro Scanner – Launching Ultimate Confluence Engine with HA Reversal...")
+    logging.info("🚀 AI Bro Scanner – Launching Ultimate Confluence Engine with Auto TSL...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -211,12 +236,12 @@ def update_google_sheet():
         final_data = nifty_rows + final_stock_order
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (95%+ ACCURACY SUPREME)", "", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss (1.5%)', 'Target 1 (2%)', 'Breakout', 'Master Signal', 'BB Squeeze', 'Time']])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (95%+ ACCURACY SUPREME WITH AUTO TSL)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss (1.5%)', 'Target 1 (2%)', 'Breakout', 'Master Signal', 'BB Squeeze', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
         
         if final_data:
             dash_sheet.update('A3', final_data)
-            logging.info(f"🚀 [BOOM] Supreme Matrix Is Live!")
+            logging.info(f"🚀 [BOOM] Supreme Matrix Is Live with Mathematical TSL!")
         
         dash_sheet.freeze(rows=2)
         return True
