@@ -1,4 +1,4 @@
-# update_sheet.py – AI Bro Scanner (INSTITUTIONAL DELIVERY + HEIKIN-ASHI REVERSAL + SUPREME AUTO TSL VERSION)
+# update_sheet.py – AI Bro Scanner (5-MIN MOMENTUM + 2-CANDLE CONFIRMATION SUPREME VERSION)
 import os
 import json
 import gspread
@@ -51,8 +51,9 @@ NIFTY_SYMBOL = "^NSEI"
 def scan_stock(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1y") 
-        if df.empty or len(df) < 50:
+        # ⚡ BADLAV 1: Ab pure 5-minute data fetch hoga intraday momentum ke liye
+        df = ticker.history(period="5d", interval="5m") 
+        if df.empty or len(df) < 30:
             return None
         
         price = df['Close'].iloc[-1]
@@ -60,24 +61,20 @@ def scan_stock(symbol):
         volume = df['Volume'].iloc[-1]
         traded_value = price * volume
         
-        # --- MULTI-TIMEFRAME & INSTITUTIONAL DELIVERY ---
-        weekly_bullish = price > df['Close'].iloc[-5] if len(df) >= 5 else True
-        monthly_bullish = price > df['Close'].iloc[-20] if len(df) >= 20 else True
-        
-        # --- TECHNICAL INDICATORS (EMA 21 PERFECTED) ---
+        # --- TECHNICAL INDICATORS (PURE 5-MIN CALCULATION) ---
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['StdDev'] = df['Close'].rolling(window=20).std()
         df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
         df['LowerBB'] = df['SMA20'] - (2 * df['StdDev'])
         
-        df['ATR'] = df['High'].rolling(14).mean() - df['Low'].rolling(14).mean()
-        df['LowerKC'] = df['SMA20'] - (1.5 * df['ATR'])
-        df['UpperKC'] = df['SMA20'] + (1.5 * df['ATR'])
-        
-        df['VolSMA20'] = df['Volume'].rolling(window=20).mean()
+        df['VolSMA10'] = df['Volume'].rolling(window=10).mean()
         df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
         df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
-        df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).rolling(window=20).sum() / df['Volume'].rolling(window=20).sum()
+        
+        # Real Intra-day VWAP Calculation
+        cum_vol_price = (df['Close'] * df['Volume']).cumsum()
+        cum_vol = df['Volume'].cumsum()
+        df['VWAP'] = cum_vol_price / cum_vol
         
         # --- HEIKIN-ASHI CALCULATION ---
         ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
@@ -91,25 +88,34 @@ def scan_stock(symbol):
         is_at_support = price < df['SMA20'].iloc[-1] and price > df['LowerBB'].iloc[-1]
         ha_reversal = is_ha_doji and is_at_support
         
-        # --- SQUEEZE & BREAKOUT MODIFICATIONS ---
-        is_squeeze = (df['UpperBB'].iloc[-1] < df['UpperKC'].iloc[-1]) and (df['LowerBB'].iloc[-1] > df['LowerKC'].iloc[-1])
+        # Squeeze Definition
+        df['ATR'] = df['High'].rolling(14).mean() - df['Low'].rolling(14).mean()
+        is_squeeze = (df['UpperBB'].iloc[-1] < (df['SMA20'].iloc[-1] + (1.5 * df['ATR'].iloc[-1])))
         bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
-        is_ready_to_blast = is_squeeze and (price > df['SMA20'].iloc[-1] * 1.01)
         
-        bb_breakout = price > df['UpperBB'].iloc[-2]
-        volume_spike = volume > (df['VolSMA20'].iloc[-1] * 1.5)
-        daily_trend_bullish = price > df['EMA21'].iloc[-1] and df['EMA21'].iloc[-1] > df['EMA50'].iloc[-1]
-        above_vwap = price > df['VWAP'].iloc[-1]
+        # --- ⚡ BADLAV 2: 2-CANDLE CONFIRMATION LOGIC SHURU ---
+        # Current Candle (Index -1), Previous Trigger Candle (Index -2)
+        c_close = df['Close'].iloc[-1]
+        c_volume = df['Volume'].iloc[-1]
         
-        # --- SCORE ENGINE ---
+        p_close = df['Close'].iloc[-2]
+        p_high = df['High'].iloc[-2]
+        p_ema21 = df['EMA21'].iloc[-2]
+        p_vwap = df['VWAP'].iloc[-2]
+        
+        avg_volume_5m = df['VolSMA10'].iloc[-1]
+        
+        # Condition Check
+        base_breakout = (p_close > p_ema21) and (p_close > p_vwap)
+        higher_high_confirm = (c_close > p_high)
+        volume_spike = (c_volume > avg_volume_5m)
+        
+        # --- SCORE ENGINE (5-MIN TIME FRAME BASED) ---
         score = 0
-        if price > prev_close: score += 10
-        if weekly_bullish: score += 20
-        if monthly_bullish: score += 20
-        if daily_trend_bullish: score += 10
-        if above_vwap: score += 10
-        if traded_value > 50_00_00_000: score += 15
-        if volume > df['VolSMA20'].iloc[-1]: score += 15
+        if c_close > p_close: score += 20
+        if c_close > df['EMA21'].iloc[-1]: score += 30
+        if c_close > df['VWAP'].iloc[-1]: score += 30
+        if volume_spike: score += 20
         score = min(100, max(0, score))
         
         # --- DYNAMIC CASH TSL ENGINE ---
@@ -129,31 +135,26 @@ def scan_stock(symbol):
         auto_trigger = str(cash_trigger)
         auto_limit_tsl = f"Lmt: {cash_price} | TSL: {cash_tsl_points}"
         
-        if is_squeeze:
-            if is_ready_to_blast:
-                master_signal = "⚠️ SQUEEZE READY TO BLAST"
-                action, status, entry = "📈 WATCH CLOSELY", "🔥 VOLATILITY COILING", "🟡 WATCH"
-            else:
-                master_signal = "⏳ SQUEEZING (Wait)"
-                action, status, entry = "⏳ HOLD", "🛡️ COMPRESSING", "⏳ HOLD"
-            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳", "⏳", "⏳", "⏳"
-        elif bb_breakout and volume_spike and daily_trend_bullish and weekly_bullish and monthly_bullish and above_vwap:
-            master_signal = "🔥 ALPHA BLAST (90%)"
+        # --- STRATEGY SIGNAL GENERATOR ---
+        if base_breakout and higher_high_confirm and volume_spike:
+            master_signal = "🔥 ALPHA BLAST (100%)"
             action, status, entry = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW"
             score = 100
-        elif ha_reversal and weekly_bullish and monthly_bullish:
+        elif base_breakout and not higher_high_confirm:
+            # ⚡ Sideways filter laga diya!
+            master_signal = "⏳ SIDEWAYS / ACCUMULATION"
+            action, status, entry = "⏳ WAIT", "🛡️ RANGE-BOUND", "⏳ HOLD"
+            score = 50
+            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳", "⏳", "⏳", "⏳"
+        elif ha_reversal:
             master_signal = "🎯 HA-REVERSAL (Dip)"
             action, status, entry = "🚀 BUY NOW", "💎 BOTTOM BUY", "✅ BUY NOW"
             score = 85
         else:
             master_signal = "➡️ Neutral"
-            if score >= 75: action, status, entry = "🚀 BUY NOW", "🎯 STRONG BUY", "✅ BUY NOW"
-            elif score >= 60: action, status, entry = "📈 WATCH", "📈 BUY ZONE", "🟡 WATCH"
-            elif score >= 40: action, status, entry = "⏳ HOLD", "🛡️ RANGE-BOUND", "⏳ HOLD"
-            else: 
-                action, status, entry = "📉 AVOID", "📉 WEAK", "🔴 AVOID"
-                sl_level, tgt_level, auto_trigger, auto_limit_tsl = "❌", "❌", "❌", "❌"
-                
+            action, status, entry = "📉 AVOID", "📉 WEAK", "🔴 AVOID"
+            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "❌", "❌", "❌", "❌"
+            
         high_52w = price
         try: high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
         except: pass
@@ -181,17 +182,10 @@ def get_nifty_options_data():
         atm_strike = int(round(nifty_spot / 50.0) * 50)
         point_diff = nifty_spot - nifty_prev
         
-        # --- NIFTY LIVE PREMIUM REAL LOGIC ---
         opt_trigger_ce = "LTP - 25"
         opt_limit_tsl_ce = "Lmt: Trig-3 | TSL: 10"
         opt_trigger_pe = "LTP - 25"
         opt_limit_tsl_pe = "Lmt: Trig-3 | TSL: 10"
-        
-        # Hum live tickers nikalne ki koshish kar rahe hain yfinance se template format mein
-        tz = pytz.timezone('Asia/Kolkata')
-        now_date = dt.now(tz)
-        year_str = now_date.strftime("%y")
-        month_str = now_date.strftime("%b").upper() # Like JUL, AUG
         
         ce_symbol = f"NIFTY {atm_strike} CE (ATM)"
         if point_diff > 0: 
@@ -211,6 +205,34 @@ def get_nifty_options_data():
     except Exception as e:
         logging.error(f"Error in custom NIFTY Options calculation: {e}")
     return rows
+
+# ==========================================
+# ⚡ BADLAV 3: DEEP GITHUB WORKFLOW CLEANER LOOP
+# ==========================================
+def clean_github_workflows():
+    token = os.environ.get('GITHUB_TOKEN')
+    repo = os.environ.get('GITHUB_REPOSITORY') # "owner/repo_name" format automatic milta hai
+    if not token or not repo:
+        logging.warning("⚠️ GitHub credentials missing in environments. Skipping cleaner.")
+        return
+        
+    logging.info("🔄 Deep Cleaning GitHub Workflow Runs...")
+    url = f"https://api.github.com/repos/{repo}/actions/runs"
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    
+    import requests
+    deleted = 0
+    while True:
+        res = requests.get(url, headers=headers, params={"per_page": 100})
+        if res.status_code != 200: break
+        runs = res.json().get("workflow_runs", [])
+        if not runs: break
+        
+        for run in runs:
+            del_res = requests.delete(f"{url}/{run['id']}", headers=headers)
+            if del_res.status_code == 204: deleted += 1
+        time.sleep(0.5) # API block se bachne ke liye
+    logging.info(f"✨ Purge Complete. Total {deleted} Workflow Runs Smoked!")
 
 def update_google_sheet():
     logging.info("🚀 AI Bro Scanner – Launching Ultimate Confluence Engine...")
@@ -233,17 +255,16 @@ def update_google_sheet():
             if data:
                 data.append(timestamp)
                 stock_rows.append(data)
-                logging.info(f"✅ [{idx+1}/{len(UNIVERSE)}] Fetched: {sym}")
+                logging.info(f"✅ [{idx+1}/{len(UNIVERSE)}] Fetched (5m): {sym}")
             time.sleep(0.04)
         
         # Advanced Auto-Top Sorting
         alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[9]]
         ha_reversals = [row for row in stock_rows if "🎯 HA-REVERSAL" in row[9]]
-        squeeze_blasts = [row for row in stock_rows if "⚠️ SQUEEZE READY" in row[9]]
-        squeezings = [row for row in stock_rows if "⏳ SQUEEZING" in row[9]]
+        sideways_acc = [row for row in stock_rows if "⏳ SIDEWAYS" in row[9]]
         neutrals = [row for row in stock_rows if "➡️ Neutral" in row[9]]
         
-        final_stock_order = alpha_blasts + ha_reversals + squeeze_blasts + squeezings + neutrals
+        final_stock_order = alpha_blasts + ha_reversals + sideways_acc + neutrals
         final_data = nifty_rows + final_stock_order
         
         dash_sheet.clear()
@@ -252,9 +273,14 @@ def update_google_sheet():
         
         if final_data:
             dash_sheet.update('A3', final_data)
-            logging.info(f"🚀 [BOOM] Supreme Matrix Is Live with Advanced Calculations!")
+            logging.info(f"🚀 [BOOM] Supreme Matrix Is Live with 5-Min 2-Candle Filter!")
         
         dash_sheet.freeze(rows=2)
+        
+        # ⚡ Workflow Clear Action Call
+        try: clean_github_workflows()
+        except Exception as ge: logging.error(f"GitHub cleaner failed: {ge}")
+            
         return True
     except Exception as e:
         logging.error(f"❌ Execution Failed: {e}")
