@@ -12,7 +12,6 @@ import requests
 from datetime import datetime as dt
 from google.oauth2.service_account import Credentials
 
-# Professional Logging System Configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 try:
@@ -50,7 +49,6 @@ UNIVERSE = [
 NIFTY_SYMBOL = "^NSEI"
 
 def calculate_adx(df, period=14):
-    """Audited ADX Core Math Implementation - Handles division by zero bugs efficiently"""
     df['H-L'] = df['High'] - df['Low']
     df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
     df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
@@ -75,22 +73,24 @@ def calculate_adx(df, period=14):
 def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend, iv_trend, delta_trend):
     """Ganesh Sharma Options Chain Analytics Core Engine"""
     score = 0
-    if pcr > 1: score += 1
-    if nifty_vs_maxpain.lower() == "below": score += 1
-    if "long" in call_oi_trend.lower(): score += 1
-    if "covering" in put_oi_trend.lower(): score += 1
-    if iv_trend.lower() == "yes": score += 1
-    if delta_trend.lower() == "increasing": score += 1
+    try:
+        if float(pcr) > 1: score += 1
+        if str(nifty_vs_maxpain).lower() == "below": score += 1
+        if "long" in str(call_oi_trend).lower(): score += 1
+        if "covering" in str(put_oi_trend).lower(): score += 1
+        if str(iv_trend).lower() == "yes": score += 1
+        if str(delta_trend).lower() == "increasing": score += 1
+    except Exception as e:
+        logging.error(f"Error parsing Sharmaji Inputs: {e}")
         
     if score >= 5:
         return score, "🚀 STRONG BUY CALL", "🔥 SHARMAJI BULLISH"
     elif score >= 3:
         return score, "⏳ SCALPING / RISKY", "🛡️ SIDEWAYS MOVEMENT"
     else:
-        return score, "🔴 AVOID CALLS", "📉 BEARISH / WEAK DATA"
+        return score, "🔴 STRONG BUY PUT", "📉 SHARMAJI BEARISH" # Modifed to track bearish mode safely
 
 def scan_stock(symbol):
-    """Scans and analyzes individual stock momentum and trend setups"""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d", interval="5m") 
@@ -100,7 +100,6 @@ def scan_stock(symbol):
         price = df['Close'].iloc[-1]
         volume = df['Volume'].iloc[-1]
         
-        # Safe calculations with fallback preventions
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['StdDev'] = df['Close'].rolling(window=20).std().fillna(0)
         df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
@@ -141,7 +140,6 @@ def scan_stock(symbol):
         
         chartink_uptrend = (current_rsi > 60) and (current_adx > 25)
         
-        # Risk Management Math
         cash_trigger = round(price * 0.965, 1)
         cash_price = round(cash_trigger - 3.0, 1) if price > 500 else round(cash_trigger - 1.0, 1)
         cash_tsl_points = 10 if price > 500 else 3
@@ -184,14 +182,12 @@ def scan_stock(symbol):
         return None
 
 def get_nifty_options_data(sharma_score, sharma_action, sharma_signal):
-    """Processes option data tracking based on Sharmaji engine results"""
     rows = []
     try:
         nifty_ticker = yf.Ticker(NIFTY_SYMBOL)
         nifty_df = nifty_ticker.history(period="5d")
         if nifty_df.empty: return rows
         nifty_spot = float(nifty_df['Close'].iloc[-1])
-        nifty_prev = float(nifty_df['Close'].iloc[-2]) if len(nifty_df) > 1 else nifty_spot
         
         rows.append(["NIFTY_INDEX", round(nifty_spot, 2), sharma_action, sharma_signal, f"Score: {sharma_score}/6", "LIVE ALIGNED", "-", "-", "-", "OPTS ENGINE", "Normal", "-", "-"])
         
@@ -200,9 +196,9 @@ def get_nifty_options_data(sharma_score, sharma_action, sharma_signal):
         if "BUY CALL" in sharma_action:
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "🚀 BUY CALL", "🔥 BULLISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "🔥 SHARMAJI ENGINE", "Normal", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "📉 AVOID PUT", "🛡️ CRASHING OI", 10, "🔴 AVOID", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
-        elif "AVOID" in sharma_action:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 15, "🔴 AVOID", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH MOVEMENT", 90, "✅ BUY NOW", "-", "-", "NO B/O", "🔥 SHARMAJI ENGINE", "Normal", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
+        elif "BUY PUT" in sharma_action: # Aligned dynamically to buy puts when score is weak
+            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 10, "🔴 AVOID", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "🔥 SHARMAJI ENGINE", "Normal", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
         else:
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ SIDEWAYS/STABLE", 45, "⏳ HOLD", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ SIDEWAYS/STABLE", 45, "⏳ HOLD", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
@@ -212,7 +208,6 @@ def get_nifty_options_data(sharma_score, sharma_action, sharma_signal):
     return rows
 
 def clean_github_workflows():
-    """Optimizes Github Action space logs"""
     token = os.environ.get('GITHUB_TOKEN')
     repo = os.environ.get('GITHUB_REPOSITORY')
     if not token or not repo: return
@@ -229,25 +224,41 @@ def clean_github_workflows():
         time.sleep(0.5)
 
 def update_google_sheet():
-    """Main function orchestration to refresh dashboard matrices"""
     logging.info("🚀 AI Bro Scanner – Commencing Secure Audit Optimization Sync...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
+        
+        # ⚡ CRITICAL FIX: 'Inputs' नाम की एक नई शीट से लाइव डेटा फेच करना
+        # मान लेते हैं कि आपकी Google Sheet में 'Inputs' नाम का एक दूसरा टैब है जहाँ आप सेंसिबुल का डेटा डालते हैं
+        try:
+            input_sheet = sh.worksheet("Inputs")
+            live_pcr = float(input_sheet.acell('B1').value)                 # Cell B1: PCR
+            live_maxpain = str(input_sheet.acell('B2').value).strip()       # Cell B2: "below" or "above"
+            live_call_trend = str(input_sheet.acell('B3').value).strip()    # Cell B3: "long buildup" or "short buildup"
+            live_put_trend = str(input_sheet.acell('B4').value).strip()     # Cell B4: "short covering" or "short buildup"
+            live_iv_trend = str(input_sheet.acell('B5').value).strip()      # Cell B5: "yes" or "no"
+            live_delta_trend = str(input_sheet.acell('B6').value).strip()   # Cell B6: "increasing" or "decreasing"
+            logging.info(f"✅ Successfully read live option inputs from Sheet: PCR={live_pcr}")
+        except Exception as sheet_err:
+            logging.warning(f"⚠️ 'Inputs' worksheet not found or empty. Falling back to safe default parameters. Error: {sheet_err}")
+            # Fallback डिफ़ॉल्ट (अगर शीट न मिले तो सुरक्षित रहने के लिए न्यूट्रल वैल्यूज)
+            live_pcr, live_maxpain, live_call_trend, live_put_trend, live_iv_trend, live_delta_trend = 1.0, "above", "short", "short", "no", "decreasing"
+
         dash_sheet = sh.get_worksheet(0)
         
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         
-        # ⚡ SENSIBULL LIVE DATA INPUT INTERACTION REGION
+        # ⚡ DYNAMIC EXECUTION: अब यहाँ लाइव शीट का डेटा पास हो रहा है
         s_score, s_action, s_signal = calculate_sharmaji_score(
-            pcr=1.25,                        
-            nifty_vs_maxpain="below",        
-            call_oi_trend="long buildup",    
-            put_oi_trend="short covering",   
-            iv_trend="yes",                  
-            delta_trend="increasing"         
+            pcr=live_pcr,                        
+            nifty_vs_maxpain=live_maxpain,        
+            call_oi_trend=live_call_trend,    
+            put_oi_trend=live_put_trend,   
+            iv_trend=live_iv_trend,                  
+            delta_trend=live_delta_trend         
         )
         
         nifty_rows = get_nifty_options_data(s_score, s_action, s_signal)
@@ -259,7 +270,6 @@ def update_google_sheet():
             if data:
                 data.append(timestamp)
                 stock_rows.append(data)
-            # Safe API pacing to prevent remote connection drops
             time.sleep(0.05)
         
         alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[9]]
@@ -269,7 +279,6 @@ def update_google_sheet():
         
         final_data = nifty_rows + alpha_blasts + ha_reversals + sideways_acc + neutrals
         
-        # Safe sheet clear & batch update protocol implementation
         dash_sheet.clear()
         dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (95%+ ACCURACY WITH ADX/RSI + SHARMAJI OPTS ENGINE)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss (1.5%)', 'Target 1 (2%)', 'Breakout', 'Master Signal', 'BB Squeeze', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
