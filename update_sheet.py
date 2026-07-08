@@ -91,7 +91,7 @@ def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend,
         return score, "🚀 STRONG BUY PUT", "📉 SHARMAJI BEARISH"
 
 def scan_stock(symbol, sharma_score):
-    """Scans individual stocks and overlays Sharmaji Nifty Trend Filter"""
+    """Scans individual stocks for BOTH Bulls (Call) and Bears (Put) Trial Logic"""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d", interval="5m") 
@@ -133,14 +133,20 @@ def scan_stock(symbol, sharma_score):
         bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
         
         c_close, c_volume = df['Close'].iloc[-1], df['Volume'].iloc[-1]
-        p_close, p_high, p_ema21, p_vwap = df['Close'].iloc[-2], df['High'].iloc[-2], df['EMA21'].iloc[-2], df['VWAP'].iloc[-2]
+        p_close, p_high, p_low, p_ema21, p_vwap = df['Close'].iloc[-2], df['High'].iloc[-2], df['Low'].iloc[-2], df['EMA21'].iloc[-2], df['VWAP'].iloc[-2]
         
+        # Bullish Breakout Check
         base_breakout = (p_close > p_ema21) and (p_close > p_vwap)
         higher_high_confirm = (c_close > p_high)
         volume_spike = (c_volume > df['VolSMA10'].iloc[-1])
         chartink_uptrend = (current_rsi > 60) and (current_adx > 25)
         
-        # Base Signal Logic Calculation
+        # Bearish Breakdown Check (For Put Trial)
+        bear_breakdown = (p_close < p_ema21) and (p_close < p_vwap)
+        lower_low_confirm = (c_close < p_low)
+        chartink_downtrend = (current_rsi < 40) and (current_adx > 25)
+        
+        # 🟢 BULLISH EXECUTIONS (CALL ENGINE)
         if base_breakout and higher_high_confirm and volume_spike and chartink_uptrend:
             master_signal = "🔥 ALPHA BLAST (100%)"
             action, status, entry, score = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW", 100
@@ -150,14 +156,18 @@ def scan_stock(symbol, sharma_score):
         elif ha_reversal and current_rsi > 45:
             master_signal = "🎯 HA-REVERSAL (Dip)"
             action, status, entry, score = "🚀 BUY NOW", "💎 BOTTOM BUY", "✅ BUY NOW", 85
+        # 🔴 BEARISH EXECUTIONS (PUT TRIAL ENGINE)
+        elif bear_breakdown and lower_low_confirm and volume_spike and chartink_downtrend and sharma_score < 3:
+            master_signal = "📉 ALPHA CRASH (PUT)"
+            action, status, entry, score = "🚀 BUY PUT / SHORT", "🚨 SEVERE WEAKNESS", "🔻 SHORT NOW", 95
         else:
             master_signal = "➡️ Neutral"
             action, status, entry = "📉 AVOID", "📉 WEAK", "🔴 AVOID"
             score = 15 if c_close > p_close else 0
             if chartink_uptrend: score += 15
 
-        # 💥 SHARMAJI CONFLUENCE FILTER: अगर निफ्टी पाताल में (Score < 3) है, तो जबरदस्ती लॉन्ग रोकें
-        if sharma_score < 3 and "BUY NOW" in action:
+        # 💥 SHARMAJI CONFLUENCE FILTER FOR CALLS:
+        if sharma_score < 3 and "🚀 BUY NOW" in action:
             if master_signal == "🔥 ALPHA BLAST (100%)":
                 master_signal = "⚠️ RISK: NIFTY WEAK / HOLD"
                 action, status, entry, score = "⏳ WAIT", "🛡️ BEARISH MARKET", "⏳ HOLD", 60
@@ -165,7 +175,7 @@ def scan_stock(symbol, sharma_score):
                 master_signal = "➡️ Neutral (Market Risk)"
                 action, status, entry, score = "📉 AVOID", "📉 MARKET FALL", "🔴 AVOID", 30
 
-        # Risk Management Math (Only calculated if setup is an active Buy)
+        # Risk Management Calculations for Active Trades (Both Long & Short)
         if "BUY NOW" in action:
             cash_trigger = round(price * 0.965, 1)
             cash_price = round(cash_trigger - 3.0, 1) if price > 500 else round(cash_trigger - 1.0, 1)
@@ -175,6 +185,17 @@ def scan_stock(symbol, sharma_score):
                 cash_tsl_points = 50
             sl_level = f"SL: {round(price * 0.985, 1)}"
             tgt_level = f"T1: {round(price * 1.02, 1)}"
+            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {cash_price} | TSL: {cash_tsl_points}"
+        elif "BUY PUT" in action:
+            # Short Trade Risk Management (Inverse Calculations)
+            cash_trigger = round(price * 1.035, 1)
+            cash_price = round(cash_trigger + 3.0, 1) if price > 500 else round(cash_trigger + 1.0, 1)
+            cash_tsl_points = 10 if price > 500 else 3
+            if price > 5000:
+                cash_price = round(cash_trigger + 20.0, 1)
+                cash_tsl_points = 50
+            sl_level = f"SL: {round(price * 1.015, 1)}"
+            tgt_level = f"T1: {round(price * 0.98, 1)}"
             auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {cash_price} | TSL: {cash_tsl_points}"
         elif "WAIT" in action:
             sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳", "⏳", "⏳", "⏳"
@@ -243,7 +264,6 @@ def update_google_sheet():
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         
-        # Read from 'Inputs' sheet tab dynamically
         try:
             input_sheet = sh.worksheet("Inputs")
             live_pcr = float(input_sheet.acell('B1').value)                 
@@ -261,7 +281,6 @@ def update_google_sheet():
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         
-        # Calculate Nifty Sharmaji Score
         s_score, s_action, s_signal = calculate_sharmaji_score(
             pcr=live_pcr, nifty_vs_maxpain=live_maxpain, call_oi_trend=live_call_trend,
             put_oi_trend=live_put_trend, iv_trend=live_iv_trend, delta_trend=live_delta_trend
@@ -272,7 +291,6 @@ def update_google_sheet():
             
         stock_rows = []
         for idx, sym in enumerate(UNIVERSE):
-            # 💥 PASSING SHARMA_SCORE DYNAMICALLY TO FILTER ALL STOCKS
             data = scan_stock(sym, s_score)
             if data:
                 data.append(timestamp)
@@ -280,15 +298,17 @@ def update_google_sheet():
             time.sleep(0.05)
         
         alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[9]]
+        alpha_crashes = [row for row in stock_rows if "📉 ALPHA CRASH" in row[9]]  # New section
         ha_reversals = [row for row in stock_rows if "🎯 HA-REVERSAL" in row[9]]
         sideways_acc = [row for row in stock_rows if "⏳ SIDEWAYS" in row[9]]
         neutrals = [row for row in stock_rows if "➡️ Neutral" in row[9]]
         
-        final_data = nifty_rows + alpha_blasts + ha_reversals + sideways_acc + neutrals
+        # Arranging final data dynamically
+        final_data = nifty_rows + alpha_blasts + alpha_crashes + ha_reversals + sideways_acc + neutrals
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (95%+ ACCURACY WITH ADX/RSI + SHARMAJI OPTS ENGINE)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss (1.5%)', 'Target 1 (2%)', 'Breakout', 'Master Signal', 'BB Squeeze', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (95%+ ACCURACY WITH TWO-WAY ADX/RSI + SHARMAJI OPTS)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss', 'Target 1', 'Breakout', 'Master Signal', 'BB Squeeze', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
         
         if final_data:
             dash_sheet.update('A3', final_data)
