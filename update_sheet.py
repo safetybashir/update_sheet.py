@@ -12,6 +12,7 @@ import requests
 from datetime import datetime as dt
 from google.oauth2.service_account import Credentials
 
+# Professional Logging System Configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 try:
@@ -71,7 +72,6 @@ def calculate_adx(df, period=14):
     return adx, di_plus, di_minus
 
 def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend, iv_trend, delta_trend):
-    """Ganesh Sharma Options Chain Analytics Core Engine"""
     score = 0
     try:
         if float(pcr) > 1: score += 1
@@ -88,9 +88,10 @@ def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend,
     elif score >= 3:
         return score, "⏳ SCALPING / RISKY", "🛡️ SIDEWAYS MOVEMENT"
     else:
-        return score, "🔴 STRONG BUY PUT", "📉 SHARMAJI BEARISH" # Modifed to track bearish mode safely
+        return score, "🚀 STRONG BUY PUT", "📉 SHARMAJI BEARISH"
 
-def scan_stock(symbol):
+def scan_stock(symbol, sharma_score):
+    """Scans individual stocks and overlays Sharmaji Nifty Trend Filter"""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d", interval="5m") 
@@ -137,36 +138,48 @@ def scan_stock(symbol):
         base_breakout = (p_close > p_ema21) and (p_close > p_vwap)
         higher_high_confirm = (c_close > p_high)
         volume_spike = (c_volume > df['VolSMA10'].iloc[-1])
-        
         chartink_uptrend = (current_rsi > 60) and (current_adx > 25)
         
-        cash_trigger = round(price * 0.965, 1)
-        cash_price = round(cash_trigger - 3.0, 1) if price > 500 else round(cash_trigger - 1.0, 1)
-        cash_tsl_points = 10 if price > 500 else 3
-        if price > 5000:
-            cash_price = round(cash_trigger - 20.0, 1)
-            cash_tsl_points = 50
-            
-        sl_level = f"SL: {round(price * 0.985, 1)}"
-        tgt_level = f"T1: {round(price * 1.02, 1)}"
-        auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {cash_price} | TSL: {cash_tsl_points}"
-        
+        # Base Signal Logic Calculation
         if base_breakout and higher_high_confirm and volume_spike and chartink_uptrend:
             master_signal = "🔥 ALPHA BLAST (100%)"
             action, status, entry, score = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW", 100
         elif base_breakout and not higher_high_confirm:
             master_signal = "⏳ SIDEWAYS / ACCUMULATION"
             action, status, entry, score = "⏳ WAIT", "🛡️ RANGE-BOUND", "⏳ HOLD", 50
-            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳", "⏳", "⏳", "⏳"
         elif ha_reversal and current_rsi > 45:
             master_signal = "🎯 HA-REVERSAL (Dip)"
             action, status, entry, score = "🚀 BUY NOW", "💎 BOTTOM BUY", "✅ BUY NOW", 85
         else:
             master_signal = "➡️ Neutral"
             action, status, entry = "📉 AVOID", "📉 WEAK", "🔴 AVOID"
-            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "❌", "❌", "❌", "❌"
             score = 15 if c_close > p_close else 0
             if chartink_uptrend: score += 15
+
+        # 💥 SHARMAJI CONFLUENCE FILTER: अगर निफ्टी पाताल में (Score < 3) है, तो जबरदस्ती लॉन्ग रोकें
+        if sharma_score < 3 and "BUY NOW" in action:
+            if master_signal == "🔥 ALPHA BLAST (100%)":
+                master_signal = "⚠️ RISK: NIFTY WEAK / HOLD"
+                action, status, entry, score = "⏳ WAIT", "🛡️ BEARISH MARKET", "⏳ HOLD", 60
+            elif master_signal == "🎯 HA-REVERSAL (Dip)":
+                master_signal = "➡️ Neutral (Market Risk)"
+                action, status, entry, score = "📉 AVOID", "📉 MARKET FALL", "🔴 AVOID", 30
+
+        # Risk Management Math (Only calculated if setup is an active Buy)
+        if "BUY NOW" in action:
+            cash_trigger = round(price * 0.965, 1)
+            cash_price = round(cash_trigger - 3.0, 1) if price > 500 else round(cash_trigger - 1.0, 1)
+            cash_tsl_points = 10 if price > 500 else 3
+            if price > 5000:
+                cash_price = round(cash_trigger - 20.0, 1)
+                cash_tsl_points = 50
+            sl_level = f"SL: {round(price * 0.985, 1)}"
+            tgt_level = f"T1: {round(price * 1.02, 1)}"
+            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {cash_price} | TSL: {cash_tsl_points}"
+        elif "WAIT" in action:
+            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳", "⏳", "⏳", "⏳"
+        else:
+            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "❌", "❌", "❌", "❌"
             
         high_52w = price
         try: high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
@@ -196,7 +209,7 @@ def get_nifty_options_data(sharma_score, sharma_action, sharma_signal):
         if "BUY CALL" in sharma_action:
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "🚀 BUY CALL", "🔥 BULLISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "🔥 SHARMAJI ENGINE", "Normal", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "📉 AVOID PUT", "🛡️ CRASHING OI", 10, "🔴 AVOID", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
-        elif "BUY PUT" in sharma_action: # Aligned dynamically to buy puts when score is weak
+        elif "BUY PUT" in sharma_action:
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 10, "🔴 AVOID", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "🔥 SHARMAJI ENGINE", "Normal", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
         else:
@@ -230,35 +243,28 @@ def update_google_sheet():
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         
-        # ⚡ CRITICAL FIX: 'Inputs' नाम की एक नई शीट से लाइव डेटा फेच करना
-        # मान लेते हैं कि आपकी Google Sheet में 'Inputs' नाम का एक दूसरा टैब है जहाँ आप सेंसिबुल का डेटा डालते हैं
+        # Read from 'Inputs' sheet tab dynamically
         try:
             input_sheet = sh.worksheet("Inputs")
-            live_pcr = float(input_sheet.acell('B1').value)                 # Cell B1: PCR
-            live_maxpain = str(input_sheet.acell('B2').value).strip()       # Cell B2: "below" or "above"
-            live_call_trend = str(input_sheet.acell('B3').value).strip()    # Cell B3: "long buildup" or "short buildup"
-            live_put_trend = str(input_sheet.acell('B4').value).strip()     # Cell B4: "short covering" or "short buildup"
-            live_iv_trend = str(input_sheet.acell('B5').value).strip()      # Cell B5: "yes" or "no"
-            live_delta_trend = str(input_sheet.acell('B6').value).strip()   # Cell B6: "increasing" or "decreasing"
+            live_pcr = float(input_sheet.acell('B1').value)                 
+            live_maxpain = str(input_sheet.acell('B2').value).strip()       
+            live_call_trend = str(input_sheet.acell('B3').value).strip()    
+            live_put_trend = str(input_sheet.acell('B4').value).strip()     
+            live_iv_trend = str(input_sheet.acell('B5').value).strip()      
+            live_delta_trend = str(input_sheet.acell('B6').value).strip()   
             logging.info(f"✅ Successfully read live option inputs from Sheet: PCR={live_pcr}")
         except Exception as sheet_err:
-            logging.warning(f"⚠️ 'Inputs' worksheet not found or empty. Falling back to safe default parameters. Error: {sheet_err}")
-            # Fallback डिफ़ॉल्ट (अगर शीट न मिले तो सुरक्षित रहने के लिए न्यूट्रल वैल्यूज)
+            logging.warning(f"⚠️ 'Inputs' worksheet not found. Falling back to default parameters. Error: {sheet_err}")
             live_pcr, live_maxpain, live_call_trend, live_put_trend, live_iv_trend, live_delta_trend = 1.0, "above", "short", "short", "no", "decreasing"
 
         dash_sheet = sh.get_worksheet(0)
-        
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         
-        # ⚡ DYNAMIC EXECUTION: अब यहाँ लाइव शीट का डेटा पास हो रहा है
+        # Calculate Nifty Sharmaji Score
         s_score, s_action, s_signal = calculate_sharmaji_score(
-            pcr=live_pcr,                        
-            nifty_vs_maxpain=live_maxpain,        
-            call_oi_trend=live_call_trend,    
-            put_oi_trend=live_put_trend,   
-            iv_trend=live_iv_trend,                  
-            delta_trend=live_delta_trend         
+            pcr=live_pcr, nifty_vs_maxpain=live_maxpain, call_oi_trend=live_call_trend,
+            put_oi_trend=live_put_trend, iv_trend=live_iv_trend, delta_trend=live_delta_trend
         )
         
         nifty_rows = get_nifty_options_data(s_score, s_action, s_signal)
@@ -266,7 +272,8 @@ def update_google_sheet():
             
         stock_rows = []
         for idx, sym in enumerate(UNIVERSE):
-            data = scan_stock(sym)
+            # 💥 PASSING SHARMA_SCORE DYNAMICALLY TO FILTER ALL STOCKS
+            data = scan_stock(sym, s_score)
             if data:
                 data.append(timestamp)
                 stock_rows.append(data)
