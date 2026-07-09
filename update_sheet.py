@@ -230,8 +230,8 @@ def get_nifty_options_data(sharma_score, sharma_action, sharma_signal):
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 10, "🔴 AVOID", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "🔥 SHARMAJI ENGINE", "Normal", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
         else:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND/THETA DECAY", 45, "⏳ HOLD", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND/THETA DECAY", 45, "⏳ HOLD", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "➡️ Neutral", "Normal", "⏳", "⏳"])
             
     except Exception as e:
         logging.error(f"Error Nifty Options Data: {e}")
