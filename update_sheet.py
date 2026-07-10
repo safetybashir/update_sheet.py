@@ -77,30 +77,40 @@ def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend,
     else: return score, "🚀 STRONG BUY PUT", "📉 SHARMAJI BEARISH"
 
 def check_fundamentals(ticker_obj):
-    """👑 NEW: Fundamental Quality Filter (ROE & Institutional Support)"""
     try:
         info = ticker_obj.info
-        roe = info.get('returnOnEquity', 0.16) 
-        debt_to_equity = info.get('debtToEquity', 0.5)
-        # Default safety fallback if data is blocked by Yahoo Finance API
+        roe = info.get('returnOnEquity', 0.16)
+        debt = info.get('debtToEquity', 0.5)
         if roe is None: roe = 0.16
-        if debt_to_equity is None: debt_to_equity = 0.5
-        
-        if roe > 0.12 and debt_to_equity < 2.0:
-            return True
-        return False
-    except:
-        return True # Fallback to true so scan doesn't break during live market failures
+        if debt is None: debt = 0.5
+        return roe > 0.12 and debt < 2.0
+    except: return True
+
+def get_expiry_risk_status():
+    """⏳ NEW: Dynamic Theta Decay Guard Tracker"""
+    try:
+        now_ist = dt.now(pytz.timezone('Asia/Kolkata'))
+        # Standard stock options expiry is last Thursday of the month.
+        # Simple dynamic alert logic if day of month is late (>20th)
+        if now_ist.day >= 22:
+            return "⚠️ EXPIRE RISK: NEXT SERIES"
+        return "Normal"
+    except: return "Normal"
 
 def scan_stock(symbol, sharma_score, delta_trend):
     try:
         ticker = yf.Ticker(symbol)
+        
+        # ⏱️ Fetching 5m and 15m structural data frames
         df = ticker.history(period="5d", interval="5m") 
-        if df.empty or len(df) < 35: return None
+        df_15 = ticker.history(period="5d", interval="15m")
+        
+        if df.empty or len(df) < 35 or df_15.empty or len(df_15) < 15: return None
         
         price = df['Close'].iloc[-1]
         volume = df['Volume'].iloc[-1]
         
+        # Calculations for 5m indicators
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['StdDev'] = df['Close'].rolling(window=20).std().fillna(0)
         df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
@@ -109,8 +119,7 @@ def scan_stock(symbol, sharma_score, delta_trend):
         df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
         
         cum_vol_price = (df['Close'] * df['Volume']).cumsum()
-        cum_vol = df['Volume'].cumsum() + 1e-10
-        df['VWAP'] = cum_vol_price / cum_vol
+        df['VWAP'] = cum_vol_price / (df['Volume'].cumsum() + 1e-10)
         
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
@@ -121,63 +130,72 @@ def scan_stock(symbol, sharma_score, delta_trend):
         current_rsi = df['RSI'].iloc[-1]
         current_adx = df['ADX'].iloc[-1]
         
-        # Sideways Detection Guard
+        # Sideways Trap Detection Guard
         last_10 = df.tail(10)
         crossings = np.sum(np.diff(np.sign(last_10['Close'] - last_10['EMA21'])) != 0)
         day_high, day_low = df.iloc[-1]['High'], df.iloc[-1]['Low']
         day_range_pct = ((day_high - day_low) / (day_low + 1e-10)) * 100
         is_sideways_trap = (crossings >= 3) or (day_range_pct < 0.6) or (current_adx < 20)
         
+        # Squeeze Detection
         df['ATR'] = df['High'].rolling(14).mean() - df['Low'].rolling(14).mean()
         is_squeeze = (df['UpperBB'].iloc[-1] < (df['SMA20'].iloc[-1] + (1.5 * df['ATR'].fillna(0).iloc[-1])))
         bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
         
-        c_close, c_volume = df['Close'].iloc[-1], df['Volume'].iloc[-1]
+        # ⏱️ 15-Minute Multi-Timeframe Structural Breakout Analysis
+        p15_high = df_15['High'].iloc[-2]
+        p15_low = df_15['Low'].iloc[-2]
+        is_15m_bullish = price > p15_high
+        is_15m_bearish = price < p15_low
+        
+        # 📊 Volume-Weighted Delta Confluence Factor (At least 1.5x volume spike)
+        volume_spike_heavy = volume > (df['VolSMA10'].iloc[-1] * 1.5)
+        is_delta_confirmed = "increasing" in str(delta_trend).lower()
+        is_institution_backed = volume_spike_heavy and is_delta_confirmed
+        
+        c_close = df['Close'].iloc[-1]
         p_close, p_high, p_low, p_ema21, p_vwap = df['Close'].iloc[-2], df['High'].iloc[-2], df['Low'].iloc[-2], df['EMA21'].iloc[-2], df['VWAP'].iloc[-2]
         
-        base_breakout = (p_close > p_ema21) and (p_close > p_vwap)
-        higher_high_confirm = (c_close > p_high)
-        volume_spike = (c_volume > df['VolSMA10'].iloc[-1])
+        base_breakout = (p_close > p_ema21) and (p_close > p_vwap) and (c_close > p_high)
+        base_breakdown = (p_close < p_ema21) and (p_close < p_vwap) and (c_close < p_low)
         chartink_uptrend = (current_rsi > 60) and (current_adx > 25)
-        
-        bear_breakdown = (p_close < p_ema21) and (p_close < p_vwap)
-        lower_low_confirm = (c_close < p_low)
         chartink_downtrend = (current_rsi < 40) and (current_adx > 25)
         
         is_fundamentally_strong = check_fundamentals(ticker)
-        is_delta_confirmed = "increasing" in str(delta_trend).lower()
+        expiry_alert = get_expiry_risk_status()
         
         if is_sideways_trap:
             master_signal = "⏳ SIDEWAYS / ACCUMULATION"
             action, status, entry, score = "⏳ WAIT", "🛡️ RANGE-BOUND", "⏳ HOLD", 50
-        elif base_breakout and higher_high_confirm and volume_spike and chartink_uptrend and is_fundamentally_strong and is_delta_confirmed:
+        elif base_breakout and chartink_uptrend and is_15m_bullish and is_institution_backed and is_fundamentally_strong:
             master_signal = "🔥 ALPHA BLAST (100%)"
             action, status, entry, score = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW", 100
-        elif bear_breakdown and lower_low_confirm and volume_spike and chartink_downtrend and sharma_score < 3 and is_delta_confirmed:
+        elif base_breakdown and chartink_downtrend and is_15m_bearish and is_institution_backed and sharma_score < 3:
             master_signal = "📉 ALPHA CRASH (PUT)"
             action, status, entry, score = "🚀 BUY PUT / SHORT", "🚨 SEVERE WEAKNESS", "🔻 SHORT NOW", 95
-        elif (base_breakout or bear_breakdown) and not is_delta_confirmed:
-            master_signal = "⏳ DELTA STAGNANT / NO MOMENTUM"
-            action, status, entry, score = "⏳ WAIT", "🛡️ DELTA BLOCK", "⏳ HOLD", 40
+        elif (base_breakout or base_breakdown) and not is_institution_backed:
+            master_signal = "⏳ FAKEOUT RISK: LOW VOLUME DELTA"
+            action, status, entry, score = "⏳ WAIT", "🛡️ VOLUME BLOCK", "⏳ HOLD", 35
         else:
             master_signal = "➡️ Neutral"
-            action, status, entry = "📉 AVOID", "📉 WEAK", "🔴 AVOID"
-            score = 0
+            action, status, entry, score = "📉 AVOID", "📉 WEAK", "🔴 AVOID", 0
+            
+        if "🚀 BUY" in action and expiry_alert != "Normal":
+            master_signal = f"⚠️ {expiry_alert}"
+            status = "🛡️ THETA RISK"
             
         if sharma_score < 3 and "🚀 BUY NOW" in action:
-            master_signal = "⚠️ RISK: NIFTY WEAK / HOLD"
-            action, status, entry, score = "⏳ WAIT", "🛡️ BEARISH MARKET", "⏳ HOLD", 60
+            master_signal, action, status, entry, score = "⚠️ RISK: NIFTY WEAK", "⏳ WAIT", "🛡️ BEARISH MARKET", "⏳ HOLD", 60
 
+        # Output Risk Adjustments
         if "BUY NOW" in action:
             cash_trigger = round(price * 0.995, 1)
-            cash_price = round(cash_trigger - 2.0, 1)
             sl_level, tgt_level = f"SL: {round(price * 0.985, 1)}", f"T1: {round(price * 1.02, 1)}"
-            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {cash_price} | TSL: 10"
+            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {round(cash_trigger-2,1)} | TSL: 10"
         elif "BUY PUT" in action:
             cash_trigger = round(price * 0.997, 1)
-            cash_price = round(cash_trigger - 1.5, 1)
             sl_level, tgt_level = f"SL: {round(price * 1.015, 1)}", f"T1: {round(price * 0.98, 1)}"
-            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {cash_price} | TSL: 10"
+            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {round(cash_trigger-1.5,1)} | TSL: 10"
         else:
             sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳" if "WAIT" in action else "❌", "⏳" if "WAIT" in action else "❌", "⏳" if "WAIT" in action else "❌", "⏳" if "WAIT" in action else "❌"
             
@@ -222,7 +240,7 @@ def get_nifty_options_data(sharma_score, sharma_action, sharma_signal, delta_tre
     return rows
 
 def update_google_sheet():
-    logging.info("🚀 Deploying V6 Institutional Filter Optimization Sync...")
+    logging.info("🚀 Deploying V7 Ultimate Institutional Engine Sync...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -257,15 +275,15 @@ def update_google_sheet():
         
         alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[9]]
         alpha_crashes = [row for row in stock_rows if "📉 ALPHA CRASH" in row[9]]  
-        delta_blocks = [row for row in stock_rows if "🛡️ DELTA BLOCK" in row[3]]
+        volume_blocks = [row for row in stock_rows if "🛡️ VOLUME BLOCK" in row[3]]
         ha_reversals = [row for row in stock_rows if "🎯 HA-REVERSAL" in row[9]]
         sideways_acc = [row for row in stock_rows if "⏳ SIDEWAYS" in row[9]]
         neutrals = [row for row in stock_rows if "➡️ Neutral" in row[9]]
         
-        final_data = nifty_rows + alpha_blasts + alpha_crashes + delta_blocks + ha_reversals + sideways_acc + neutrals
+        final_data = nifty_rows + alpha_blasts + alpha_crashes + volume_blocks + ha_reversals + sideways_acc + neutrals
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (V6 PRO - DELTA CONFLUENCE & FUNDAMENTALS)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (V7-ULTIMATE INSTITUTIONAL ENGINE WITH 15M + VOLUME DELTA)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss', 'Target 1', 'Breakout', 'Master Signal', 'BB Squeeze', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
         
         if final_data: dash_sheet.update('A3', final_data)
