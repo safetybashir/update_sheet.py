@@ -23,8 +23,8 @@ except Exception as e:
 
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS',
-    'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS',
-    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS',
+    'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS', 'MAZDOCK.NS', 'COCHINSHIP.NS',
+    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS', 'GRSE.NS',
     'BIOCON.NS', 'APOLLOHOSP.NS', 'FORTIS.NS', 'MAXHEALTH.NS', 'TATASTEEL.NS',
     'JSWSTEEL.NS', 'HINDALCO.NS', 'NATIONALUM.NS', 'JINDALSTEL.NS', 'COALINDIA.NS',
     'MARUTI.NS', 'TATAMOTORS.NS', 'M&M.NS', 'EICHERMOT.NS', 'HEROMOTOCO.NS',
@@ -43,7 +43,7 @@ UNIVERSE = [
     'SOLARINDS.NS', 'KALYANKJIL.NS', 'NYKAA.NS', 'MANKIND.NS', 'LT.NS',
     'JUBLFOOD.NS', 'RVNL.NS', 'MCX.NS', 'BSE.NS',
     'SWIGGY.NS', 'DMART.NS', 'NAUKRI.NS', 'ONGC.NS', 'BPCL.NS',
-    'HINDPETRO.NS', 'PETRONET.NS', 'SUMICHEM.NS',
+    'HINDPETRO.NS', 'PETRONET.NS', 'SUMICHEM.NS', 'PERSISTENT.NS', 'CDSL.NS', 
 ]
 
 NIFTY_SYMBOL = "^NSEI"
@@ -121,32 +121,33 @@ def scan_stock(symbol, sharma_score, live_delta_trend):
         current_rsi = df['RSI'].iloc[-1]
         current_adx = df['ADX'].iloc[-1]
         
-        # Sideways Trap
+        try:
+            prev_close = ticker.info.get('previousClose', df['Close'].iloc[0])
+            day_gain_pct = ((price - prev_close) / prev_close) * 100
+        except:
+            day_gain_pct = 0.0
+        
         last_10 = df.tail(10)
         crossings = np.sum(np.diff(np.sign(last_10['Close'] - last_10['EMA21'])) != 0)
         day_high, day_low = df.iloc[-1]['High'], df.iloc[-1]['Low']
         day_range_pct = ((day_high - day_low) / (day_low + 1e-10)) * 100
         is_sideways_trap = (crossings >= 3) or (day_range_pct < 0.6) or (current_adx < 20)
         
-        # Hurdle 2: BB Squeeze
         df['ATR'] = df['High'].rolling(14).mean() - df['Low'].rolling(14).mean()
         is_squeeze = (df['UpperBB'].iloc[-1] < (df['SMA20'].iloc[-1] + (1.5 * df['ATR'].fillna(0).iloc[-1])))
         bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
         
-        # Hurdle 1: Breakout Zone
         high_52w = price
         try: high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
         except: pass
         is_breakout_zone = price > high_52w * 0.98
         bo_status = "✅ B/O" if is_breakout_zone else "NO B/O"
         
-        # 15-Minute Structural Breakout
         p15_high = df_15['High'].iloc[-2]
         p15_low = df_15['Low'].iloc[-2]
         is_15m_bullish = price > p15_high
         is_15m_bearish = price < p15_low
         
-        # Hurdle 3: Volume-Weighted Delta (The Ultimate Guard)
         volume_spike_heavy = volume > (df['VolSMA10'].iloc[-1] * 1.5)
         is_delta_confirmed = "increasing" in str(live_delta_trend).lower()
         is_institution_backed = volume_spike_heavy and is_delta_confirmed
@@ -162,11 +163,13 @@ def scan_stock(symbol, sharma_score, live_delta_trend):
         is_fundamentally_strong = check_fundamentals(ticker)
         expiry_alert = get_expiry_risk_status()
         
-        # Master Signal Routing
         if is_breakout_zone and is_squeeze and not is_institution_backed:
             master_signal = "👀 READY TO BLAST: NEED VOL DELTA"
             action, status, entry, score = "⏳ MONITOR", "🛡️ HURDLE 3 PENDING", "⏳ WATCH VOL", 75
-        elif is_sideways_trap:
+        elif not is_breakout_zone and day_gain_pct >= 3.0 and is_institution_backed:
+            master_signal = f"🚀 INTRADAY MOMENTUM BLAST (+{round(day_gain_pct,1)}%)"
+            action, status, entry, score = "🚀 BUY NOW", "🔥 VOL MOMENTUM", "✅ BUY NOW", 90
+        elif is_sideways_trap and day_gain_pct < 3.0:
             master_signal = "⏳ SIDEWAYS / ACCUMULATION"
             action, status, entry, score = "⏳ WAIT", "🛡️ RANGE-BOUND", "⏳ HOLD", 50
         elif base_breakout and chartink_uptrend and is_15m_bullish and is_institution_backed and is_fundamentally_strong:
@@ -186,10 +189,9 @@ def scan_stock(symbol, sharma_score, live_delta_trend):
             master_signal = f"⚠️ {expiry_alert}"
             status = "🛡️ THETA RISK"
             
-        if sharma_score < 3 and "🚀 BUY NOW" in action:
+        if sharma_score < 3 and "🚀 BUY NOW" in action and "INTRADAY" not in master_signal:
             master_signal, action, status, entry, score = "⚠️ RISK: NIFTY WEAK", "⏳ WAIT", "🛡️ BEARISH MARKET", "⏳ HOLD", 60
 
-        # Calculations for pricing columns
         if "BUY NOW" in action:
             cash_trigger = round(price * 0.995, 1)
             sl_level, tgt_level = f"SL: {round(price * 0.985, 1)}", f"T1: {round(price * 1.02, 1)}"
@@ -201,7 +203,6 @@ def scan_stock(symbol, sharma_score, live_delta_trend):
         else:
             sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳" if "MONITOR" in action or "WAIT" in action else "❌", "⏳" if "MONITOR" in action or "WAIT" in action else "❌", "⏳" if "MONITOR" in action or "WAIT" in action else "❌", "⏳" if "MONITOR" in action or "WAIT" in action else "❌"
             
-        # 🔀 SEQUENCE REORDERED BELOW: [..., Breakout, BB Squeeze, Master Signal, ...]
         return [symbol, round(price, 2), action, status, score, entry, sl_level, tgt_level, bo_status, bb_status, master_signal, auto_trigger, auto_limit_tsl]
     except Exception as e:
         logging.error(f"Error {symbol}: {e}")
@@ -236,13 +237,13 @@ def get_nifty_options_data(sharma_score, live_delta_trend):
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 10, "🔴 AVOID", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "Normal", "🔥 SHARMAJI ENGINE", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
         else:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND/THETA DECAY", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND/THETA DECAY", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
     except: pass
     return rows
 
 def update_google_sheet():
-    logging.info("🚀 Deploying V7 PRO MAX Sequence Layout Engine Sync...")
+    logging.info("🚀 Deploying V7 HYPER-HUNTER Engine Sync...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
@@ -277,17 +278,16 @@ def update_google_sheet():
         
         ready_blasts = [row for row in stock_rows if "👀 READY" in row[10]]
         alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[10]]
+        intraday_blasts = [row for row in stock_rows if "🚀 INTRADAY" in row[10]] 
         alpha_crashes = [row for row in stock_rows if "📉 ALPHA CRASH" in row[10]]  
         volume_blocks = [row for row in stock_rows if "🛡️ VOLUME BLOCK" in row[3]]
         sideways_acc = [row for row in stock_rows if "⏳ SIDEWAYS" in row[10]]
         neutrals = [row for row in stock_rows if "➡️ Neutral" in row[10]]
         
-        final_data = nifty_rows + ready_blasts + alpha_blasts + alpha_crashes + volume_blocks + sideways_acc + neutrals
+        final_data = nifty_rows + ready_blasts + alpha_blasts + intraday_blasts + volume_blocks + sideways_acc + neutrals
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (V7 PRO MAX - SEQUENTIAL RACE EDITION)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
-        
-        # 🔀 NEW HEADERS SEQUENCE: Breakout -> BB Squeeze -> Master Signal
+        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (V7 PRO MAX - HYPER-HUNTER EDITION)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss', 'Target 1', 'Breakout', 'BB Squeeze', 'Master Signal', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
         
         if final_data: dash_sheet.update('A3', final_data)
