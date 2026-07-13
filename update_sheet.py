@@ -24,7 +24,7 @@ except Exception as e:
 UNIVERSE = [
     'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS', 'MAXHEALTH.NS'
     'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS', 'MAZDOCK.NS', 'COCHINSHIP.NS',
-    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS', 'GRSE.NS',
+    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS', 'GRSE.NS', 'PREMIERENE.NS',
     'BIOCON.NS', 'APOLLOHOSP.NS', 'FORTIS.NS', 'MAXHEALTH.NS', 'TATASTEEL.NS',
     'JSWSTEEL.NS', 'HINDALCO.NS', 'NATIONALUM.NS', 'JINDALSTEL.NS', 'COALINDIA.NS',
     'MARUTI.NS', 'TATAMOTORS.NS', 'M&M.NS', 'EICHERMOT.NS', 'HEROMOTOCO.NS',
@@ -237,8 +237,8 @@ def get_nifty_options_data(sharma_score, live_delta_trend):
             rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 10, "🔴 AVOID", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
             rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "Normal", "🔥 SHARMAJI ENGINE", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
         else:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND/THETA DECAY", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND/THETA DECAY", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
+            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
     except: pass
     return rows
 
