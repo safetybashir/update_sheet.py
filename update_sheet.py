@@ -9,9 +9,11 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 # ==========================================
-# 1. LIQUID F&O TICKERS LIST
+# 1. TICKERS LIST (NIFTY 50 FIRST + STOCKS)
 # ==========================================
-TICKERS = [
+INDEX_TICKER = "^NSEI"  # Nifty 50 Index Symbol
+
+STOCKS_TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
     "BHARTIARTL.NS", "SBIN.NS", "LTIM.NS", "ITC.NS", "HINDUNILVR.NS",
     "LARSEN.NS", "TATAMOTORS.NS", "AXISBANK.NS", "KOTAKBANK.NS", "M&M.NS",
@@ -23,6 +25,8 @@ TICKERS = [
     "BPCL.NS", "TATACONSUM.NS", "BRITANNIA.NS", "APOLLOHOSP.NS", "INDUSINDBK.NS",
     "DIVISLAB.NS", "HINDALCO.NS", "SHRIRAMFIN.NS", "BEL.NS", "TRENT.NS"
 ]
+
+ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 def get_google_sheet():
     """Authenticates with GCP Credentials and opens the Google Sheet."""
@@ -43,31 +47,106 @@ def get_google_sheet():
     sheet = client.open_by_key(sheet_id).sheet1
     return sheet
 
+def process_symbol_data(df, symbol, now_ist):
+    """Processes DataFrame for a single symbol and returns formatted row."""
+    if len(df) < 25:
+        return None
+
+    # 1. Volume Metrics
+    df['Vol_SMA20'] = df['Volume'].rolling(20).mean()
+    vol_latest = df['Volume'].iloc[-1]
+    vol_sma = df['Vol_SMA20'].iloc[-1]
+    
+    is_vol_spike = vol_latest > (1.5 * vol_sma)
+    is_vol_dryup = vol_latest < (0.6 * vol_sma)
+
+    vol_status = "SPIKE ⚡" if is_vol_spike else ("DRY-UP 💧" if is_vol_dryup else "NORMAL")
+
+    # 2. VCP Contraction Check
+    r20 = (df['High'].tail(20).max() - df['Low'].tail(20).min()) / df['Close'].iloc[-1]
+    r10 = (df['High'].tail(10).max() - df['Low'].tail(10).min()) / df['Close'].iloc[-1]
+    r5  = (df['High'].tail(5).max()  - df['Low'].tail(5).min())  / df['Close'].iloc[-1]
+
+    is_vcp = (r20 > r10) and (r10 > r5)
+    vcp_str = "YES 🔥" if is_vcp else "NO"
+
+    # 3. Price & Breakout Checks
+    close_price = float(df['Close'].iloc[-1])
+    prev_close  = float(df['Close'].iloc[-2])
+    pct_change  = ((close_price - prev_close) / prev_close) * 100
+
+    res_20 = df['High'].tail(21).iloc[:-1].max()
+    sup_20 = df['Low'].tail(21).iloc[:-1].min()
+
+    is_res_break = close_price >= res_20
+    is_sup_break = close_price <= sup_20
+
+    # 4. CE/PE Option Buildup Mapping
+    if pct_change > 0 and is_vol_spike:
+        option_buildup = "CE LONG BUILDUP 🔥"
+    elif pct_change < 0 and is_vol_spike:
+        option_buildup = "PE LONG BUILDUP 📉"
+    elif pct_change > 0 and is_vol_dryup:
+        option_buildup = "CE SHORT COVERING ⚡"
+    elif pct_change < 0 and is_vol_dryup:
+        option_buildup = "PE UNWINDING 💧"
+    else:
+        option_buildup = "NEUTRAL ↔️"
+
+    # 5. Master Signal Logic
+    if symbol == INDEX_TICKER:
+        vcp_str = "N/A"
+        master_signal = "BULLISH TREND 📈" if pct_change > 0 else "BEARISH TREND 📉"
+        clean_symbol = "NIFTY 50 🎯"
+    else:
+        clean_symbol = symbol.replace(".NS", "")
+        if is_vcp and is_res_break and is_vol_spike:
+            master_signal = "ALPHA VCP CE B/O 🚀🔥"
+        elif is_vcp and is_sup_break and is_vol_spike:
+            master_signal = "ALPHA VCP PE B/O 📉💥"
+        elif is_vcp and is_vol_dryup:
+            master_signal = "VCP SQUEEZE (READY) 💥"
+        elif is_res_break and is_vol_spike:
+            master_signal = "CE BREAKOUT 🚀"
+        elif is_sup_break and is_vol_spike:
+            master_signal = "PE BREAKDOWN 📉"
+        else:
+            master_signal = "WATCHLIST 👁️"
+
+    return [
+        clean_symbol,
+        round(close_price, 2),
+        f"{round(pct_change, 2)}%",
+        vcp_str,
+        vol_status,
+        option_buildup,
+        master_signal,
+        now_ist
+    ]
+
 # ==========================================
-# 2. MAIN FAST EXECUTION ENGINE
+# 2. MAIN EXECUTION
 # ==========================================
 def main():
-    print("🚀 Starting Superfast Pure OI-VCP Engine...")
+    print("🚀 Starting Fast Scanner with NIFTY 50 Top Row Fix...")
 
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
-    print(f"🕒 Timestamp: {now_ist}")
 
-    # Ultra-Fast Parallel Download
-    print("📥 Batch Downloading F&O Market Data...")
+    # Fast Batch Download
     df_raw = yf.download(
-        tickers=TICKERS,
+        tickers=ALL_TICKERS,
         period="60d",
         interval="1d",
         threads=True,
         progress=False
     )
 
-    output_rows = []
+    nifty_row = None
+    stock_rows = []
 
-    for symbol in TICKERS:
+    for symbol in ALL_TICKERS:
         try:
-            # Multi-index Extraction Safeguard
             if isinstance(df_raw.columns, pd.MultiIndex):
                 df = pd.DataFrame({
                     'Open': df_raw['Open'][symbol],
@@ -79,112 +158,40 @@ def main():
             else:
                 df = df_raw.dropna()
 
-            if len(df) < 25:
+            row = process_symbol_data(df, symbol, now_ist)
+            if not row:
                 continue
 
-            # --- CALCULATIONS ---
-            # 1. Volume Metrics
-            df['Vol_SMA20'] = df['Volume'].rolling(20).mean()
-            vol_latest = df['Volume'].iloc[-1]
-            vol_sma = df['Vol_SMA20'].iloc[-1]
-            
-            is_vol_spike = vol_latest > (1.5 * vol_sma)
-            is_vol_dryup = vol_latest < (0.6 * vol_sma)
-
-            if is_vol_spike:
-                vol_status = "SPIKE ⚡"
-            elif is_vol_dryup:
-                vol_status = "DRY-UP 💧"
+            if symbol == INDEX_TICKER:
+                nifty_row = row
             else:
-                vol_status = "NORMAL"
-
-            # 2. Pure VCP Range Shrinkage Engine (20 -> 10 -> 5)
-            r20 = (df['High'].tail(20).max() - df['Low'].tail(20).min()) / df['Close'].iloc[-1]
-            r10 = (df['High'].tail(10).max() - df['Low'].tail(10).min()) / df['Close'].iloc[-1]
-            r5  = (df['High'].tail(5).max()  - df['Low'].tail(5).min())  / df['Close'].iloc[-1]
-
-            is_vcp = (r20 > r10) and (r10 > r5)
-            vcp_str = "YES 🔥" if is_vcp else "NO"
-
-            # 3. Price & Breakout Checks
-            close_price = float(df['Close'].iloc[-1])
-            prev_close  = float(df['Close'].iloc[-2])
-            pct_change  = ((close_price - prev_close) / prev_close) * 100
-
-            res_20 = df['High'].tail(21).iloc[:-1].max()
-            sup_20 = df['Low'].tail(21).iloc[:-1].min()
-
-            is_res_break = close_price >= res_20
-            is_sup_break = close_price <= sup_20
-
-            # 4. CE / PE Option Buildup Mapping
-            if pct_change > 0 and is_vol_spike:
-                option_buildup = "CE LONG BUILDUP 🔥"
-            elif pct_change < 0 and is_vol_spike:
-                option_buildup = "PE LONG BUILDUP 📉"
-            elif pct_change > 0 and is_vol_dryup:
-                option_buildup = "CE SHORT COVERING ⚡"
-            elif pct_change < 0 and is_vol_dryup:
-                option_buildup = "PE UNWINDING 💧"
-            else:
-                option_buildup = "NEUTRAL ↔️"
-
-            # 5. Master Signal Priority Engine
-            if is_vcp and is_res_break and is_vol_spike:
-                master_signal = "ALPHA VCP CE B/O 🚀🔥"
-            elif is_vcp and is_sup_break and is_vol_spike:
-                master_signal = "ALPHA VCP PE B/O 📉💥"
-            elif is_vcp and is_vol_dryup:
-                master_signal = "VCP SQUEEZE (READY) 💥"
-            elif is_res_break and is_vol_spike:
-                master_signal = "CE BREAKOUT 🚀"
-            elif is_sup_break and is_vol_spike:
-                master_signal = "PE BREAKDOWN 📉"
-            else:
-                master_signal = "WATCHLIST 👁️"
-
-            clean_symbol = symbol.replace(".NS", "")
-
-            output_rows.append([
-                clean_symbol,
-                round(close_price, 2),
-                f"{round(pct_change, 2)}%",
-                vcp_str,
-                vol_status,
-                option_buildup,
-                master_signal,
-                now_ist
-            ])
+                stock_rows.append(row)
 
         except Exception as e:
             continue
 
-    if not output_rows:
-        print("❌ No data rows generated.")
-        return
+    # Priority Sort Stocks (Alpha Signals First)
+    stock_rows.sort(key=lambda x: ("ALPHA" in x[6] or "B/O" in x[6], float(x[2].replace('%', ''))), reverse=True)
 
-    # Priority Sorting: Alpha Signals First
-    output_rows.sort(key=lambda x: ("ALPHA" in x[6] or "B/O" in x[6], float(x[2].replace('%', ''))), reverse=True)
-
-    # ==========================================
-    # 3. CLEAN BULK SHEET UPDATE
-    # ==========================================
-    print("📊 Updating Google Sheet in Single Cell Matrix...")
-    sheet = get_google_sheet()
-
+    # Headers definition
     headers = [
         "Stock Symbol", "LTP", "% Change", 
         "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
         "Master OI-VCP Signal", "Last Updated"
     ]
 
-    # Clean Entire Matrix Construction
-    full_data_matrix = [headers] + output_rows
+    # Combine: Headers -> NIFTY 50 (Row 1) -> All Stocks (Row 2 onwards)
+    final_matrix = [headers]
+    if nifty_row:
+        final_matrix.append(nifty_row)
+    final_matrix.extend(stock_rows)
 
+    # Bulk Update Sheet
+    sheet = get_google_sheet()
     sheet.clear()
-    sheet.update('A1', full_data_matrix)
+    sheet.update('A1', final_matrix)
 
-    print("🎉 Done! Sheet Updated in Seconds with Clean Layout! 🔥🚀")
+    print("🎉 Done! NIFTY 50 is at the top with Headers in proper columns! 🔥🚀")
 
 if __name__ == "__main__":
     main()
