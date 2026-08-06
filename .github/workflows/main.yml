@@ -25,7 +25,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
       - name: Install Dependencies
         run: |
@@ -57,3 +56,13 @@ jobs:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
+
+      # --- 🧹 AUTO DELETE OLD WORKFLOW RUNS STEP ---
+      - name: Delete Old Workflow Runs
+        uses: Mattraks/delete-workflow-runs@v2
+        if: always() # अगर स्कैनर फ़ेल भी हो, तब भी सफाई ज़रूर होगी
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0 # 0 दिन पुराने सारे पिछले runs डिलीट हो जाएँगे
+          keep_minimum_runs: 2 # सिर्फ हालिया 2 ताज़ा runs रिकॉर्ड के लिए बचेंगे
