@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      contents: read
     steps:
-      - name: Delete old workflow runs
-        uses: Mattraks/delete-old-actions@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          days-ago: 30
-          keep-latest: 10
+      - name: Delete old runs using GitHub CLI
+        run: |
+          gh run list --limit 100 --json databaseId,createdAt \
+            --jq '.[] | select(.createdAt < "'$(date -d '30 days ago' -Iseconds)'") | .databaseId' \
+            | xargs -I {} gh run delete {}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
