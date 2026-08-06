@@ -1,43 +1,24 @@
 name: AI-Bro-Scanner-10min
-
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
-# --- Cleanup Logic: Purane runs cancel ho jayenge agar naya run aaye ---
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build:
+  cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-
+    permissions:
+      actions: write
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-          
-      - name: Install dependencies
+      - name: Delete old workflow runs
         run: |
-          pip install yfinance gspread google-auth pandas numpy pytz requests
-      
-      - name: Run scanner
+          # Install GitHub CLI
+          gh --version || (sudo apt update && sudo apt install gh)
+          
+          # Delete runs older than 30 days, keep latest 10
+          gh run list --limit 100 --json databaseId,createdAt \
+            --jq '.[] | select(.createdAt < "'$(date -d '30 days ago' -Iseconds)'") | .databaseId' \
+            | xargs -I {} gh run delete {}
         env:
-          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: python update_sheet.py
-      
-      # --- Cleanup Step: 30 din se purani runs delete karein (optional) ---
-      - name: Cleanup old runs
-        if: github.event_name == 'workflow_dispatch'
-        uses: yanovation/delete-old-actions@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          days-ago: 30
-          keep-latest: 10
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
