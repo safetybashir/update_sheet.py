@@ -1,4 +1,4 @@
-name: Cleanup Old Workflow Runs
+name: Cleanup Old Runs
 
 on:
   schedule:
@@ -6,14 +6,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  delete-old-runs:
+  cleanup:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      contents: read
     steps:
-      - name: Delete old workflow runs
-        uses: yanovation/delete-old-actions@v1
+      - name: Delete old runs (keep last 10)
+        uses: actions/delete-old-actions@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           days-ago: 30
