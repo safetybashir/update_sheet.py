@@ -7,7 +7,7 @@ on:
     - cron: '*/10 3-10 * * 1-5'
   workflow_dispatch:
 
-# Cancel previous running instances if a new trigger arrives
+# Purane running instances ko cancel kar dega agar naya trigger aaye
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - name: Checkout Code
@@ -51,18 +51,19 @@ jobs:
           print(f'✅ Market is open. Current IST Time: {now.strftime(\"%H:%M\")}. Proceeding...')
           "
 
-      - name: Run OI-VCP Stock Scanner
+      - name: Run Pure OI-VCP Scanner
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
 
-      # --- 🧹 AUTO DELETE OLD WORKFLOW RUNS STEP ---
+      # --- 🧹 FAST AUTO DELETE OLD RUNS ---
       - name: Delete Old Workflow Runs
         uses: Mattraks/delete-workflow-runs@v2
-        if: always() # अगर स्कैनर फ़ेल भी हो, तब भी सफाई ज़रूर होगी
+        if: always()
+        continue-on-error: true
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
-          retain_days: 0 # 0 दिन पुराने सारे पिछले runs डिलीट हो जाएँगे
-          keep_minimum_runs: 2 # सिर्फ हालिया 2 ताज़ा runs रिकॉर्ड के लिए बचेंगे
+          retain_days: 0
+          keep_minimum_runs: 2
