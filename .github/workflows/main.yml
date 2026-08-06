@@ -1,8 +1,8 @@
-name: Cleanup Old Runs
+name: Monthly Cleanup
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 1 * *'   # Har mahine 1 tarikh ko
   workflow_dispatch:
 
 jobs:
@@ -11,16 +11,8 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Delete old runs (keep latest 10)
+      - name: Delete all but latest 10 runs
         run: |
-          # Get all run IDs except latest 10
-          RUN_IDS=$(gh run list --limit 100 --json databaseId --jq '.[].databaseId' | tail -n +11)
-          
-          if [ -n "$RUN_IDS" ]; then
-            echo "$RUN_IDS" | xargs -I {} gh run delete {}
-            echo "✅ Deleted old runs"
-          else
-            echo "ℹ️ No old runs to delete (less than 10 runs total)"
-          fi
+          gh run list --limit 100 --json databaseId --jq '.[].databaseId' | tail -n +11 | xargs -I {} gh run delete {}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
