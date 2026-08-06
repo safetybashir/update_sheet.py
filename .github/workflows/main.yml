@@ -1,18 +1,34 @@
-name: Monthly Cleanup
+name: AI-Bro-Scanner-10min
 
 on:
   schedule:
-    - cron: '0 0 1 * *'   # Har mahine 1 tarikh ko
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
+# --- Purana run cancel ho jayega agar naya run aaye ---
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  cleanup:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
+    timeout-minutes: 8
+
     steps:
-      - name: Delete all but latest 10 runs
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          
+      - name: Install dependencies
         run: |
-          gh run list --limit 100 --json databaseId --jq '.[].databaseId' | tail -n +11 | xargs -I {} gh run delete {}
+          pip install yfinance gspread google-auth pandas numpy pytz requests
+      
+      - name: Run scanner
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python update_sheet.py
