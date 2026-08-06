@@ -5,7 +5,7 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
-# System ko saaf rakhne ke liye: Agar naya run aaye toh purane phanse hue run ko khud cancel kar de
+# --- Cleanup Logic: Purane runs cancel ho jayenge agar naya run aaye ---
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 8   # <--- 8 minute ka hard timeout taaki 10 min ke loop se pehle safe exit ho jaye
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v3
@@ -25,10 +25,19 @@ jobs:
           
       - name: Install dependencies
         run: |
-          pip install yfinance gspread google-auth pandas numpy pytz
+          pip install yfinance gspread google-auth pandas numpy pytz requests
       
       - name: Run scanner
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
+      
+      # --- Cleanup Step: 30 din se purani runs delete karein (optional) ---
+      - name: Cleanup old runs
+        if: github.event_name == 'workflow_dispatch'
+        uses: yanovation/delete-old-actions@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          days-ago: 30
+          keep-latest: 10
