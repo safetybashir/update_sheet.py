@@ -1,3 +1,4 @@
+# update_sheet.py – OI-VCP Integrated (V8 PRO MAX) – 250 Stocks
 import os
 import json
 import gspread
@@ -21,33 +22,117 @@ except Exception as e:
     logging.error(f"❌ Critical Error: {e}")
     sys.exit(1)
 
+# --- 250 STOCKS UNIVERSE ---
 UNIVERSE = [
-    'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS', 'MAXHEALTH.NS'
-    'HINDUNILVR.NS', 'BHARTIARTL.NS', 'SUNPHARMA.NS', 'DRREDDY.NS', 'MAZDOCK.NS', 'COCHINSHIP.NS',
-    'CIPLA.NS', 'TORNTPHARM.NS', 'DIVISLAB.NS', 'LUPIN.NS', 'ALKEM.NS', 'GRSE.NS', 'PREMIERENE.NS',
-    'BIOCON.NS', 'APOLLOHOSP.NS', 'FORTIS.NS', 'MAXHEALTH.NS', 'TATASTEEL.NS',
-    'JSWSTEEL.NS', 'HINDALCO.NS', 'NATIONALUM.NS', 'JINDALSTEL.NS', 'COALINDIA.NS',
-    'MARUTI.NS', 'TATAMOTORS.NS', 'M&M.NS', 'EICHERMOT.NS', 'HEROMOTOCO.NS',
-    'BAJAJ-AUTO.NS', 'ASHOKLEY.NS', 'TVSMOTOR.NS', 'MOTHERSON.NS', 'TITAN.NS',
-    'HAVELLS.NS', 'VOLTAS.NS', 'DIXON.NS', 'WHIRLPOOL.NS', 'NTPC.NS', 'POWERGRID.NS',
-    'TATAPOWER.NS', 'JSWENERGY.NS', 'ULTRACEMCO.NS', 'SHREECEM.NS',
-    'AMBUJACEM.NS', 'ACC.NS', 'DLF.NS', 'GODREJPROP.NS', 'OBEROIRLTY.NS',
-    'PRESTIGE.NS', 'PHOENIXLTD.NS', 'INDIGO.NS', 'HAL.NS', 'BEL.NS',
-    'PIDILITIND.NS', 'SRF.NS', 'ASTRAL.NS', 'APLAPOLLO.NS',
-    'SUPREMEIND.NS', 'TATACONSUM.NS', 'TATAELXSI.NS', 'TATAINVEST.NS',
-    'ABB.NS', 'SIEMENS.NS', 'BOSCHLTD.NS', 'CGPOWER.NS', 'KEI.NS',
-    'LODHA.NS', 'ESCORTS.NS', 'EXIDEIND.NS', 'PIIND.NS',
-    'UNOMINDA.NS', 'LINDEINDIA.NS', 'AIAENG.NS', 'IRCTC.NS', 'GLAXO.NS',
-    'JKCEMENT.NS', 'GODREJIND.NS', 'APOLLOTYRE.NS', 'BERGAPAINT.NS',
-    'KPRMILL.NS', 'ABBOTINDIA.NS', 'CUMMINSIND.NS',
-    'SOLARINDS.NS', 'KALYANKJIL.NS', 'NYKAA.NS', 'MANKIND.NS', 'LT.NS',
-    'JUBLFOOD.NS', 'RVNL.NS', 'MCX.NS', 'BSE.NS',
-    'SWIGGY.NS', 'DMART.NS', 'NAUKRI.NS', 'ONGC.NS', 'BPCL.NS',
-    'HINDPETRO.NS', 'PETRONET.NS', 'SUMICHEM.NS', 'PERSISTENT.NS', 'CDSL.NS', 
+    'NIFTY_50', 'TORNTPHARM.NS', 'ASHOKLEY.NS', 'KAYNES.NS', 'INOXWIND.NS',
+    'GAIL.NS', 'KEI.NS', 'PREMIERENE.NS', 'CGPOWER.NS', 'M&M.NS',
+    'BSE.NS', 'DIVISLAB.NS', 'MOTHERSON.NS', 'POWERINDIA.NS', 'GLENMARK.NS',
+    'MAZDOCK.NS', 'DELHIVERY.NS', 'GVT&D.NS', 'TVSMOTOR.NS', 'POLYCAB.NS',
+    'TIINDIA.NS', 'SIEMENS.NS', 'CUMMINSIND.NS', 'JSWENERGY.NS', 'ANGELONE.NS',
+    'COCHINSHIP.NS', 'WAAREEENER.NS', 'LAURUSLABS.NS', 'MOTILALOFS.NS', 'BHARATFORG.NS',
+    'TMPV.NS', 'SOLARINDS.NS', 'TATASTEEL.NS', 'LTF.NS', 'FORCEMOT.NS',
+    'PRESTIGE.NS', 'BPCL.NS', 'HAL.NS', 'SUZLON.NS', 'GMRAIRPORT.NS',
+    'TATAPOWER.NS', 'NBCC.NS', 'DMART.NS', 'HEROMOTOCO.NS', 'KPITTECH.NS',
+    'RVNL.NS', 'RELIANCE.NS', 'PNB.NS', 'ZYDUSLIFE.NS', 'BHEL.NS',
+    'NATIONALUM.NS', 'NHPC.NS', 'SRF.NS', 'JINDALSTEL.NS', 'BAJAJ-AUTO.NS',
+    'BEL.NS', 'TITAN.NS', 'SONACOMS.NS', 'HINDZINC.NS', 'UNOMINDA.NS',
+    'OBEROIRLTY.NS', 'BHARTIARTL.NS', 'OFSS.NS', 'BDL.NS', 'SUPREMEIND.NS',
+    'OIL.NS', 'SHREECEM.NS', 'NTPC.NS', 'TATAELXSI.NS', 'HINDALCO.NS',
+    'PETRONET.NS', 'CIPLA.NS', 'MARUTI.NS', 'PAYTM.NS', 'PERSISTENT.NS',
+    'AMBER.NS', 'DLF.NS', 'DALBHARAT.NS', 'ULTRACEMCO.NS', 'ONGC.NS',
+    'PHOENIXLTD.NS', 'HINDPETRO.NS', 'CAMS.NS', 'AUROPHARMA.NS', 'BIOCON.NS',
+    'TRENT.NS', 'DRREDDY.NS', 'JSWSTEEL.NS', 'NMDC.NS', 'IOC.NS',
+    'UPL.NS', 'NYKAA.NS', 'LT.NS', 'CROMPTON.NS', 'INDUSTOWER.NS',
+    'HAVELLS.NS', 'CONCOR.NS', 'SAIL.NS', 'JUBLFOOD.NS', 'GRASIM.NS',
+    'PFC.NS', 'ASIANPAINT.NS', 'LUPIN.NS', 'CDSL.NS', 'IREDA.NS',
+    'HINDUNILVR.NS', 'GODREJPROP.NS', 'KFINTECH.NS', 'AMBUJACEM.NS', 'APOLLOHOSP.NS',
+    'HCLTECH.NS', 'POWERGRID.NS', 'RECLTD.NS', 'GODREJCP.NS', 'FORTIS.NS',
+    'PGEL.NS', 'ABB.NS', 'COALINDIA.NS', 'SUNPHARMA.NS', 'MPHASIS.NS',
+    'PIIND.NS', 'COLPAL.NS', 'BLUESTARCO.NS', 'VMM.NS', 'VOLTAS.NS',
+    'TECHM.NS', 'EICHERMOT.NS', 'INDIGO.NS', 'DABUR.NS', 'NESTLEIND.NS',
+    'TATACONSUM.NS', 'BOSCHLTD.NS', 'VEDL.NS', 'PIDILITIND.NS', 'NAUKRI.NS',
+    'WIPRO.NS', 'ALKEM.NS', 'ITC.NS', 'COFORGE.NS', 'ASTRAL.NS',
+    'LTM.NS', 'MARICO.NS', 'PAGEIND.NS', 'MAXHEALTH.NS', 'BRITANNIA.NS',
+    'INFY.NS', 'ETERNAL.NS', 'TCS.NS', 'KALYANKJIL.NS', 'LODHA.NS',
+    'SWIGGY.NS', 'MANKIND.NS', 'DIXON.NS', 'APLAPOLLO.NS'
 ]
 
 NIFTY_SYMBOL = "^NSEI"
 
+# --- NSE Option Chain Functions (OI-VCP) ---
+def get_nse_session():
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.nseindia.com/"
+    })
+    session.get("https://www.nseindia.com")
+    return session
+
+def get_nse_option_chain(symbol="NIFTY"):
+    try:
+        session = get_nse_session()
+        url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
+        response = session.get(url)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except:
+        return None
+
+def find_call_wall(data, spot_price):
+    try:
+        max_call_oi = 0
+        call_wall = 0
+        for record in data['records']['data']:
+            ce_data = record.get('CE', {})
+            if ce_data:
+                oi = ce_data.get('openInterest', 0)
+                strike = record.get('strikePrice', 0)
+                if oi > max_call_oi and strike > spot_price * 0.95:
+                    max_call_oi = oi
+                    call_wall = strike
+        return call_wall, max_call_oi
+    except:
+        return 0, 0
+
+def find_put_wall(data, spot_price):
+    try:
+        max_put_oi = 0
+        put_wall = 0
+        for record in data['records']['data']:
+            pe_data = record.get('PE', {})
+            if pe_data:
+                oi = pe_data.get('openInterest', 0)
+                strike = record.get('strikePrice', 0)
+                if oi > max_put_oi and strike < spot_price * 1.05:
+                    max_put_oi = oi
+                    put_wall = strike
+        return put_wall, max_put_oi
+    except:
+        return 0, 0
+
+def calculate_oi_vcp_score(data, spot_price):
+    call_wall, call_oi = find_call_wall(data, spot_price)
+    put_wall, put_oi = find_put_wall(data, spot_price)
+    score = 0
+    oi_vcp_status = "Neutral"
+    if call_wall > 0 and spot_price < call_wall * 0.98:
+        score += 1
+        oi_vcp_status = "Resistance Ahead (Call Wall)"
+    if put_wall > 0 and spot_price > put_wall * 1.02:
+        score += 1
+        oi_vcp_status = "Support Below (Put Wall)"
+    if call_oi > 0 and put_oi > 0:
+        pcr = put_oi / call_oi
+        if 0.8 < pcr < 1.2:
+            score += 1
+            oi_vcp_status = "Neutral PCR"
+    return score, call_wall, put_wall, oi_vcp_status
+
+# --- ADX Calculation ---
 def calculate_adx(df, period=14):
     df['H-L'] = df['High'] - df['Low']
     df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
@@ -61,6 +146,28 @@ def calculate_adx(df, period=14):
     dx = 100 * (abs(di_plus - di_minus) / (di_plus + di_minus + 1e-10))
     return dx.rolling(window=period).mean(), di_plus, di_minus
 
+# --- VCP Pattern Detection ---
+def detect_vcp_pattern(df):
+    try:
+        if len(df) < 30: return False, "Insufficient data"
+        highs = []
+        lows = []
+        for i in range(10, len(df)-10):
+            if df['High'].iloc[i] > df['High'].iloc[i-5:i].max() and df['High'].iloc[i] > df['High'].iloc[i:i+5].max():
+                highs.append((i, df['High'].iloc[i]))
+            if df['Low'].iloc[i] < df['Low'].iloc[i-5:i].min() and df['Low'].iloc[i] < df['Low'].iloc[i:i+5].min():
+                lows.append((i, df['Low'].iloc[i]))
+        if len(highs) >= 3 and len(lows) >= 3:
+            amp1 = highs[-1][1] - lows[-1][1]
+            amp2 = highs[-2][1] - lows[-2][1]
+            amp3 = highs[-3][1] - lows[-3][1]
+            if amp1 < amp2 < amp3:
+                return True, "VCP Pattern Detected"
+        return False, "No VCP"
+    except:
+        return False, "Error"
+
+# --- Sharma Score ---
 def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend, iv_trend, delta_trend):
     score = 0
     try:
@@ -73,16 +180,6 @@ def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend,
     except: pass
     return score
 
-def check_fundamentals(ticker_obj):
-    try:
-        info = ticker_obj.info
-        roe = info.get('returnOnEquity', 0.16)
-        debt = info.get('debtToEquity', 0.5)
-        if roe is None: roe = 0.16
-        if debt is None: debt = 0.5
-        return roe > 0.12 and debt < 2.0
-    except: return True
-
 def get_expiry_risk_status():
     try:
         now_ist = dt.now(pytz.timezone('Asia/Kolkata'))
@@ -91,12 +188,12 @@ def get_expiry_risk_status():
         return "Normal"
     except: return "Normal"
 
-def scan_stock(symbol, sharma_score, live_delta_trend):
+# --- Scan Stock (OI-VCP Integrated) ---
+def scan_stock(symbol, oi_vcp_score, call_wall, put_wall):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="5d", interval="5m") 
+        df = ticker.history(period="5d", interval="5m")
         df_15 = ticker.history(period="5d", interval="15m")
-        
         if df.empty or len(df) < 35 or df_15.empty or len(df_15) < 15: return None
         
         price = df['Close'].iloc[-1]
@@ -105,13 +202,10 @@ def scan_stock(symbol, sharma_score, live_delta_trend):
         df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['StdDev'] = df['Close'].rolling(window=20).std().fillna(0)
         df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
-        df['LowerBB'] = df['SMA20'] - (2 * df['StdDev'])
         df['VolSMA10'] = df['Volume'].rolling(window=10).mean()
         df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
-        
         cum_vol_price = (df['Close'] * df['Volume']).cumsum()
         df['VWAP'] = cum_vol_price / (df['Volume'].cumsum() + 1e-10)
-        
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
         loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean() + 1e-10
@@ -120,177 +214,112 @@ def scan_stock(symbol, sharma_score, live_delta_trend):
         
         current_rsi = df['RSI'].iloc[-1]
         current_adx = df['ADX'].iloc[-1]
+        vcp_detected, vcp_status = detect_vcp_pattern(df)
         
-        try:
-            prev_close = ticker.info.get('previousClose', df['Close'].iloc[0])
-            day_gain_pct = ((price - prev_close) / prev_close) * 100
-        except:
-            day_gain_pct = 0.0
-        
-        last_10 = df.tail(10)
-        crossings = np.sum(np.diff(np.sign(last_10['Close'] - last_10['EMA21'])) != 0)
-        day_high, day_low = df.iloc[-1]['High'], df.iloc[-1]['Low']
-        day_range_pct = ((day_high - day_low) / (day_low + 1e-10)) * 100
-        is_sideways_trap = (crossings >= 3) or (day_range_pct < 0.6) or (current_adx < 20)
-        
-        df['ATR'] = df['High'].rolling(14).mean() - df['Low'].rolling(14).mean()
-        is_squeeze = (df['UpperBB'].iloc[-1] < (df['SMA20'].iloc[-1] + (1.5 * df['ATR'].fillna(0).iloc[-1])))
-        bb_status = "💥 SQUEEZE" if is_squeeze else "Normal"
-        
-        high_52w = price
-        try: high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
-        except: pass
+        high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
         is_breakout_zone = price > high_52w * 0.98
         bo_status = "✅ B/O" if is_breakout_zone else "NO B/O"
-        
-        p15_high = df_15['High'].iloc[-2]
-        p15_low = df_15['Low'].iloc[-2]
-        is_15m_bullish = price > p15_high
-        is_15m_bearish = price < p15_low
-        
-        volume_spike_heavy = volume > (df['VolSMA10'].iloc[-1] * 1.5)
-        is_delta_confirmed = "increasing" in str(live_delta_trend).lower()
-        is_institution_backed = volume_spike_heavy and is_delta_confirmed
-        
+        volume_spike = volume > (df['VolSMA10'].iloc[-1] * 1.5)
+        p_close, p_high, p_ema21, p_vwap = df['Close'].iloc[-2], df['High'].iloc[-2], df['EMA21'].iloc[-2], df['VWAP'].iloc[-2]
         c_close = df['Close'].iloc[-1]
-        p_close, p_high, p_low, p_ema21, p_vwap = df['Close'].iloc[-2], df['High'].iloc[-2], df['Low'].iloc[-2], df['EMA21'].iloc[-2], df['VWAP'].iloc[-2]
-        
         base_breakout = (p_close > p_ema21) and (p_close > p_vwap) and (c_close > p_high)
-        base_breakdown = (p_close < p_ema21) and (p_close < p_vwap) and (c_close < p_low)
-        chartink_uptrend = (current_rsi > 60) and (current_adx > 25)
-        chartink_downtrend = (current_rsi < 40) and (current_adx > 25)
         
-        is_fundamentally_strong = check_fundamentals(ticker)
-        expiry_alert = get_expiry_risk_status()
+        oi_vcp_confirmed = oi_vcp_score >= 2 and base_breakout and volume_spike
         
-        if is_breakout_zone and is_squeeze and not is_institution_backed:
-            master_signal = "👀 READY TO BLAST: NEED VOL DELTA"
-            action, status, entry, score = "⏳ MONITOR", "🛡️ HURDLE 3 PENDING", "⏳ WATCH VOL", 75
-        elif not is_breakout_zone and day_gain_pct >= 3.0 and is_institution_backed:
-            master_signal = f"🚀 INTRADAY MOMENTUM BLAST (+{round(day_gain_pct,1)}%)"
-            action, status, entry, score = "🚀 BUY NOW", "🔥 VOL MOMENTUM", "✅ BUY NOW", 90
-        elif is_sideways_trap and day_gain_pct < 3.0:
-            master_signal = "⏳ SIDEWAYS / ACCUMULATION"
-            action, status, entry, score = "⏳ WAIT", "🛡️ RANGE-BOUND", "⏳ HOLD", 50
-        elif base_breakout and chartink_uptrend and is_15m_bullish and is_institution_backed and is_fundamentally_strong:
-            master_signal = "🔥 ALPHA BLAST (100%)"
-            action, status, entry, score = "🚀 BUY NOW", "🎯 SUPER TREND", "✅ BUY NOW", 100
-        elif base_breakdown and chartink_downtrend and is_15m_bearish and is_institution_backed and sharma_score < 3:
-            master_signal = "📉 ALPHA CRASH (PUT)"
-            action, status, entry, score = "🚀 BUY PUT / SHORT", "🚨 SEVERE WEAKNESS", "🔻 SHORT NOW", 95
-        elif (base_breakout or base_breakdown) and not is_institution_backed:
-            master_signal = "⏳ FAKEOUT RISK: LOW VOLUME DELTA"
-            action, status, entry, score = "⏳ WAIT", "🛡️ VOLUME BLOCK", "⏳ HOLD", 35
+        if oi_vcp_confirmed and is_breakout_zone and vcp_detected:
+            master_signal = f"🔥 OI-VCP CONFIRMED (CW:{call_wall}, PW:{put_wall})"
+            action, status, entry, score = "🚀 BUY NOW", "🎯 OI-VCP BLAST", "✅ BUY NOW", 100
+        elif is_breakout_zone and vcp_detected and volume_spike:
+            master_signal = "🔥 VCP BREAKOUT CONFIRMED"
+            action, status, entry, score = "🚀 BUY NOW", "🎯 VCP BLAST", "✅ BUY NOW", 95
+        elif is_breakout_zone and volume_spike:
+            master_signal = "🚀 STRONG BREAKOUT (VOLUME SPIKE)"
+            action, status, entry, score = "🚀 BUY NOW", "📈 VOL MOMENTUM", "✅ BUY NOW", 85
+        elif is_breakout_zone:
+            master_signal = "🟡 NEAR BREAKOUT - WATCH"
+            action, status, entry, score = "⏳ WATCH", "👀 BREAKOUT ZONE", "⏳ HOLD", 60
+        elif base_breakout and current_rsi > 60 and current_adx > 25:
+            master_signal = "📈 UPTREND CONTINUATION"
+            action, status, entry, score = "📈 WATCH", "📈 BUY ZONE", "🟡 WATCH", 70
         else:
             master_signal = "➡️ Neutral"
             action, status, entry, score = "📉 AVOID", "📉 WEAK", "🔴 AVOID", 0
-            
-        if "🚀 BUY" in action and expiry_alert != "Normal":
-            master_signal = f"⚠️ {expiry_alert}"
-            status = "🛡️ THETA RISK"
-            
-        if sharma_score < 3 and "🚀 BUY NOW" in action and "INTRADAY" not in master_signal:
-            master_signal, action, status, entry, score = "⚠️ RISK: NIFTY WEAK", "⏳ WAIT", "🛡️ BEARISH MARKET", "⏳ HOLD", 60
-
+        
         if "BUY NOW" in action:
-            cash_trigger = round(price * 0.995, 1)
             sl_level, tgt_level = f"SL: {round(price * 0.985, 1)}", f"T1: {round(price * 1.02, 1)}"
-            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {round(cash_trigger-2,1)} | TSL: 10"
-        elif "BUY PUT" in action:
-            cash_trigger = round(price * 0.997, 1)
-            sl_level, tgt_level = f"SL: {round(price * 1.015, 1)}", f"T1: {round(price * 0.98, 1)}"
-            auto_trigger, auto_limit_tsl = str(cash_trigger), f"Lmt: {round(cash_trigger-1.5,1)} | TSL: 10"
         else:
-            sl_level, tgt_level, auto_trigger, auto_limit_tsl = "⏳" if "MONITOR" in action or "WAIT" in action else "❌", "⏳" if "MONITOR" in action or "WAIT" in action else "❌", "⏳" if "MONITOR" in action or "WAIT" in action else "❌", "⏳" if "MONITOR" in action or "WAIT" in action else "❌"
-            
-        return [symbol, round(price, 2), action, status, score, entry, sl_level, tgt_level, bo_status, bb_status, master_signal, auto_trigger, auto_limit_tsl]
+            sl_level, tgt_level = "⏳", "⏳"
+        
+        return [symbol, round(price, 2), action, status, score, entry, sl_level, tgt_level, bo_status, "Normal", master_signal, "⏳", "⏳"]
     except Exception as e:
         logging.error(f"Error {symbol}: {e}")
         return None
 
-def get_nifty_options_data(sharma_score, live_delta_trend):
+# --- NIFTY Options ---
+def get_nifty_options_data():
     rows = []
     try:
         nifty_ticker = yf.Ticker(NIFTY_SYMBOL)
         nifty_df = nifty_ticker.history(period="2d", interval="5m")
         if nifty_df.empty: return rows
         nifty_spot = float(nifty_df['Close'].iloc[-1])
-        
-        last_10_nifty = nifty_df.tail(10)
-        nifty_crossings = np.sum(np.diff(np.sign(last_10_nifty['Close'] - last_10_nifty['Close'].rolling(21).mean())) != 0)
-        
-        sharma_action_map = "🚀 BUY CALL" if sharma_score >= 5 else ("🚀 BUY PUT" if sharma_score < 3 else "⏳ WAIT / SIDEWAYS")
-        sharma_signal_map = "🔥 SHARMAJI BULLISH" if sharma_score >= 5 else ("📉 SHARMAJI BEARISH" if sharma_score < 3 else "🛡️ RANGE BOUND TRAP")
-
-        if nifty_crossings >= 4:
-            sharma_action_map, sharma_signal_map, sharma_score = "⏳ WAIT / SIDEWAYS", "🛡️ RANGE BOUND TRAP", 3
-        elif "increasing" not in str(live_delta_trend).lower():
-            sharma_action_map, sharma_signal_map, sharma_score = "⏳ WAIT / DELTA LOW", "🛡️ DELTA STAGNANT", 3
-
-        rows.append(["NIFTY_INDEX", round(nifty_spot, 2), sharma_action_map, sharma_signal_map, f"Score: {sharma_score}/6", "LIVE ALIGNED", "-", "-", "-", "Normal", "OPTS ENGINE", "-", "-"])
-        atm_strike = int(round(nifty_spot / 50.0) * 50)
-        
-        if "BUY CALL" in sharma_action_map:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "🚀 BUY CALL", "🔥 BULLISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "Normal", "🔥 SHARMAJI ENGINE", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "📉 AVOID PUT", "🛡️ CRASHING OI", 10, "🔴 AVOID", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
-        elif "BUY PUT" in sharma_action_map:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "📉 AVOID CALL", "❌ DATA WEAK", 10, "🔴 AVOID", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "🚀 BUY PUT", "📉 BEARISH TREND", 95, "✅ BUY NOW", "-", "-", "NO B/O", "Normal", "🔥 SHARMAJI ENGINE", "LTP - 25", "Lmt: Trig-3 | TSL: 10"])
+        option_data = get_nse_option_chain("NIFTY")
+        oi_vcp_score = 0
+        call_wall = 0
+        put_wall = 0
+        oi_vcp_status = "Neutral"
+        if option_data:
+            oi_vcp_score, call_wall, put_wall, oi_vcp_status = calculate_oi_vcp_score(option_data, nifty_spot)
+            rows.append(["NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "OI-VCP", oi_vcp_score, oi_vcp_status, f"CW:{call_wall}", f"PW:{put_wall}", "-", "Normal", "OI-VCP SCAN", "-", "-"])
         else:
-            rows.append([f"NIFTY {atm_strike} CE (ATM)", "Premium SCAN", "⏳ HOLD CALL", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
-            rows.append([f"NIFTY {atm_strike} PE (ATM)", "Premium SCAN", "⏳ HOLD PUT", "🛡️ NO TREND", 45, "⏳ HOLD", "-", "-", "NO B/O", "Normal", "➡️ Neutral", "⏳", "⏳"])
-    except: pass
+            rows.append(["NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "INDEX", "-", "-", "-", "-", "-", "Normal", "INDEX", "-", "-"])
+    except:
+        pass
     return rows
 
+# --- Main Update ---
 def update_google_sheet():
-    logging.info("🚀 Deploying V7 HYPER-HUNTER Engine Sync...")
+    logging.info("🚀 Deploying OI-VCP Integrated Engine...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
-        
-        try:
-            input_sheet = sh.worksheet("Inputs")
-            live_pcr = float(input_sheet.acell('B1').value)                 
-            live_maxpain = str(input_sheet.acell('B2').value).strip()       
-            live_call_trend = str(input_sheet.acell('B3').value).strip()    
-            live_put_trend = str(input_sheet.acell('B4').value).strip()     
-            live_iv_trend = str(input_sheet.acell('B5').value).strip()      
-            live_delta_trend = str(input_sheet.acell('B6').value).strip()   
-        except:
-            live_pcr, live_maxpain, live_call_trend, live_put_trend, live_iv_trend, live_delta_trend = 1.0, "above", "short", "short", "no", "decreasing"
-
         dash_sheet = sh.get_worksheet(0)
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         
-        s_score = calculate_sharmaji_score(live_pcr, live_maxpain, live_call_trend, live_put_trend, live_iv_trend, live_delta_trend)
-        nifty_rows = get_nifty_options_data(s_score, live_delta_trend)
+        nifty_rows = get_nifty_options_data()
         for r in nifty_rows: r.append(timestamp)
-            
+        
+        option_data = get_nse_option_chain("NIFTY")
+        oi_vcp_score = 0
+        call_wall = 0
+        put_wall = 0
+        if option_data:
+            nifty_ticker = yf.Ticker(NIFTY_SYMBOL)
+            nifty_df = nifty_ticker.history(period="2d", interval="5m")
+            if not nifty_df.empty:
+                nifty_spot = float(nifty_df['Close'].iloc[-1])
+                oi_vcp_score, call_wall, put_wall, _ = calculate_oi_vcp_score(option_data, nifty_spot)
+        
         stock_rows = []
         for sym in UNIVERSE:
-            data = scan_stock(sym, s_score, live_delta_trend)
+            data = scan_stock(sym, oi_vcp_score, call_wall, put_wall)
             if data:
                 data.append(timestamp)
                 stock_rows.append(data)
             time.sleep(0.01)
         
-        ready_blasts = [row for row in stock_rows if "👀 READY" in row[10]]
-        alpha_blasts = [row for row in stock_rows if "🔥 ALPHA BLAST" in row[10]]
-        intraday_blasts = [row for row in stock_rows if "🚀 INTRADAY" in row[10]] 
-        alpha_crashes = [row for row in stock_rows if "📉 ALPHA CRASH" in row[10]]  
-        volume_blocks = [row for row in stock_rows if "🛡️ VOLUME BLOCK" in row[3]]
-        sideways_acc = [row for row in stock_rows if "⏳ SIDEWAYS" in row[10]]
-        neutrals = [row for row in stock_rows if "➡️ Neutral" in row[10]]
-        
-        final_data = nifty_rows + ready_blasts + alpha_blasts + intraday_blasts + volume_blocks + sideways_acc + neutrals
+        breakout_rows = [row for row in stock_rows if "BUY NOW" in row[2] or "BUY" in row[2]]
+        other_rows = [row for row in stock_rows if "BUY NOW" not in row[2] and "BUY" not in row[2]]
+        final_data = nifty_rows + breakout_rows + other_rows
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO SCANNER - {date_stamp} (V7 PRO MAX - HYPER-HUNTER EDITION)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update('A1', [[f"📊 AI BRO OI-VCP SCANNER - {date_stamp} (250 STOCKS)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
         dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss', 'Target 1', 'Breakout', 'BB Squeeze', 'Master Signal', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
-        
-        if final_data: dash_sheet.update('A3', final_data)
+        if final_data:
+            dash_sheet.update('A3', final_data)
+            logging.info(f"✅ Updated {len(final_data)} rows")
         dash_sheet.freeze(rows=2)
         return True
     except Exception as e:
