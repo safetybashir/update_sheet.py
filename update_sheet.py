@@ -1,4 +1,4 @@
-# update_sheet.py – OI-VCP Integrated (V8 PRO MAX) – 250 Stocks
+# update_sheet.py – OI-VCP Integrated (V8 PRO MAX OPTIMIZED) – 250 Stocks
 import os
 import json
 import gspread
@@ -12,6 +12,7 @@ import numpy as np
 import requests
 from datetime import datetime as dt
 from google.oauth2.service_account import Credentials
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,12 +20,12 @@ try:
     GCP_CREDENTIALS = json.loads(os.environ.get('GCP_CREDENTIALS_JSON', '{}'))
     SHEET_ID = os.environ.get('SHEET_ID', '1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg')
 except Exception as e:
-    logging.error(f"❌ Critical Error: {e}")
+    logging.error(f"❌ Critical Environment Error: {e}")
     sys.exit(1)
 
-# --- 250 STOCKS UNIVERSE ---
+# --- 250 STOCKS UNIVERSE (Cleaned Symbols) ---
 UNIVERSE = [
-    'NIFTY_50', 'TORNTPHARM.NS', 'ASHOKLEY.NS', 'KAYNES.NS', 'INOXWIND.NS',
+    'TORNTPHARM.NS', 'ASHOKLEY.NS', 'KAYNES.NS', 'INOXWIND.NS',
     'GAIL.NS', 'KEI.NS', 'PREMIERENE.NS', 'CGPOWER.NS', 'M&M.NS',
     'BSE.NS', 'DIVISLAB.NS', 'MOTHERSON.NS', 'POWERINDIA.NS', 'GLENMARK.NS',
     'MAZDOCK.NS', 'DELHIVERY.NS', 'GVT&D.NS', 'TVSMOTOR.NS', 'POLYCAB.NS',
@@ -59,34 +60,39 @@ UNIVERSE = [
 
 NIFTY_SYMBOL = "^NSEI"
 
-# --- NSE Option Chain Functions (OI-VCP) ---
+# --- Robust NSE Option Chain Fetcher ---
 def get_nse_session():
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.nseindia.com/"
-    })
-    session.get("https://www.nseindia.com")
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.nseindia.com/option-chain"
+    }
+    session.headers.update(headers)
+    try:
+        session.get("https://www.nseindia.com", timeout=5)
+    except Exception as e:
+        logging.warning(f"NSE Session Init Warning: {e}")
     return session
 
 def get_nse_option_chain(symbol="NIFTY"):
     try:
         session = get_nse_session()
         url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
-        response = session.get(url)
+        response = session.get(url, timeout=5)
         if response.status_code == 200:
             return response.json()
         return None
-    except:
+    except Exception as e:
+        logging.error(f"Error fetching NSE Option Chain: {e}")
         return None
 
 def find_call_wall(data, spot_price):
     try:
         max_call_oi = 0
         call_wall = 0
-        for record in data['records']['data']:
+        for record in data.get('records', {}).get('data', []):
             ce_data = record.get('CE', {})
             if ce_data:
                 oi = ce_data.get('openInterest', 0)
@@ -102,7 +108,7 @@ def find_put_wall(data, spot_price):
     try:
         max_put_oi = 0
         put_wall = 0
-        for record in data['records']['data']:
+        for record in data.get('records', {}).get('data', []):
             pe_data = record.get('PE', {})
             if pe_data:
                 oi = pe_data.get('openInterest', 0)
@@ -146,85 +152,69 @@ def calculate_adx(df, period=14):
     dx = 100 * (abs(di_plus - di_minus) / (di_plus + di_minus + 1e-10))
     return dx.rolling(window=period).mean(), di_plus, di_minus
 
-# --- VCP Pattern Detection ---
+# --- Refined VCP Pattern Detection ---
 def detect_vcp_pattern(df):
     try:
         if len(df) < 30: return False, "Insufficient data"
-        highs = []
-        lows = []
-        for i in range(10, len(df)-10):
-            if df['High'].iloc[i] > df['High'].iloc[i-5:i].max() and df['High'].iloc[i] > df['High'].iloc[i:i+5].max():
-                highs.append((i, df['High'].iloc[i]))
-            if df['Low'].iloc[i] < df['Low'].iloc[i-5:i].min() and df['Low'].iloc[i] < df['Low'].iloc[i:i+5].min():
-                lows.append((i, df['Low'].iloc[i]))
-        if len(highs) >= 3 and len(lows) >= 3:
-            amp1 = highs[-1][1] - lows[-1][1]
-            amp2 = highs[-2][1] - lows[-2][1]
-            amp3 = highs[-3][1] - lows[-3][1]
-            if amp1 < amp2 < amp3:
-                return True, "VCP Pattern Detected"
+        recent_df = df.tail(30)
+        highs = recent_df['High'].values
+        lows = recent_df['Low'].values
+        
+        # Checking range contraction over last 3 segments
+        range1 = np.max(highs[-30:-20]) - np.min(lows[-30:-20])
+        range2 = np.max(highs[-20:-10]) - np.min(lows[-20:-10])
+        range3 = np.max(highs[-10:]) - np.min(lows[-10:])
+        
+        if range3 < range2 < range1:
+            return True, "VCP Contraction Confirmed"
         return False, "No VCP"
     except:
         return False, "Error"
 
-# --- Sharma Score ---
-def calculate_sharmaji_score(pcr, nifty_vs_maxpain, call_oi_trend, put_oi_trend, iv_trend, delta_trend):
-    score = 0
-    try:
-        if float(pcr) > 1: score += 1
-        if str(nifty_vs_maxpain).lower() == "below": score += 1
-        if "long" in str(call_oi_trend).lower(): score += 1
-        if "covering" in str(put_oi_trend).lower(): score += 1
-        if str(iv_trend).lower() == "yes": score += 1
-        if str(delta_trend).lower() == "increasing": score += 1
-    except: pass
-    return score
-
-def get_expiry_risk_status():
-    try:
-        now_ist = dt.now(pytz.timezone('Asia/Kolkata'))
-        if now_ist.day >= 22:
-            return "⚠️ EXPIRE RISK: NEXT SERIES"
-        return "Normal"
-    except: return "Normal"
-
-# --- Scan Stock (OI-VCP Integrated) ---
+# --- Scan Stock Engine ---
 def scan_stock(symbol, oi_vcp_score, call_wall, put_wall):
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="5d", interval="5m")
-        df_15 = ticker.history(period="5d", interval="15m")
-        if df.empty or len(df) < 35 or df_15.empty or len(df_15) < 15: return None
+        if df.empty or len(df) < 35: return None
         
-        price = df['Close'].iloc[-1]
-        volume = df['Volume'].iloc[-1]
+        price = float(df['Close'].iloc[-1])
+        volume = float(df['Volume'].iloc[-1])
         
-        df['SMA20'] = df['Close'].rolling(window=20).mean()
-        df['StdDev'] = df['Close'].rolling(window=20).std().fillna(0)
-        df['UpperBB'] = df['SMA20'] + (2 * df['StdDev'])
         df['VolSMA10'] = df['Volume'].rolling(window=10).mean()
         df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
         cum_vol_price = (df['Close'] * df['Volume']).cumsum()
         df['VWAP'] = cum_vol_price / (df['Volume'].cumsum() + 1e-10)
+        
+        df['ADX'], _, _ = calculate_adx(df)
+        
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
         loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean() + 1e-10
         df['RSI'] = 100 - (100 / (1 + (gain / loss)))
-        df['ADX'], _, _ = calculate_adx(df)
         
         current_rsi = df['RSI'].iloc[-1]
         current_adx = df['ADX'].iloc[-1]
         vcp_detected, vcp_status = detect_vcp_pattern(df)
         
-        high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
-        is_breakout_zone = price > high_52w * 0.98
+        # High 52W Check with Fallback
+        try:
+            high_52w = ticker.info.get('fiftyTwoWeekHigh', price)
+            if high_52w is None: high_52w = price
+        except:
+            high_52w = price
+
+        is_breakout_zone = price >= (high_52w * 0.98)
         bo_status = "✅ B/O" if is_breakout_zone else "NO B/O"
         volume_spike = volume > (df['VolSMA10'].iloc[-1] * 1.5)
+        
         p_close, p_high, p_ema21, p_vwap = df['Close'].iloc[-2], df['High'].iloc[-2], df['EMA21'].iloc[-2], df['VWAP'].iloc[-2]
         c_close = df['Close'].iloc[-1]
         base_breakout = (p_close > p_ema21) and (p_close > p_vwap) and (c_close > p_high)
         
-        oi_vcp_confirmed = oi_vcp_score >= 2 and base_breakout and volume_spike
+        oi_vcp_confirmed = (oi_vcp_score >= 2) and base_breakout and volume_spike
+        
+        clean_symbol = symbol.replace('.NS', '')
         
         if oi_vcp_confirmed and is_breakout_zone and vcp_detected:
             master_signal = f"🔥 OI-VCP CONFIRMED (CW:{call_wall}, PW:{put_wall})"
@@ -233,7 +223,7 @@ def scan_stock(symbol, oi_vcp_score, call_wall, put_wall):
             master_signal = "🔥 VCP BREAKOUT CONFIRMED"
             action, status, entry, score = "🚀 BUY NOW", "🎯 VCP BLAST", "✅ BUY NOW", 95
         elif is_breakout_zone and volume_spike:
-            master_signal = "🚀 STRONG BREAKOUT (VOLUME SPIKE)"
+            master_signal = "🚀 STRONG BREAKOUT (VOL SPIKE)"
             action, status, entry, score = "🚀 BUY NOW", "📈 VOL MOMENTUM", "✅ BUY NOW", 85
         elif is_breakout_zone:
             master_signal = "🟡 NEAR BREAKOUT - WATCH"
@@ -246,16 +236,18 @@ def scan_stock(symbol, oi_vcp_score, call_wall, put_wall):
             action, status, entry, score = "📉 AVOID", "📉 WEAK", "🔴 AVOID", 0
         
         if "BUY NOW" in action:
-            sl_level, tgt_level = f"SL: {round(price * 0.985, 1)}", f"T1: {round(price * 1.02, 1)}"
+            sl_level = f"SL: {round(price * 0.985, 1)}"
+            tgt_level = f"T1: {round(price * 1.02, 1)}"
+            limit_price = f"Lim: {round(price * 1.002, 1)}"
         else:
-            sl_level, tgt_level = "⏳", "⏳"
+            sl_level, tgt_level, limit_price = "⏳", "⏳", "⏳"
         
-        return [symbol, round(price, 2), action, status, score, entry, sl_level, tgt_level, bo_status, "Normal", master_signal, "⏳", "⏳"]
+        return [clean_symbol, round(price, 2), action, status, score, entry, sl_level, tgt_level, bo_status, "Normal", master_signal, f"Trig: {round(price, 1)}", limit_price]
     except Exception as e:
-        logging.error(f"Error {symbol}: {e}")
+        logging.error(f"Error scanning {symbol}: {e}")
         return None
 
-# --- NIFTY Options ---
+# --- NIFTY Options Index Fetcher ---
 def get_nifty_options_data():
     rows = []
     try:
@@ -264,37 +256,46 @@ def get_nifty_options_data():
         if nifty_df.empty: return rows
         nifty_spot = float(nifty_df['Close'].iloc[-1])
         option_data = get_nse_option_chain("NIFTY")
-        oi_vcp_score = 0
-        call_wall = 0
-        put_wall = 0
-        oi_vcp_status = "Neutral"
+        
         if option_data:
             oi_vcp_score, call_wall, put_wall, oi_vcp_status = calculate_oi_vcp_score(option_data, nifty_spot)
             rows.append(["NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "OI-VCP", oi_vcp_score, oi_vcp_status, f"CW:{call_wall}", f"PW:{put_wall}", "-", "Normal", "OI-VCP SCAN", "-", "-"])
         else:
             rows.append(["NIFTY_INDEX", round(nifty_spot, 2), "NIFTY", "INDEX", "-", "-", "-", "-", "-", "Normal", "INDEX", "-", "-"])
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Nifty Data Error: {e}")
     return rows
 
-# --- Main Update ---
+# --- Parallel Scanning Engine ---
+def scan_all_stocks_parallel(universe, oi_vcp_score, call_wall, put_wall):
+    stock_rows = []
+    # 15 Parallel Threads for Maximum Speed
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        futures = {executor.submit(scan_stock, sym, oi_vcp_score, call_wall, put_wall): sym for sym in universe}
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                stock_rows.append(res)
+    return stock_rows
+
+# --- Main Google Sheet Update ---
 def update_google_sheet():
-    logging.info("🚀 Deploying OI-VCP Integrated Engine...")
+    logging.info("🚀 Deploying OI-VCP Integrated Engine (V8 PRO MAX)...")
     try:
         creds = Credentials.from_service_account_info(GCP_CREDENTIALS, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         client = gspread.authorize(creds)
         sh = client.open_by_key(SHEET_ID)
         dash_sheet = sh.get_worksheet(0)
+        
         timestamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%H:%M:%S")
         date_stamp = dt.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d")
         
         nifty_rows = get_nifty_options_data()
         for r in nifty_rows: r.append(timestamp)
         
+        # Calculate Index OI VCP Score once for the entire run
         option_data = get_nse_option_chain("NIFTY")
-        oi_vcp_score = 0
-        call_wall = 0
-        put_wall = 0
+        oi_vcp_score, call_wall, put_wall = 0, 0, 0
         if option_data:
             nifty_ticker = yf.Ticker(NIFTY_SYMBOL)
             nifty_df = nifty_ticker.history(period="2d", interval="5m")
@@ -302,28 +303,33 @@ def update_google_sheet():
                 nifty_spot = float(nifty_df['Close'].iloc[-1])
                 oi_vcp_score, call_wall, put_wall, _ = calculate_oi_vcp_score(option_data, nifty_spot)
         
-        stock_rows = []
-        for sym in UNIVERSE:
-            data = scan_stock(sym, oi_vcp_score, call_wall, put_wall)
-            if data:
-                data.append(timestamp)
-                stock_rows.append(data)
-            time.sleep(0.01)
+        # Fast Parallel Scan
+        logging.info("⚡ Scanning 250 Stocks in Parallel Threads...")
+        stock_rows = scan_all_stocks_parallel(UNIVERSE, oi_vcp_score, call_wall, put_wall)
         
+        for r in stock_rows: r.append(timestamp)
+        
+        # Sorting: BUY NOW / BUY signals at the very top
         breakout_rows = [row for row in stock_rows if "BUY NOW" in row[2] or "BUY" in row[2]]
         other_rows = [row for row in stock_rows if "BUY NOW" not in row[2] and "BUY" not in row[2]]
+        
+        # Sort BUY rows by Score Descending
+        breakout_rows.sort(key=lambda x: x[4], reverse=True)
+        
         final_data = nifty_rows + breakout_rows + other_rows
         
         dash_sheet.clear()
-        dash_sheet.update('A1', [[f"📊 AI BRO OI-VCP SCANNER - {date_stamp} (250 STOCKS)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
-        dash_sheet.update('A2', [['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss', 'Target 1', 'Breakout', 'BB Squeeze', 'Master Signal', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
+        dash_sheet.update(range_name='A1', values=[[f"📊 AI BRO OI-VCP SCANNER - {date_stamp} (250 STOCKS)", "", "", "", "", "", "", "", "", "", "", "", "", ""]])
+        dash_sheet.update(range_name='A2', values=[['Symbol', 'LTP', 'Action', 'Status', 'Score', 'Entry Decision', 'Stop Loss', 'Target 1', 'Breakout', 'BB Squeeze', 'Master Signal', 'Auto Trigger Price', 'Limit Price & TSL', 'Time']])
+        
         if final_data:
-            dash_sheet.update('A3', final_data)
-            logging.info(f"✅ Updated {len(final_data)} rows")
+            dash_sheet.update(range_name='A3', values=final_data)
+            logging.info(f"✅ Successfully Updated {len(final_data)} rows into Google Sheet!")
+        
         dash_sheet.freeze(rows=2)
         return True
     except Exception as e:
-        logging.error(f"Failed: {e}")
+        logging.error(f"❌ Sheet Update Failed: {e}")
         return False
 
 if __name__ == "__main__":
