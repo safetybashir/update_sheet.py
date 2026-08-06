@@ -11,10 +11,16 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Delete old runs using GitHub CLI
+      - name: Delete old runs (keep latest 10)
         run: |
-          gh run list --limit 100 --json databaseId,createdAt \
-            --jq '.[] | select(.createdAt < "'$(date -d '30 days ago' -Iseconds)'") | .databaseId' \
-            | xargs -I {} gh run delete {}
+          # Get all run IDs except latest 10
+          RUN_IDS=$(gh run list --limit 100 --json databaseId --jq '.[].databaseId' | tail -n +11)
+          
+          if [ -n "$RUN_IDS" ]; then
+            echo "$RUN_IDS" | xargs -I {} gh run delete {}
+            echo "✅ Deleted old runs"
+          else
+            echo "ℹ️ No old runs to delete (less than 10 runs total)"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
