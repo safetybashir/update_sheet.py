@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
+      contents: read
     steps:
-      - name: Delete old runs (keep last 10)
-        uses: actions/delete-old-actions@v3
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-old-actions@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           days-ago: 30
