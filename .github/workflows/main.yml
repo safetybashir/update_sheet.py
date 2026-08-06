@@ -1,66 +1,33 @@
-name: AI-Bro-Scanner-10min
+name: Fast Swing Scanner Automation
 
 on:
   schedule:
-    # Monday to Friday 09:00 AM IST to 03:40 PM IST (03:30 UTC to 10:10 UTC)
-    - cron: '*/10 3-10 * * 1-5'
-  workflow_dispatch: # मैन्युअल रन के लिए
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    # 5 मिनट के बजाय हर 15 मिनट पर चलाएं (GitHub Rate Limit से बचने के लिए)
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # मैन्युअल रन करने का बटन
 
 jobs:
-  build:
+  run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.10'
+          cache: 'pip' # पैकेज डाउनलोड में तेज़ी के लिए कैशे
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir yfinance gspread google-auth pandas numpy pytz requests
+          pip install pandas yfinance gspread google-auth pytz
 
-      - name: Check Market Hours (Only for Schedule Trigger)
-        if: github.event_name == 'schedule'  # 👈 सिर्फ़ ऑटोमैटिक चलने पर टाइम चेक करेगा, मैन्युअल बटन दबाने पर नहीं!
-        run: |
-          python -c "
-          import pytz
-          from datetime import datetime
-          ist = pytz.timezone('Asia/Kolkata')
-          now = datetime.now(ist)
-          if now.weekday() >= 5:
-              print('🛑 Weekend! Skipping scheduled scan.')
-              exit(0)
-          start_time = now.replace(hour=9, minute=0, second=0)
-          end_time = now.replace(hour=15, minute=40, second=0)
-          if not (start_time <= now <= end_time):
-              print(f'🛑 Market closed ({now.strftime(\"%H:%M\")} IST). Skipping scheduled scan.')
-              exit(0)
-          print('✅ Market is open. Running scanner...')
-          "
-
-      - name: Run Pure OI-VCP Scanner
+      - name: Execute Scanner Script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: python update_sheet.py
-
-      # --- 🧹 FAST AUTO DELETE OLD RUNS ---
-      - name: Delete Old Workflow Runs
-        uses: Mattraks/delete-workflow-runs@v2
-        if: always()
-        continue-on-error: true
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 2
+        run: |
+          python update_sheet.py
