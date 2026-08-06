@@ -1,7 +1,6 @@
 import os
 import json
 import pytz
-import requests
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -10,7 +9,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 # ==========================================
-# 1. LIQUID F&O & NIFTY 200 TICKERS
+# 1. LIQUID F&O TICKERS LIST
 # ==========================================
 TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
@@ -26,54 +25,46 @@ TICKERS = [
 ]
 
 # ==========================================
-# 2. OI-VCP CORE CALCULATION ENGINE
+# 2. PURE OI & VCP ENGINE LOGIC
 # ==========================================
-def calculate_oi_vcp_indicators(df):
+def calculate_pure_oi_vcp(df):
     """
-    OI-VCP Logic:
-    - VCP Contraction: High-Low Range narrowing over 20, 10, and 5 periods.
-    - Volume Dry-Up: Low volume during consolidation, Spike on Breakout.
-    - Simulated Delivery / Institutional OI Build-up indicator via Price-Volume Multiplier.
+    Pure OI-VCP Calculation Engine:
+    - VCP Contraction: High-Low Range Tightening (T1 > T2 > T3)
+    - Volume Dynamics: Volume Dry-Up during base, Heavy Spike on Breakout
+    - CE/PE Option Sentiment: Price-Volume Action mapping for CE Bullish / PE Bearish Buildup
     """
     df = df.copy()
 
-    # Moving Averages
-    df['SMA_20'] = df['Close'].rolling(window=20).mean()
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    df['SMA_200'] = df['Close'].rolling(window=200).mean()
-
-    # Volume Averages & Spikes
+    # 1. Volume Averages & Volatility Spikes
     df['Vol_SMA_20'] = df['Volume'].rolling(window=20).mean()
     df['Vol_Spike'] = df['Volume'] > (1.5 * df['Vol_SMA_20'])
     df['Vol_DryUp'] = df['Volume'] < (0.6 * df['Vol_SMA_20'])
 
-    # VCP Volatility Range Contraction (T1 -> T2 -> T3)
+    # 2. VCP Contraction Ratio (T1: 20 Days -> T2: 10 Days -> T3: 5 Days)
     df['Range_20'] = (df['High'].rolling(20).max() - df['Low'].rolling(20).min()) / df['Close']
     df['Range_10'] = (df['High'].rolling(10).max() - df['Low'].rolling(10).min()) / df['Close']
     df['Range_5']  = (df['High'].rolling(5).max()  - df['Low'].rolling(5).min())  / df['Close']
 
-    # VCP Contraction Score: Tighter range over time means higher score
-    df['VCP_Contraction'] = (df['Range_20'] > df['Range_10']) & (df['Range_10'] > df['Range_5'])
+    # VCP Contraction Condition: True Volatility Shrinkage
+    df['Is_VCP'] = (df['Range_20'] > df['Range_10']) & (df['Range_10'] > df['Range_5'])
 
-    # Simulated OI / Institutional Delivery Momentum Indicator
+    # 3. CE / PE Option Sentiment Buildup
     df['Price_Change'] = df['Close'].pct_change()
-    df['Vol_Change']   = df['Volume'].pct_change()
     
-    # Long Buildup = Price Up + Volume Up
-    df['OI_Buildup'] = np.where(
-        (df['Price_Change'] > 0) & (df['Vol_Spike']), "Long Buildup 🚀",
-        np.where((df['Price_Change'] < 0) & (df['Vol_Spike']), "Short Buildup 📉", "Neutral ↔️")
-    )
+    # Resistance & Support Levels for Breakout Check
+    df['Resistance_20'] = df['High'].rolling(20).max().shift(1)
+    df['Support_20']    = df['Low'].rolling(20).min().shift(1)
 
     return df
 
 def get_google_sheet():
-    """Authenticates with GCP JSON Credentials and opens the Google Sheet."""
+    """Authenticates with GCP Credentials and opens the Google Sheet."""
     gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     sheet_id = os.environ.get("SHEET_ID")
 
     if not gcp_json_str or not sheet_id:
-        raise ValueError("❌ Missing GCP_CREDENTIALS_JSON or SHEET_ID environment variable!")
+        raise ValueError("❌ Missing GCP_CREDENTIALS_JSON or SHEET_ID environment variables!")
 
     creds_dict = json.loads(gcp_json_str)
     scopes = [
@@ -87,17 +78,16 @@ def get_google_sheet():
     return sheet
 
 # ==========================================
-# 3. MAIN RUNNER ENGINE
+# 3. MAIN EXECUTION RUNNER
 # ==========================================
 def main():
-    print("🚀 Starting AI-Bro OI-VCP Scanner V8 PRO MAX...")
+    print("🚀 Starting Pure OI-VCP Scanner Engine...")
 
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
-    print(f"🕒 Execution Timestamp: {now_ist}")
+    print(f"🕒 Timestamp: {now_ist}")
 
-    # Parallel Downloading for High Speed Execution
-    print("📥 Fetching Market Data with Parallel Multithreading...")
+    print("📥 Batch Downloading F&O Market Data...")
     data = yf.download(
         tickers=TICKERS,
         period="1y",
@@ -116,7 +106,7 @@ def main():
             if df.empty or len(df) < 50:
                 continue
 
-            df = calculate_oi_vcp_indicators(df)
+            df = calculate_pure_oi_vcp(df)
 
             latest = df.iloc[-1]
             prev = df.iloc[-2]
@@ -124,24 +114,45 @@ def main():
             close_price = round(float(latest['Close']), 2)
             pct_change = round(float(((latest['Close'] - prev['Close']) / prev['Close']) * 100), 2)
 
-            sma_20 = round(float(latest['SMA_20']), 2) if not np.isnan(latest['SMA_20']) else 0
-            sma_50 = round(float(latest['SMA_50']), 2) if not np.isnan(latest['SMA_50']) else 0
-            sma_200 = round(float(latest['SMA_200']), 2) if not np.isnan(latest['SMA_200']) else 0
+            is_vcp = "YES 🔥" if latest['Is_VCP'] else "NO"
+            
+            # Volume Condition
+            if latest['Vol_Spike']:
+                vol_status = "SPIKE ⚡"
+            elif latest['Vol_DryUp']:
+                vol_status = "DRY-UP 💧"
+            else:
+                vol_status = "NORMAL"
 
-            is_vcp = "YES 🔥" if latest['VCP_Contraction'] else "NO"
-            vol_spike = "SPIKE ⚡" if latest['Vol_Spike'] else ("DRY-UP 💧" if latest['Vol_DryUp'] else "NORMAL")
-            oi_status = str(latest['OI_Buildup'])
+            # Options CE / PE Sentiment Determination
+            if latest['Price_Change'] > 0 and latest['Vol_Spike']:
+                option_sentiment = "CE LONG BUILDUP 🔥"
+            elif latest['Price_Change'] < 0 and latest['Vol_Spike']:
+                option_sentiment = "PE LONG BUILDUP 📉"
+            elif latest['Price_Change'] > 0 and latest['Vol_DryUp']:
+                option_sentiment = "CE SHORT COVERING ⚡"
+            elif latest['Price_Change'] < 0 and latest['Vol_DryUp']:
+                option_sentiment = "PE UNWINDING 💧"
+            else:
+                option_sentiment = "NEUTRAL ↔️"
 
-            # --- MASTER OI-VCP SIGNAL LOGIC ---
-            signal = "WATCHLIST 👁️"
-            if latest['VCP_Contraction'] and latest['Vol_Spike'] and close_price > sma_20 and oi_status == "Long Buildup 🚀":
-                signal = "ALPHA VCP BUY 🚀🔥"
-            elif latest['VCP_Contraction'] and latest['Vol_DryUp']:
-                signal = "VCP SQUEEZE 💥"
-            elif close_price > sma_20 and close_price > sma_50:
-                signal = "BULLISH TREND 📈"
-            elif close_price < sma_20 and close_price < sma_200:
-                signal = "BEARISH TREND 📉"
+            # Breakout Detection against 20-day High/Low
+            is_resistance_break = close_price >= latest['Resistance_20']
+            is_support_break    = close_price <= latest['Support_20']
+
+            # --- PURE OI-VCP MASTER SIGNAL LOGIC ---
+            if latest['Is_VCP'] and is_resistance_break and latest['Vol_Spike']:
+                master_signal = "ALPHA VCP CE B/O 🚀🔥"
+            elif latest['Is_VCP'] and is_support_break and latest['Vol_Spike']:
+                master_signal = "ALPHA VCP PE B/O 📉💥"
+            elif latest['Is_VCP'] and latest['Vol_DryUp']:
+                master_signal = "VCP SQUEEZE (READY) 💥"
+            elif is_resistance_break and latest['Vol_Spike']:
+                master_signal = "CE BREAKOUT 🚀"
+            elif is_support_break and latest['Vol_Spike']:
+                master_signal = "PE BREAKDOWN 📉"
+            else:
+                master_signal = "WATCHLIST 👁️"
 
             clean_symbol = symbol.replace(".NS", "")
 
@@ -150,45 +161,42 @@ def main():
                 close_price,
                 f"{pct_change}%",
                 is_vcp,
-                vol_spike,
-                oi_status,
-                signal,
-                sma_20,
-                sma_50,
-                sma_200,
+                vol_status,
+                option_sentiment,
+                master_signal,
                 now_ist
             ])
 
         except Exception as e:
-            print(f"⚠️ Skipping {symbol} due to error: {e}")
+            print(f"⚠️ Error processing {symbol}: {e}")
             continue
 
     if not output_rows:
-        print("❌ No stocks processed. Exiting...")
+        print("❌ No rows processed. Exiting...")
         return
 
-    # Sort Output by Best VCP Signals First, then Highest Gainers
-    output_rows.sort(key=lambda x: (x[6] == "ALPHA VCP BUY 🚀🔥", float(x[2].replace('%', ''))), reverse=True)
+    # Sort Output: Top Alpha VCP Signals First, followed by Highest Gainers
+    output_rows.sort(key=lambda x: ("ALPHA" in x[6] or "B/O" in x[6], float(x[2].replace('%', ''))), reverse=True)
 
-    print(f"✅ Successfully Processed {len(output_rows)} F&O / Nifty Stocks.")
+    print(f"✅ Processed {len(output_rows)} Stocks Successfully.")
 
     # ==========================================
     # 4. UPDATE GOOGLE SHEET
     # ==========================================
-    print("📊 Updating Google Sheet with OI-VCP Data...")
+    print("📊 Updating Google Sheet with Pure OI-VCP Data...")
     sheet = get_google_sheet()
 
     headers = [
         "Stock Symbol", "LTP", "% Change", 
-        "VCP Pattern", "Volume Status", "OI Buildup", 
-        "Master Signal", "20 DMA", "50 DMA", "200 DMA", "Last Updated"
+        "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
+        "Master OI-VCP Signal", "Last Updated"
     ]
 
     sheet.clear()
     sheet.append_row(headers)
     sheet.append_rows(output_rows)
 
-    print("🎉 OI-VCP Scanner Execution Completed Successfully! 🔥🎯")
+    print("🎉 Google Sheet Updated with Pure OI-VCP Signals! Boss, Mission Accomplished! 🔥🎯")
 
 if __name__ == "__main__":
     main()
