@@ -2,12 +2,10 @@ name: AI-Bro-Scanner-10min
 
 on:
   schedule:
-    # Runs every 10 minutes between 03:30 UTC and 10:10 UTC, Monday to Friday
-    # Equivalent to 09:00 AM IST to 03:40 PM IST (NSE Live Market Hours)
+    # Monday to Friday 09:00 AM IST to 03:40 PM IST (03:30 UTC to 10:10 UTC)
     - cron: '*/10 3-10 * * 1-5'
-  workflow_dispatch:
+  workflow_dispatch: # मैन्युअल रन के लिए
 
-# Purane running instances ko cancel kar dega agar naya trigger aaye
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -31,24 +29,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install --no-cache-dir yfinance gspread google-auth pandas numpy pytz requests
 
-      - name: Check Market Hours (IST Sanity Check)
+      - name: Check Market Hours (Only for Schedule Trigger)
+        if: github.event_name == 'schedule'  # 👈 सिर्फ़ ऑटोमैटिक चलने पर टाइम चेक करेगा, मैन्युअल बटन दबाने पर नहीं!
         run: |
           python -c "
           import pytz
           from datetime import datetime
           ist = pytz.timezone('Asia/Kolkata')
           now = datetime.now(ist)
-          # Weekend check
           if now.weekday() >= 5:
-              print('🛑 Weekend! Skipping scan.')
+              print('🛑 Weekend! Skipping scheduled scan.')
               exit(0)
-          # IST Time window check (09:00 to 15:40)
           start_time = now.replace(hour=9, minute=0, second=0)
           end_time = now.replace(hour=15, minute=40, second=0)
           if not (start_time <= now <= end_time):
-              print(f'🛑 Market closed. Current IST Time: {now.strftime(\"%H:%M\")}. Skipping scan.')
+              print(f'🛑 Market closed ({now.strftime(\"%H:%M\")} IST). Skipping scheduled scan.')
               exit(0)
-          print(f'✅ Market is open. Current IST Time: {now.strftime(\"%H:%M\")}. Proceeding...')
+          print('✅ Market is open. Running scanner...')
           "
 
       - name: Run Pure OI-VCP Scanner
