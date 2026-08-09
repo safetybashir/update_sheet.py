@@ -69,7 +69,7 @@ def fetch_data_parallel(tickers):
     return all_dfs
 
 def process_symbol_data(df, symbol, now_ist):
-    """Calculates indicators and builds the display row dictionary."""
+    """Calculates indicators and prepares stock metrics."""
     df = df.dropna()
     if len(df) < 25:
         return None
@@ -121,27 +121,34 @@ def process_symbol_data(df, symbol, now_ist):
         clean_symbol = "NIFTY 50 🎯"
         bo_status = "INDEX TREND"
         action_entry = "MARKET REGIME: " + ("BULLISH 📈" if pct_change > 0 else "BEARISH 📉")
+        priority_group = 0
     else:
         clean_symbol = symbol.replace(".NS", "")
         
         if is_vcp and is_res_break and is_vol_spike:
             bo_status = "ALPHA CE B/O 🚀🔥"
             action_entry = "BUY CE ABOVE 15M HIGH 🟢"
+            priority_group = 1 # Top Priority Breakout
         elif is_vcp and is_sup_break and is_vol_spike:
             bo_status = "ALPHA PE B/O 📉💥"
             action_entry = "BUY PE BELOW 15M LOW 🔴"
+            priority_group = 1
         elif is_res_break and is_vol_spike:
             bo_status = "CE BREAKOUT 🚀"
             action_entry = "BUY CE ON PULLBACK 🟢"
+            priority_group = 1
         elif is_sup_break and is_vol_spike:
             bo_status = "PE BREAKDOWN 📉"
             action_entry = "BUY PE ON PULLBACK 🔴"
+            priority_group = 1
         elif is_vcp and is_vol_dryup:
             bo_status = "VCP SQUEEZE 💥"
             action_entry = "READY FOR B/O (WATCH) 👁️"
+            priority_group = 2 # High Probability Watchlist
         else:
             bo_status = "NONE"
             action_entry = "NO ENTRY (WAIT) ⏳"
+            priority_group = 3 # Normal / Wait List
 
     return {
         "clean_symbol": clean_symbol,
@@ -153,8 +160,8 @@ def process_symbol_data(df, symbol, now_ist):
         "option_buildup": option_buildup,
         "bo_status": bo_status,
         "action_entry": action_entry,
-        "now_ist": now_ist,
-        "is_breakout": "B/O" in bo_status or "BREAKOUT" in bo_status or "BREAKDOWN" in bo_status
+        "priority_group": priority_group,
+        "now_ist": now_ist
     }
 
 # ==========================================
@@ -162,7 +169,7 @@ def process_symbol_data(df, symbol, now_ist):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting Fast Scanner Engine with Priority Ranking...")
+    print("🚀 Starting Fast Scanner Engine (Clean Alignment)...")
 
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
@@ -179,12 +186,10 @@ def main():
                 continue
 
             if symbol == INDEX_TICKER:
-                # Nifty Header Row with N/A Rank
                 nifty_row = [
-                    "INDEX 🎯",
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
-                    pdata["bo_status"], pdata["action_entry"], pdata["now_ist"]
+                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK INDEX", pdata["now_ist"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -192,35 +197,43 @@ def main():
         except Exception as e:
             continue
 
-    # 🔥 TOP MOMENTUM & UPTREND SORTING FOR BREAKOUT STOCKS
-    # Priority 1: Breakout Stocks First
-    # Priority 2: Highest Momentum (% Change)
-    stock_data_list.sort(key=lambda x: (x["is_breakout"], x["pct_change_num"]), reverse=True)
+    # 🔥 AUTO-SORTING LOGIC:
+    # 1. Breakouts First (priority_group = 1)
+    # 2. High Probability / Squeeze Second (priority_group = 2)
+    # 3. Normal / Wait List Third (priority_group = 3)
+    # Within each group, sort by % Change (Highest Momentum)
+    stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
-    # Add Explicit Priority Ranks (Rank #1, Rank #2, Rank #3...)
+    # Add Rank/Category Tag at Column I (End of row before timestamp)
     stock_rows = []
-    for idx, item in enumerate(stock_data_list, start=1):
-        if item["is_breakout"]:
-            rank_str = f"Rank #{idx} 🔥"
+    bo_rank = 1
+    watch_rank = 1
+
+    for item in stock_data_list:
+        if item["priority_group"] == 1:
+            rank_tag = f"B/O Rank #{bo_rank} 🔥"
+            bo_rank += 1
+        elif item["priority_group"] == 2:
+            rank_tag = f"Ready Rank #{watch_rank} 👁️"
+            watch_rank += 1
         else:
-            rank_str = f"Rank #{idx}"
+            rank_tag = "Watchlist ⏳"
 
         stock_rows.append([
-            rank_str,  # Column A: Priority Rank
-            item["clean_symbol"],
-            item["c_price"],
-            item["pct_change_str"],
-            item["vcp_str"],
-            item["vol_status"],
-            item["option_buildup"],
-            item["bo_status"],
-            item["action_entry"],
-            item["now_ist"]
+            item["clean_symbol"],        # Col A
+            item["c_price"],             # Col B (LTP Fix)
+            item["pct_change_str"],      # Col C (% Change)
+            item["vcp_str"],             # Col D
+            item["vol_status"],          # Col E
+            item["option_buildup"],      # Col F
+            item["bo_status"],           # Col G
+            item["action_entry"],        # Col H
+            rank_tag,                    # Col I (Rank Tag Added Here!)
+            item["now_ist"]              # Col J (Timestamp)
         ])
 
-    # 📌 HEADERS FOR COLUMNS A TO J
+    # 📌 CLEAN HEADERS (Columns A to J)
     headers = [
-        "Priority Rank",
         "Stock Symbol", 
         "LTP", 
         "% Change", 
@@ -228,7 +241,8 @@ def main():
         "Volume Status", 
         "CE/PE Option Buildup", 
         "Breakout Status",
-        "Action / Entry Trigger", 
+        "Action / Entry Trigger",
+        "Priority Tag",
         "Last Updated"
     ]
 
@@ -237,8 +251,8 @@ def main():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # Update Sheet A1 to J{N}
-    print("📊 Updating Google Sheet Matrix with Rank Column...")
+    # Update Sheet Matrix
+    print("📊 Updating Google Sheet Matrix with Clean Columns...")
     sheet = get_google_sheet()
     sheet.clear()
 
@@ -252,7 +266,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Google Sheet updated with Priority Ranks in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Google Sheet updated with perfect column alignment in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
