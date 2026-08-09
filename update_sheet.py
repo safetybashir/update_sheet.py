@@ -61,10 +61,7 @@ def get_google_sheet():
 
 def fetch_single_ticker(ticker):
     try:
-        # Fetch Daily data for technical metrics
         df_daily = yf.Ticker(ticker).history(period="60d", interval="1d")
-        
-        # Fetch Intraday 15M data to check today's 15M high breakout
         df_15m = yf.Ticker(ticker).history(period="2d", interval="15m")
         
         if df_daily is not None and len(df_daily) >= 20:
@@ -75,7 +72,7 @@ def fetch_single_ticker(ticker):
 
 def fetch_data_parallel(tickers):
     all_data = {}
-    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers with 15M Intraday Data...")
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers with Intraday Data...")
     with ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df_daily, df_15m in results:
@@ -109,7 +106,7 @@ def process_symbol_data(data, symbol, time_only_ist):
     is_vcp = (r20 > r10) and (r10 > r5)
     vcp_str = "YES 🔥" if is_vcp else "NO"
 
-    # 3. Price Actions & Daily Breakouts
+    # 3. Price Actions & Support Calculations (20 EMA)
     prev_close = float(df['Close'].iloc[-2])
     pct_change = ((c_price - prev_close) / prev_close) * 100
 
@@ -118,6 +115,10 @@ def process_symbol_data(data, symbol, time_only_ist):
 
     is_res_break = c_price >= res_20
     is_sup_break = c_price <= sup_20
+
+    # Calculate 20 EMA for Support Column K
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
     # 4. CE/PE Option Buildup
     if pct_change > 0 and is_vol_spike:
@@ -131,35 +132,34 @@ def process_symbol_data(data, symbol, time_only_ist):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 5. 🔥 AUTO 15-MINUTE CONFIRMATION ENGINE 🔥
+    # 5. AUTO 15-MINUTE CONFIRMATION ENGINE
     is_15m_high_broken = False
     is_15m_low_broken = False
 
     if df_15m is not None and not df_15m.empty:
-        # Get today's candles
         today_date = df_15m.index[-1].date()
         today_candles = df_15m[df_15m.index.date == today_date]
         
         if len(today_candles) >= 1:
-            # First 15M Candle (9:15 AM - 9:30 AM)
             first_15m_high = today_candles['High'].iloc[0]
             first_15m_low = today_candles['Low'].iloc[0]
 
-            # Check if current LTP crossed first 15M High/Low
             if c_price > first_15m_high:
                 is_15m_high_broken = True
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 6. Breakout Status & Smart Action Trigger
+    # 6. Breakout Status, Action Trigger & Support Level
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
         bo_status = "INDEX TREND"
         action_entry = "MARKET REGIME: " + ("BULLISH 📈" if pct_change > 0 else "BEARISH 📉")
+        support_level = "N/A"
         priority_group = 0
     else:
         clean_symbol = symbol.replace(".NS", "")
+        support_level = f"EMA20: ₹{ema20_val}"
         
         if is_vcp and is_res_break and is_vol_spike:
             bo_status = "ALPHA CE B/O 🚀🔥"
@@ -180,12 +180,12 @@ def process_symbol_data(data, symbol, time_only_ist):
         elif is_res_break and is_vol_spike:
             bo_status = "CE BREAKOUT 🚀"
             priority_group = 1
-            action_entry = "BUY CE ON PULLBACK 🟢"
+            action_entry = "BUY CE ON REVERSAL 🟢"
 
         elif is_sup_break and is_vol_spike:
             bo_status = "PE BREAKDOWN 📉"
             priority_group = 1
-            action_entry = "BUY PE ON PULLBACK 🔴"
+            action_entry = "BUY PE ON REVERSAL 🔴"
 
         elif is_vcp and is_vol_dryup:
             bo_status = "VCP SQUEEZE 💥"
@@ -194,6 +194,7 @@ def process_symbol_data(data, symbol, time_only_ist):
         else:
             bo_status = "NONE"
             action_entry = "NO ENTRY (WAIT) ⏳"
+            support_level = "-"
             priority_group = 3
 
     return {
@@ -206,6 +207,7 @@ def process_symbol_data(data, symbol, time_only_ist):
         "option_buildup": option_buildup,
         "bo_status": bo_status,
         "action_entry": action_entry,
+        "support_level": support_level,
         "priority_group": priority_group,
         "time_only_ist": time_only_ist
     }
@@ -215,7 +217,7 @@ def process_symbol_data(data, symbol, time_only_ist):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting FnO Fast Scanner Engine with Auto 15M Confirmation...")
+    print("🚀 Starting FnO Scanner Engine with Support Levels (Col K)...")
 
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
@@ -235,7 +237,8 @@ def main():
                 nifty_row = [
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
-                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK", pdata["time_only_ist"]
+                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK", pdata["time_only_ist"],
+                    pdata["support_level"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -243,7 +246,7 @@ def main():
         except Exception as e:
             continue
 
-    # Auto Sorting: Priority 1 Breakouts -> Priority 2 Squeeze -> Priority 3 Wait
+    # Auto Sorting
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -268,9 +271,10 @@ def main():
             item["vol_status"],          # Col E
             item["option_buildup"],      # Col F
             item["bo_status"],           # Col G
-            item["action_entry"],        # Col H (Smart Auto 15M Status!)
+            item["action_entry"],        # Col H (BUY CE ON REVERSAL 🟢)
             rank_tag,                    # Col I
-            item["time_only_ist"]        # Col J
+            item["time_only_ist"],       # Col J
+            item["support_level"]        # Col K (New Pullback Support Level!)
         ])
 
     headers = [
@@ -283,7 +287,8 @@ def main():
         "Breakout Status",
         "Action / Entry Trigger",
         "Priority Rank",
-        "Last Updated"
+        "Last Updated",
+        "Reversal Support Level"
     ]
 
     final_matrix = [headers]
@@ -291,12 +296,12 @@ def main():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    print("📊 Updating Google Sheet Matrix with Auto 15M Confirmation...")
+    print("📊 Updating Google Sheet Matrix A1:K...")
     sheet = get_google_sheet()
     sheet.clear()
 
     end_row = len(final_matrix)
-    range_to_update = f"A1:J{end_row}"
+    range_to_update = f"A1:K{end_row}"
     
     sheet.update(
         range_name=range_to_update, 
@@ -305,7 +310,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Google Sheet updated with 15M Auto Confirmation in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet updated with Support Levels (Col K) in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
