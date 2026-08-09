@@ -10,23 +10,37 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
-# 1. TICKERS CONFIGURATION
+# 1. SELECTED FNO TICKERS CONFIGURATION
 # ==========================================
 INDEX_TICKER = "^NSEI"
 
-STOCKS_TICKERS = [
-    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-    "BHARTIARTL.NS", "SBIN.NS", "LTIM.NS", "ITC.NS", "HINDUNILVR.NS",
-    "LARSEN.NS", "TATAMOTORS.NS", "AXISBANK.NS", "KOTAKBANK.NS", "M&M.NS",
-    "TATASTEEL.NS", "NTPC.NS", "POWERGRID.NS", "ADANIENT.NS", "SUNPHARMA.NS",
-    "TITAN.NS", "ULTRACEMCO.NS", "BAJFINANCE.NS", "HCLTECH.NS", "ONGC.NS",
-    "MARUTI.NS", "ADANIPORTS.NS", "COALINDIA.NS", "BAJAJFINSV.NS", "NESTLEIND.NS",
-    "JSWSTEEL.NS", "GRASIM.NS", "TECHM.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS",
-    "EICHERMOT.NS", "WIPRO.NS", "SBILIFE.NS", "DRREDDY.NS", "CIPLA.NS",
-    "BPCL.NS", "TATACONSUM.NS", "BRITANNIA.NS", "APOLLOHOSP.NS", "INDUSINDBK.NS",
-    "DIVISLAB.NS", "HINDALCO.NS", "SHRIRAMFIN.NS", "BEL.NS", "TRENT.NS"
+RAW_FNO_STOCKS = [
+    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
+    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
+    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
+    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
+    "MOTILALOFS", "BHARATFORG", "TMPVSOLAR", "IND", "TATASTEEL", "LTF", "FORCEMOT", 
+    "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", 
+    "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", 
+    "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", 
+    "SONACOMS", "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", 
+    "SUPREMEIND", "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", 
+    "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", 
+    "ULTRACEMCO", "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
+    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", 
+    "CROMPTON", "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", 
+    "PFC", "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", 
+    "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", 
+    "GODREJCP", "FORTIS", "PGELAB", "BCOALINDIA", "SUNPHARMA", "MPHASIS", 
+    "PIIND", "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", 
+    "INDIGO", "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", 
+    "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALLTM", "MARICO", "PAGEIND", 
+    "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
+    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
+# Generate NSE compatible tickers (.NS suffix)
+STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 def get_google_sheet():
@@ -58,17 +72,17 @@ def fetch_single_ticker(ticker):
     return ticker, None
 
 def fetch_data_parallel(tickers):
-    """Downloads all tickers in parallel using 10 worker threads."""
+    """Downloads all tickers in parallel using 15 worker threads."""
     all_dfs = {}
-    print(f"⚡ Parallel fetching {len(tickers)} tickers...")
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers...")
+    with ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df in results:
             if df is not None and not df.empty:
                 all_dfs[ticker] = df
     return all_dfs
 
-def process_symbol_data(df, symbol, now_ist):
+def process_symbol_data(df, symbol, time_only_ist):
     """Calculates indicators and prepares stock metrics."""
     df = df.dropna()
     if len(df) < 25:
@@ -128,7 +142,7 @@ def process_symbol_data(df, symbol, now_ist):
         if is_vcp and is_res_break and is_vol_spike:
             bo_status = "ALPHA CE B/O 🚀🔥"
             action_entry = "BUY CE ABOVE 15M HIGH 🟢"
-            priority_group = 1 # Top Priority Breakout
+            priority_group = 1
         elif is_vcp and is_sup_break and is_vol_spike:
             bo_status = "ALPHA PE B/O 📉💥"
             action_entry = "BUY PE BELOW 15M LOW 🔴"
@@ -144,11 +158,11 @@ def process_symbol_data(df, symbol, now_ist):
         elif is_vcp and is_vol_dryup:
             bo_status = "VCP SQUEEZE 💥"
             action_entry = "READY FOR B/O (WATCH) 👁️"
-            priority_group = 2 # High Probability Watchlist
+            priority_group = 2
         else:
             bo_status = "NONE"
             action_entry = "NO ENTRY (WAIT) ⏳"
-            priority_group = 3 # Normal / Wait List
+            priority_group = 3
 
     return {
         "clean_symbol": clean_symbol,
@@ -161,7 +175,7 @@ def process_symbol_data(df, symbol, now_ist):
         "bo_status": bo_status,
         "action_entry": action_entry,
         "priority_group": priority_group,
-        "now_ist": now_ist
+        "time_only_ist": time_only_ist
     }
 
 # ==========================================
@@ -169,10 +183,11 @@ def process_symbol_data(df, symbol, now_ist):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting Fast Scanner Engine (Clean Alignment)...")
+    print("🚀 Starting FnO Fast Scanner Engine...")
 
     ist = pytz.timezone('Asia/Kolkata')
-    now_ist = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
+    # ONLY TIME FORMAT (HH:MM:SS) - No Date, No IST text
+    time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
@@ -181,7 +196,7 @@ def main():
 
     for symbol, df in data_dict.items():
         try:
-            pdata = process_symbol_data(df, symbol, now_ist)
+            pdata = process_symbol_data(df, symbol, time_only_ist)
             if not pdata:
                 continue
 
@@ -189,7 +204,7 @@ def main():
                 nifty_row = [
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
-                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK INDEX", pdata["now_ist"]
+                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK", pdata["time_only_ist"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -197,42 +212,38 @@ def main():
         except Exception as e:
             continue
 
-    # 🔥 AUTO-SORTING LOGIC:
-    # 1. Breakouts First (priority_group = 1)
-    # 2. High Probability / Squeeze Second (priority_group = 2)
-    # 3. Normal / Wait List Third (priority_group = 3)
-    # Within each group, sort by % Change (Highest Momentum)
+    # 🔥 AUTO-SORTING LOGIC
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
-    # Add Rank/Category Tag at Column I (End of row before timestamp)
+    # Clean Signal Rank Formatting for Column I
     stock_rows = []
     bo_rank = 1
-    watch_rank = 1
+    ready_rank = 1
 
     for item in stock_data_list:
         if item["priority_group"] == 1:
-            rank_tag = f"B/O Rank #{bo_rank} 🔥"
+            rank_tag = f"B/O #{bo_rank}"
             bo_rank += 1
         elif item["priority_group"] == 2:
-            rank_tag = f"Ready Rank #{watch_rank} 👁️"
-            watch_rank += 1
+            rank_tag = f"READY #{ready_rank}"
+            ready_rank += 1
         else:
-            rank_tag = "Watchlist ⏳"
+            rank_tag = "WAIT"
 
         stock_rows.append([
             item["clean_symbol"],        # Col A
-            item["c_price"],             # Col B (LTP Fix)
-            item["pct_change_str"],      # Col C (% Change)
+            item["c_price"],             # Col B
+            item["pct_change_str"],      # Col C
             item["vcp_str"],             # Col D
             item["vol_status"],          # Col E
             item["option_buildup"],      # Col F
             item["bo_status"],           # Col G
             item["action_entry"],        # Col H
-            rank_tag,                    # Col I (Rank Tag Added Here!)
-            item["now_ist"]              # Col J (Timestamp)
+            rank_tag,                    # Col I (B/O #1, READY #1, WAIT)
+            item["time_only_ist"]        # Col J (Only HH:MM:SS)
         ])
 
-    # 📌 CLEAN HEADERS (Columns A to J)
+    # 📌 HEADERS FOR COLUMNS A TO J
     headers = [
         "Stock Symbol", 
         "LTP", 
@@ -242,7 +253,7 @@ def main():
         "CE/PE Option Buildup", 
         "Breakout Status",
         "Action / Entry Trigger",
-        "Priority Tag",
+        "Priority Rank",
         "Last Updated"
     ]
 
@@ -252,7 +263,7 @@ def main():
     final_matrix.extend(stock_rows)
 
     # Update Sheet Matrix
-    print("📊 Updating Google Sheet Matrix with Clean Columns...")
+    print("📊 Updating Google Sheet Matrix...")
     sheet = get_google_sheet()
     sheet.clear()
 
@@ -266,7 +277,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Google Sheet updated with perfect column alignment in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Google Sheet updated in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
