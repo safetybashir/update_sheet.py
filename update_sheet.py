@@ -39,12 +39,10 @@ RAW_FNO_STOCKS = [
     "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
-# Generate NSE compatible tickers (.NS suffix)
 STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 def get_google_sheet():
-    """Authenticates with GCP Credentials and opens the Google Sheet."""
     gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     sheet_id = os.environ.get("SHEET_ID")
 
@@ -62,29 +60,33 @@ def get_google_sheet():
     return client.open_by_key(sheet_id).sheet1
 
 def fetch_single_ticker(ticker):
-    """Fast single ticker download."""
     try:
-        df = yf.Ticker(ticker).history(period="60d", interval="1d")
-        if df is not None and len(df) >= 20:
-            return ticker, df
+        # Fetch Daily data for technical metrics
+        df_daily = yf.Ticker(ticker).history(period="60d", interval="1d")
+        
+        # Fetch Intraday 15M data to check today's 15M high breakout
+        df_15m = yf.Ticker(ticker).history(period="2d", interval="15m")
+        
+        if df_daily is not None and len(df_daily) >= 20:
+            return ticker, df_daily, df_15m
     except Exception:
         pass
-    return ticker, None
+    return ticker, None, None
 
 def fetch_data_parallel(tickers):
-    """Downloads all tickers in parallel using 15 worker threads."""
-    all_dfs = {}
-    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers...")
+    all_data = {}
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers with 15M Intraday Data...")
     with ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(fetch_single_ticker, tickers)
-        for ticker, df in results:
-            if df is not None and not df.empty:
-                all_dfs[ticker] = df
-    return all_dfs
+        for ticker, df_daily, df_15m in results:
+            if df_daily is not None and not df_daily.empty:
+                all_data[ticker] = {"daily": df_daily, "intraday": df_15m}
+    return all_data
 
-def process_symbol_data(df, symbol, time_only_ist):
-    """Calculates indicators and prepares stock metrics."""
-    df = df.dropna()
+def process_symbol_data(data, symbol, time_only_ist):
+    df = data["daily"].dropna()
+    df_15m = data["intraday"]
+
     if len(df) < 25:
         return None
 
@@ -107,7 +109,7 @@ def process_symbol_data(df, symbol, time_only_ist):
     is_vcp = (r20 > r10) and (r10 > r5)
     vcp_str = "YES 🔥" if is_vcp else "NO"
 
-    # 3. Price Actions & Breakouts
+    # 3. Price Actions & Daily Breakouts
     prev_close = float(df['Close'].iloc[-2])
     pct_change = ((c_price - prev_close) / prev_close) * 100
 
@@ -129,7 +131,27 @@ def process_symbol_data(df, symbol, time_only_ist):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 5. Breakout Status & Action Entry Condition
+    # 5. 🔥 AUTO 15-MINUTE CONFIRMATION ENGINE 🔥
+    is_15m_high_broken = False
+    is_15m_low_broken = False
+
+    if df_15m is not None and not df_15m.empty:
+        # Get today's candles
+        today_date = df_15m.index[-1].date()
+        today_candles = df_15m[df_15m.index.date == today_date]
+        
+        if len(today_candles) >= 1:
+            # First 15M Candle (9:15 AM - 9:30 AM)
+            first_15m_high = today_candles['High'].iloc[0]
+            first_15m_low = today_candles['Low'].iloc[0]
+
+            # Check if current LTP crossed first 15M High/Low
+            if c_price > first_15m_high:
+                is_15m_high_broken = True
+            elif c_price < first_15m_low:
+                is_15m_low_broken = True
+
+    # 6. Breakout Status & Smart Action Trigger
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -141,20 +163,30 @@ def process_symbol_data(df, symbol, time_only_ist):
         
         if is_vcp and is_res_break and is_vol_spike:
             bo_status = "ALPHA CE B/O 🚀🔥"
-            action_entry = "BUY CE ABOVE 15M HIGH 🟢"
             priority_group = 1
+            if is_15m_high_broken:
+                action_entry = "BUY CE (15M CONFIRMED) 🟢"
+            else:
+                action_entry = "WAIT FOR 15M BREAKOUT ⏳"
+
         elif is_vcp and is_sup_break and is_vol_spike:
             bo_status = "ALPHA PE B/O 📉💥"
-            action_entry = "BUY PE BELOW 15M LOW 🔴"
             priority_group = 1
+            if is_15m_low_broken:
+                action_entry = "BUY PE (15M CONFIRMED) 🔴"
+            else:
+                action_entry = "WAIT FOR 15M BREAKDOWN ⏳"
+
         elif is_res_break and is_vol_spike:
             bo_status = "CE BREAKOUT 🚀"
-            action_entry = "BUY CE ON PULLBACK 🟢"
             priority_group = 1
+            action_entry = "BUY CE ON PULLBACK 🟢"
+
         elif is_sup_break and is_vol_spike:
             bo_status = "PE BREAKDOWN 📉"
-            action_entry = "BUY PE ON PULLBACK 🔴"
             priority_group = 1
+            action_entry = "BUY PE ON PULLBACK 🔴"
+
         elif is_vcp and is_vol_dryup:
             bo_status = "VCP SQUEEZE 💥"
             action_entry = "READY FOR B/O (WATCH) 👁️"
@@ -183,10 +215,9 @@ def process_symbol_data(df, symbol, time_only_ist):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting FnO Fast Scanner Engine...")
+    print("🚀 Starting FnO Fast Scanner Engine with Auto 15M Confirmation...")
 
     ist = pytz.timezone('Asia/Kolkata')
-    # ONLY TIME FORMAT (HH:MM:SS) - No Date, No IST text
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
     data_dict = fetch_data_parallel(ALL_TICKERS)
@@ -194,9 +225,9 @@ def main():
     nifty_row = None
     stock_data_list = []
 
-    for symbol, df in data_dict.items():
+    for symbol, data in data_dict.items():
         try:
-            pdata = process_symbol_data(df, symbol, time_only_ist)
+            pdata = process_symbol_data(data, symbol, time_only_ist)
             if not pdata:
                 continue
 
@@ -212,10 +243,9 @@ def main():
         except Exception as e:
             continue
 
-    # 🔥 AUTO-SORTING LOGIC
+    # Auto Sorting: Priority 1 Breakouts -> Priority 2 Squeeze -> Priority 3 Wait
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
-    # Clean Signal Rank Formatting for Column I
     stock_rows = []
     bo_rank = 1
     ready_rank = 1
@@ -238,12 +268,11 @@ def main():
             item["vol_status"],          # Col E
             item["option_buildup"],      # Col F
             item["bo_status"],           # Col G
-            item["action_entry"],        # Col H
-            rank_tag,                    # Col I (B/O #1, READY #1, WAIT)
-            item["time_only_ist"]        # Col J (Only HH:MM:SS)
+            item["action_entry"],        # Col H (Smart Auto 15M Status!)
+            rank_tag,                    # Col I
+            item["time_only_ist"]        # Col J
         ])
 
-    # 📌 HEADERS FOR COLUMNS A TO J
     headers = [
         "Stock Symbol", 
         "LTP", 
@@ -262,8 +291,7 @@ def main():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # Update Sheet Matrix
-    print("📊 Updating Google Sheet Matrix...")
+    print("📊 Updating Google Sheet Matrix with Auto 15M Confirmation...")
     sheet = get_google_sheet()
     sheet.clear()
 
@@ -277,7 +305,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Google Sheet updated in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Google Sheet updated with 15M Auto Confirmation in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
