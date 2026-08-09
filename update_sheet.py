@@ -72,7 +72,7 @@ def fetch_single_ticker(ticker):
 
 def fetch_data_parallel(tickers):
     all_data = {}
-    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers with Intraday Data...")
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers...")
     with ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df_daily, df_15m in results:
@@ -116,7 +116,7 @@ def process_symbol_data(data, symbol, time_only_ist):
     is_res_break = c_price >= res_20
     is_sup_break = c_price <= sup_20
 
-    # Calculate 20 EMA for Support Column K
+    # Calculate 20 EMA for Support
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
@@ -217,7 +217,7 @@ def process_symbol_data(data, symbol, time_only_ist):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting FnO Scanner Engine with Support Levels (Col K)...")
+    print("🚀 Starting FnO Scanner Engine...")
 
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
@@ -237,8 +237,8 @@ def main():
                 nifty_row = [
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
-                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK", pdata["time_only_ist"],
-                    pdata["support_level"]
+                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK", 
+                    pdata["support_level"], pdata["time_only_ist"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -271,10 +271,10 @@ def main():
             item["vol_status"],          # Col E
             item["option_buildup"],      # Col F
             item["bo_status"],           # Col G
-            item["action_entry"],        # Col H (BUY CE ON REVERSAL 🟢)
+            item["action_entry"],        # Col H
             rank_tag,                    # Col I
-            item["time_only_ist"],       # Col J
-            item["support_level"]        # Col K (New Pullback Support Level!)
+            item["support_level"],       # Col J (Reversal Support Level 🎯)
+            item["time_only_ist"]        # Col K (Last Updated Time ⏱️)
         ])
 
     headers = [
@@ -287,8 +287,8 @@ def main():
         "Breakout Status",
         "Action / Entry Trigger",
         "Priority Rank",
-        "Last Updated",
-        "Reversal Support Level"
+        "Reversal Support Level",
+        "Last Updated"
     ]
 
     final_matrix = [headers]
@@ -310,7 +310,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet updated with Support Levels (Col K) in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet updated! Col J = Support, Col K = Time in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
