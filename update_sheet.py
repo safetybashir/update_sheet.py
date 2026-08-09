@@ -48,7 +48,7 @@ def get_google_sheet():
     return client.open_by_key(sheet_id).sheet1
 
 def fetch_single_ticker(ticker):
-    """Fast single ticker download with error handling."""
+    """Fast single ticker download."""
     try:
         df = yf.Ticker(ticker).history(period="60d", interval="1d")
         if df is not None and len(df) >= 20:
@@ -58,9 +58,9 @@ def fetch_single_ticker(ticker):
     return ticker, None
 
 def fetch_data_parallel(tickers):
-    """Downloads all tickers in parallel using threads for maximum speed (10-15s)."""
+    """Downloads all tickers in parallel using 10 worker threads."""
     all_dfs = {}
-    print(f"⚡ Downloading {len(tickers)} tickers in parallel...")
+    print(f"⚡ Parallel fetching {len(tickers)} tickers...")
     with ThreadPoolExecutor(max_workers=10) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df in results:
@@ -69,7 +69,7 @@ def fetch_data_parallel(tickers):
     return all_dfs
 
 def process_symbol_data(df, symbol, now_ist):
-    """Calculates indicators and prepares clean array for columns A to H."""
+    """Calculates indicators and builds the display row for Columns A to I."""
     df = df.dropna()
     if len(df) < 25:
         return None
@@ -115,72 +115,103 @@ def process_symbol_data(df, symbol, now_ist):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 5. Master Signal Logic
+    # 5. NEW: Breakout Status & Action Entry Condition
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
-        master_signal = "BULLISH TREND 📈" if pct_change > 0 else "BEARISH TREND 📉"
         clean_symbol = "NIFTY 50 🎯"
+        bo_status = "INDEX TREND"
+        action_entry = "MARKET REGIME: " + ("BULLISH 📈" if pct_change > 0 else "BEARISH 📉")
     else:
         clean_symbol = symbol.replace(".NS", "")
+        
+        # Breakout Type Determination
         if is_vcp and is_res_break and is_vol_spike:
-            master_signal = "ALPHA VCP CE B/O 🚀🔥"
+            bo_status = "ALPHA CE B/O 🚀🔥"
+            action_entry = "BUY CE ABOVE 15M HIGH 🟢"
         elif is_vcp and is_sup_break and is_vol_spike:
-            master_signal = "ALPHA VCP PE B/O 📉💥"
-        elif is_vcp and is_vol_dryup:
-            master_signal = "VCP SQUEEZE (READY) 💥"
+            bo_status = "ALPHA PE B/O 📉💥"
+            action_entry = "BUY PE BELOW 15M LOW 🔴"
         elif is_res_break and is_vol_spike:
-            master_signal = "CE BREAKOUT 🚀"
+            bo_status = "CE BREAKOUT 🚀"
+            action_entry = "BUY CE ON PULLBACK 🟢"
         elif is_sup_break and is_vol_spike:
-            master_signal = "PE BREAKDOWN 📉"
+            bo_status = "PE BREAKDOWN 📉"
+            action_entry = "BUY PE ON PULLBACK 🔴"
+        elif is_vcp and is_vol_dryup:
+            bo_status = "VCP SQUEEZE 💥"
+            action_entry = "READY FOR B/O (WATCH) 👁️"
         else:
-            master_signal = "WATCHLIST 👁️"
+            bo_status = "NONE"
+            action_entry = "NO ENTRY (WAIT) ⏳"
 
-    # 8 Elements for Columns A, B, C, D, E, F, G, H
-    return [
-        str(clean_symbol),
-        round(c_price, 2),
-        f"{round(pct_change, 2)}%",
-        str(vcp_str),
-        str(vol_status),
-        str(option_buildup),
-        str(master_signal),
-        str(now_ist)
-    ]
+    return {
+        "clean_symbol": clean_symbol,
+        "c_price": round(c_price, 2),
+        "pct_change_num": pct_change,
+        "pct_change_str": f"{round(pct_change, 2)}%",
+        "vcp_str": vcp_str,
+        "vol_status": vol_status,
+        "option_buildup": option_buildup,
+        "bo_status": bo_status,
+        "action_entry": action_entry,
+        "now_ist": now_ist,
+        "is_breakout": "B/O" in bo_status or "BREAKOUT" in bo_status or "BREAKDOWN" in bo_status
+    }
 
 # ==========================================
 # 2. MAIN EXECUTION
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting Fast Scanner Engine...")
+    print("🚀 Starting Fast Scanner Engine with Entry Signals...")
 
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
 
-    # Fast Multi-threaded Data Download
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
     nifty_row = None
-    stock_rows = []
+    stock_data_list = []
 
     for symbol, df in data_dict.items():
         try:
-            row = process_symbol_data(df, symbol, now_ist)
-            if not row:
+            pdata = process_symbol_data(df, symbol, now_ist)
+            if not pdata:
                 continue
 
             if symbol == INDEX_TICKER:
-                nifty_row = row
+                nifty_row = [
+                    pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
+                    pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
+                    pdata["bo_status"], pdata["action_entry"], pdata["now_ist"]
+                ]
             else:
-                stock_rows.append(row)
+                stock_data_list.append(pdata)
 
         except Exception as e:
             continue
 
-    # Priority Sorting for Stocks
-    stock_rows.sort(key=lambda x: ("ALPHA" in x[6] or "B/O" in x[6], float(x[2].replace('%', ''))), reverse=True)
+    # 🔥 TOP MOMENTUM & UPTREND SORTING FOR BREAKOUT STOCKS
+    # Priority 1: Breakout Stocks First
+    # Priority 2: Highest Momentum (% Change)
+    stock_data_list.sort(key=lambda x: (x["is_breakout"], x["pct_change_num"]), reverse=True)
 
-    # 📌 EXACT HEADERS FOR ROW 1 (A1 to H1)
+    # Convert sorted objects to matrix rows
+    stock_rows = []
+    for item in stock_data_list:
+        stock_rows.append([
+            item["clean_symbol"],
+            item["c_price"],
+            item["pct_change_str"],
+            item["vcp_str"],
+            item["vol_status"],
+            item["option_buildup"],
+            item["bo_status"],
+            item["action_entry"],
+            item["now_ist"]
+        ])
+
+    # 📌 HEADERS FOR COLUMNS A TO I
     headers = [
         "Stock Symbol", 
         "LTP", 
@@ -188,26 +219,23 @@ def main():
         "VCP Contraction", 
         "Volume Status", 
         "CE/PE Option Buildup", 
-        "Master OI-VCP Signal", 
+        "Breakout Status",
+        "Action / Entry Trigger", 
         "Last Updated"
     ]
 
-    # Combine Matrix: Row 1 = Headers, Row 2 = Nifty 50, Row 3+ = Stocks
     final_matrix = [headers]
     if nifty_row:
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # Update Sheet explicitly by cell range A1 to H{N}
-    print("📊 Updating Google Sheet with 2D Columns...")
+    # Update Sheet A1 to I{N}
+    print("📊 Updating Google Sheet Matrix with Action Signals...")
     sheet = get_google_sheet()
-    
-    # 1. Clear old content
     sheet.clear()
 
-    # 2. Update with exact user_entered format so columns split properly
     end_row = len(final_matrix)
-    range_to_update = f"A1:H{end_row}"
+    range_to_update = f"A1:I{end_row}"
     
     sheet.update(
         range_name=range_to_update, 
@@ -216,7 +244,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Google Sheet updated in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Google Sheet updated with Entry Signals in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
