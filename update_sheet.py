@@ -69,7 +69,7 @@ def fetch_data_parallel(tickers):
     return all_dfs
 
 def process_symbol_data(df, symbol, now_ist):
-    """Calculates indicators and builds the display row for Columns A to I."""
+    """Calculates indicators and builds the display row dictionary."""
     df = df.dropna()
     if len(df) < 25:
         return None
@@ -115,7 +115,7 @@ def process_symbol_data(df, symbol, now_ist):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 5. NEW: Breakout Status & Action Entry Condition
+    # 5. Breakout Status & Action Entry Condition
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -124,7 +124,6 @@ def process_symbol_data(df, symbol, now_ist):
     else:
         clean_symbol = symbol.replace(".NS", "")
         
-        # Breakout Type Determination
         if is_vcp and is_res_break and is_vol_spike:
             bo_status = "ALPHA CE B/O 🚀🔥"
             action_entry = "BUY CE ABOVE 15M HIGH 🟢"
@@ -163,7 +162,7 @@ def process_symbol_data(df, symbol, now_ist):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting Fast Scanner Engine with Entry Signals...")
+    print("🚀 Starting Fast Scanner Engine with Priority Ranking...")
 
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
@@ -180,7 +179,9 @@ def main():
                 continue
 
             if symbol == INDEX_TICKER:
+                # Nifty Header Row with N/A Rank
                 nifty_row = [
+                    "INDEX 🎯",
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
                     pdata["bo_status"], pdata["action_entry"], pdata["now_ist"]
@@ -196,10 +197,16 @@ def main():
     # Priority 2: Highest Momentum (% Change)
     stock_data_list.sort(key=lambda x: (x["is_breakout"], x["pct_change_num"]), reverse=True)
 
-    # Convert sorted objects to matrix rows
+    # Add Explicit Priority Ranks (Rank #1, Rank #2, Rank #3...)
     stock_rows = []
-    for item in stock_data_list:
+    for idx, item in enumerate(stock_data_list, start=1):
+        if item["is_breakout"]:
+            rank_str = f"Rank #{idx} 🔥"
+        else:
+            rank_str = f"Rank #{idx}"
+
         stock_rows.append([
+            rank_str,  # Column A: Priority Rank
             item["clean_symbol"],
             item["c_price"],
             item["pct_change_str"],
@@ -211,8 +218,9 @@ def main():
             item["now_ist"]
         ])
 
-    # 📌 HEADERS FOR COLUMNS A TO I
+    # 📌 HEADERS FOR COLUMNS A TO J
     headers = [
+        "Priority Rank",
         "Stock Symbol", 
         "LTP", 
         "% Change", 
@@ -229,13 +237,13 @@ def main():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # Update Sheet A1 to I{N}
-    print("📊 Updating Google Sheet Matrix with Action Signals...")
+    # Update Sheet A1 to J{N}
+    print("📊 Updating Google Sheet Matrix with Rank Column...")
     sheet = get_google_sheet()
     sheet.clear()
 
     end_row = len(final_matrix)
-    range_to_update = f"A1:I{end_row}"
+    range_to_update = f"A1:J{end_row}"
     
     sheet.update(
         range_name=range_to_update, 
@@ -244,7 +252,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Google Sheet updated with Entry Signals in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Google Sheet updated with Priority Ranks in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
