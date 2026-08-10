@@ -2,6 +2,7 @@ import os
 import json
 import time
 import pytz
+import requests
 import pandas as pd
 import yfinance as yf
 import gspread
@@ -59,6 +60,52 @@ def get_google_sheet():
     client = gspread.authorize(credentials)
     return client.open_by_key(sheet_id).sheet1
 
+# ==========================================
+# 2. LIVE NSE OPEN INTEREST (OI) FETCH ENGINE
+# ==========================================
+def fetch_nse_oi_data_bulk():
+    print("📡 Fetching Live OI % Change from NSE India...")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.nseindia.com/get-quotes/derivatives?symbol=RELIANCE'
+    }
+    
+    session = requests.Session()
+    session.headers.update(headers)
+    
+    try:
+        session.get("https://www.nseindia.com", timeout=5)
+    except Exception:
+        pass
+
+    oi_dict = {}
+
+    def fetch_single_oi(symbol):
+        url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
+        try:
+            resp = session.get(url, timeout=4)
+            if resp.status_code == 200:
+                data = resp.json()
+                stocks_data = data.get('stocks', [])
+                if stocks_data:
+                    fut_info = stocks_data[0]['marketDeptOrderBook']['tradeInfo']
+                    p_change_oi = float(fut_info.get('pchangeinOpenInterest', 0.0))
+                    return symbol, round(p_change_oi, 2)
+        except Exception:
+            pass
+        return symbol, None
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
+        for symbol, oi_pct in results:
+            oi_dict[symbol] = oi_pct
+
+    return oi_dict
+
+# ==========================================
+# 3. YFINANCE PARALLEL FETCHING
+# ==========================================
 def fetch_single_ticker(ticker):
     try:
         df_daily = yf.Ticker(ticker).history(period="60d", interval="1d")
@@ -80,7 +127,10 @@ def fetch_data_parallel(tickers):
                 all_data[ticker] = {"daily": df_daily, "intraday": df_15m}
     return all_data
 
-def process_symbol_data(data, symbol, time_only_ist):
+# ==========================================
+# 4. PROCESS SYMBOL DATA
+# ==========================================
+def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     df = data["daily"].dropna()
     df_15m = data["intraday"]
 
@@ -116,23 +166,33 @@ def process_symbol_data(data, symbol, time_only_ist):
     is_res_break = c_price >= res_20
     is_sup_break = c_price <= sup_20
 
-    # Calculate 20 EMA for Support
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
-    # 4. ORIGINAL PRICE-VOLUME BASE BUILDUP LOGIC
-    if pct_change > 0 and is_vol_spike:
+    # 4. OI CHANGE % LOGIC (NSE Live API or Dynamic Volume-Proxy Fallback)
+    if live_oi_pct is not None and live_oi_pct != 0.0:
+        oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
+        oi_val_for_buildup = live_oi_pct
+    else:
+        # Fallback Estimation via Vol Ratio & Price Change
+        vol_ratio = vol_latest / vol_sma if vol_sma > 0 else 1.0
+        est_oi = round(pct_change * vol_ratio * 1.2, 2)
+        oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
+        oi_val_for_buildup = est_oi
+
+    # 5. CE/PE BUILDUP SIGNAL LOGIC
+    if pct_change > 0 and oi_val_for_buildup > 0:
         option_buildup = "CE LONG BUILDUP 🔥"
-    elif pct_change < 0 and is_vol_spike:
+    elif pct_change < 0 and oi_val_for_buildup > 0:
         option_buildup = "PE LONG BUILDUP 📉"
-    elif pct_change > 0 and is_vol_dryup:
+    elif pct_change > 0 and oi_val_for_buildup < 0:
         option_buildup = "CE SHORT COVERING ⚡"
-    elif pct_change < 0 and is_vol_dryup:
+    elif pct_change < 0 and oi_val_for_buildup < 0:
         option_buildup = "PE UNWINDING 💧"
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 5. AUTO 15-MINUTE CONFIRMATION ENGINE
+    # 6. AUTO 15-MINUTE CONFIRMATION ENGINE
     is_15m_high_broken = False
     is_15m_low_broken = False
 
@@ -149,7 +209,7 @@ def process_symbol_data(data, symbol, time_only_ist):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 6. Breakout Status, Action Trigger & Support Level
+    # 7. Breakout Status, Action Trigger & Support Level
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -158,6 +218,7 @@ def process_symbol_data(data, symbol, time_only_ist):
         support_level = "N/A"
         priority_group = 0
         option_buildup = "N/A"
+        oi_change_str = "N/A"
     else:
         clean_symbol = symbol.replace(".NS", "")
         support_level = f"EMA20: ₹{ema20_val}"
@@ -203,6 +264,7 @@ def process_symbol_data(data, symbol, time_only_ist):
         "c_price": round(c_price, 2),
         "pct_change_num": pct_change,
         "pct_change_str": f"{round(pct_change, 2)}%",
+        "oi_change_str": oi_change_str,
         "vcp_str": vcp_str,
         "vol_status": vol_status,
         "option_buildup": option_buildup,
@@ -214,15 +276,19 @@ def process_symbol_data(data, symbol, time_only_ist):
     }
 
 # ==========================================
-# 2. MAIN EXECUTION
+# 5. MAIN EXECUTION
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting FnO Scanner Engine...")
+    print("🚀 Starting FnO Scanner Engine with Live OI Column...")
 
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
+    # Fetch Live NSE Open Interest Data
+    nse_oi_dict = fetch_nse_oi_data_bulk()
+
+    # Parallel Fetch Yahoo Finance Data
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
     nifty_row = None
@@ -230,16 +296,19 @@ def main():
 
     for symbol, data in data_dict.items():
         try:
-            pdata = process_symbol_data(data, symbol, time_only_ist)
+            clean_sym = symbol.replace(".NS", "")
+            live_oi_pct = nse_oi_dict.get(clean_sym, None)
+
+            pdata = process_symbol_data(data, symbol, time_only_ist, live_oi_pct)
             if not pdata:
                 continue
 
             if symbol == INDEX_TICKER:
                 nifty_row = [
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
-                    pdata["vcp_str"], pdata["vol_status"], pdata["option_buildup"],
-                    pdata["bo_status"], pdata["action_entry"], "BENCHMARK", 
-                    pdata["support_level"], pdata["time_only_ist"]
+                    pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
+                    pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
+                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -267,21 +336,23 @@ def main():
         stock_rows.append([
             item["clean_symbol"],        # Col A
             item["c_price"],             # Col B
-            item["pct_change_str"],      # Col C
-            item["vcp_str"],             # Col D
-            item["vol_status"],          # Col E
-            item["option_buildup"],      # Col F (Reliable Price-Volume Buildup)
-            item["bo_status"],           # Col G
-            item["action_entry"],        # Col H
-            rank_tag,                    # Col I
-            item["support_level"],       # Col J (Reversal Support Level 🎯)
-            item["time_only_ist"]        # Col K (Last Updated Time ⏱️)
+            item["pct_change_str"],      # Col C (Price % Change)
+            item["oi_change_str"],       # Col D (OI % Change) 📊
+            item["vcp_str"],             # Col E
+            item["vol_status"],          # Col F
+            item["option_buildup"],      # Col G
+            item["bo_status"],           # Col H
+            item["action_entry"],        # Col I
+            rank_tag,                    # Col J
+            item["support_level"],       # Col K
+            item["time_only_ist"]        # Col L
         ])
 
     headers = [
         "Stock Symbol", 
         "LTP", 
-        "% Change", 
+        "Price % Change", 
+        "OI % Change 📊", 
         "VCP Contraction", 
         "Volume Status", 
         "CE/PE Option Buildup", 
@@ -297,12 +368,12 @@ def main():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    print("📊 Updating Google Sheet Matrix A1:K...")
+    print("📊 Updating Google Sheet Matrix A1:L...")
     sheet = get_google_sheet()
     sheet.clear()
 
     end_row = len(final_matrix)
-    range_to_update = f"A1:K{end_row}"
+    range_to_update = f"A1:L{end_row}"
     
     sheet.update(
         range_name=range_to_update, 
@@ -311,7 +382,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet updated! Col J = Support, Col K = Time in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet updated with OI % Change Column in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
