@@ -2,7 +2,6 @@ import os
 import json
 import time
 import pytz
-import requests
 import pandas as pd
 import yfinance as yf
 import gspread
@@ -60,54 +59,6 @@ def get_google_sheet():
     client = gspread.authorize(credentials)
     return client.open_by_key(sheet_id).sheet1
 
-# ==========================================
-# 2. FETCH LIVE NSE OPEN INTEREST (OI) DATA
-# ==========================================
-def fetch_nse_oi_data_bulk():
-    """
-    NSE API से लाइव FNO डेरिवेटिव डेटा फेच करता है।
-    """
-    print("📡 Fetching Live Open Interest (OI) from NSE India...")
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br'
-    }
-    
-    session = requests.Session()
-    try:
-        session.get("https://www.nseindia.com", headers=headers, timeout=10)
-    except Exception as e:
-        print(f"⚠️ NSE Session Connection Warning: {e}")
-
-    oi_dict = {}
-
-    def fetch_single_oi(symbol):
-        try:
-            fno_url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
-            resp = session.get(fno_url, headers=headers, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                stocks_data = data.get('stocks', [])
-                if stocks_data:
-                    fut_info = stocks_data[0]['marketDeptOrderBook']['tradeInfo']
-                    p_change_oi = float(fut_info.get('pchangeinOpenInterest', 0.0))
-                    return symbol, round(p_change_oi, 2)
-        except Exception:
-            pass
-        return symbol, 0.0
-
-    # Parallel Execution for Fast NSE Requests
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
-        for symbol, oi_pct in results:
-            oi_dict[symbol] = oi_pct
-
-    return oi_dict
-
-# ==========================================
-# 3. YFINANCE DATA FETCHING
-# ==========================================
 def fetch_single_ticker(ticker):
     try:
         df_daily = yf.Ticker(ticker).history(period="60d", interval="1d")
@@ -121,7 +72,7 @@ def fetch_single_ticker(ticker):
 
 def fetch_data_parallel(tickers):
     all_data = {}
-    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers price data...")
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers...")
     with ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df_daily, df_15m in results:
@@ -129,10 +80,7 @@ def fetch_data_parallel(tickers):
                 all_data[ticker] = {"daily": df_daily, "intraday": df_15m}
     return all_data
 
-# ==========================================
-# 4. PROCESS SYMBOL DATA WITH LIVE OI LOGIC
-# ==========================================
-def process_symbol_data(data, symbol, time_only_ist, live_oi_change_pct):
+def process_symbol_data(data, symbol, time_only_ist):
     df = data["daily"].dropna()
     df_15m = data["intraday"]
 
@@ -172,17 +120,17 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_change_pct):
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
-    # 4. CE/PE Option Buildup (Calculated via Live Price % & Live NSE OI Change %)
-    if pct_change > 0 and live_oi_change_pct > 0:
-        option_buildup = f"LONG BUILDUP 🔥 (+{live_oi_change_pct}%)"
-    elif pct_change < 0 and live_oi_change_pct > 0:
-        option_buildup = f"SHORT BUILDUP 📉 (+{live_oi_change_pct}%)"
-    elif pct_change > 0 and live_oi_change_pct < 0:
-        option_buildup = f"SHORT COVERING ⚡ ({live_oi_change_pct}%)"
-    elif pct_change < 0 and live_oi_change_pct < 0:
-        option_buildup = f"LONG UNWINDING 💧 ({live_oi_change_pct}%)"
+    # 4. ORIGINAL PRICE-VOLUME BASE BUILDUP LOGIC
+    if pct_change > 0 and is_vol_spike:
+        option_buildup = "CE LONG BUILDUP 🔥"
+    elif pct_change < 0 and is_vol_spike:
+        option_buildup = "PE LONG BUILDUP 📉"
+    elif pct_change > 0 and is_vol_dryup:
+        option_buildup = "CE SHORT COVERING ⚡"
+    elif pct_change < 0 and is_vol_dryup:
+        option_buildup = "PE UNWINDING 💧"
     else:
-        option_buildup = f"NEUTRAL ↔️ ({live_oi_change_pct}%)"
+        option_buildup = "NEUTRAL ↔️"
 
     # 5. AUTO 15-MINUTE CONFIRMATION ENGINE
     is_15m_high_broken = False
@@ -266,19 +214,15 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_change_pct):
     }
 
 # ==========================================
-# 5. MAIN EXECUTION
+# 2. MAIN EXECUTION
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting FnO Scanner Engine with Live NSE OI Data...")
+    print("🚀 Starting FnO Scanner Engine...")
 
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
-    # Fetch Live Open Interest from NSE
-    nse_oi_dict = fetch_nse_oi_data_bulk()
-
-    # Parallel Fetch Price Data from Yahoo Finance
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
     nifty_row = None
@@ -286,10 +230,7 @@ def main():
 
     for symbol, data in data_dict.items():
         try:
-            clean_sym = symbol.replace(".NS", "")
-            live_oi_pct = nse_oi_dict.get(clean_sym, 0.0)
-
-            pdata = process_symbol_data(data, symbol, time_only_ist, live_oi_pct)
+            pdata = process_symbol_data(data, symbol, time_only_ist)
             if not pdata:
                 continue
 
@@ -306,7 +247,7 @@ def main():
         except Exception as e:
             continue
 
-    # Auto Sorting by Priority Rank & Price % Change
+    # Auto Sorting
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -329,12 +270,12 @@ def main():
             item["pct_change_str"],      # Col C
             item["vcp_str"],             # Col D
             item["vol_status"],          # Col E
-            item["option_buildup"],      # Col F (Now Live OI Buildup + OI Change %)
+            item["option_buildup"],      # Col F (Reliable Price-Volume Buildup)
             item["bo_status"],           # Col G
             item["action_entry"],        # Col H
             rank_tag,                    # Col I
-            item["support_level"],       # Col J
-            item["time_only_ist"]        # Col K
+            item["support_level"],       # Col J (Reversal Support Level 🎯)
+            item["time_only_ist"]        # Col K (Last Updated Time ⏱️)
         ])
 
     headers = [
@@ -370,7 +311,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet updated! Live Open Interest integrated in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet updated! Col J = Support, Col K = Time in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
