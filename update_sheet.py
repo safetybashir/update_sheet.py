@@ -230,17 +230,35 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 8. Breakout Status & Priority Group Separation
-    # Group 1 = Bullish Breakout, Group 2 = Bearish Breakdown, Group 3 = VCP Ready, Group 4 = Neutral
+    # 8. Trend & Priority Logic
+    if c_price > ema21_val:
+        trend_str = "📈 BULLISH"
+    elif c_price < ema21_val:
+        trend_str = "📉 BEARISH"
+    else:
+        trend_str = "↔️ SIDEWAYS"
+
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
         bo_status = "INDEX TREND"
         action_entry = "MARKET REGIME: " + ("BULLISH 📈" if pct_change > 0 else "BEARISH 📉")
-        support_level = "N/A"
         priority_group = 0
         option_buildup = "N/A"
         oi_change_str = "N/A"
+        
+        # --- INDEX SPECIFIC LOGIC FOR COL K TO O ---
+        support_level = f"VWAP: ₹{round(vwap_val, 1)}"
+        bo_stock_m_val = "ABOVE VWAP 🟢" if c_price >= vwap_val else "BELOW VWAP 🔻"
+        trend_n_val = "📈 BULLISH TREND" if c_price > ema21_val else "📉 BEARISH TREND"
+        
+        if c_price > ema21_val and c_price > vwap_val:
+            high_mom_o_val = "BULLISH INTENSE 🚀"
+        elif c_price < ema21_val and c_price < vwap_val:
+            high_mom_o_val = "BEARISH INTENSE 🔻"
+        else:
+            high_mom_o_val = "SIDEWAYS / MIXED ↔️"
+
     else:
         clean_symbol = symbol.replace(".NS", "")
         support_level = f"EMA20: ₹{ema20_val}"
@@ -252,7 +270,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
 
         elif is_vcp and is_sup_break and is_vol_spike:
             bo_status = "ALPHA PE B/O 📉💥"
-            priority_group = 2  # Separated Bearish Rank
+            priority_group = 2
             action_entry = "BUY PE (15M CONFIRMED) 🔴" if is_15m_low_broken else "WAIT FOR 15M BREAKDOWN ⏳"
 
         elif is_res_break and is_vol_spike:
@@ -262,7 +280,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
 
         elif is_sup_break and is_vol_spike:
             bo_status = "PE BREAKDOWN 📉"
-            priority_group = 2  # Separated Bearish Rank
+            priority_group = 2
             action_entry = "BUY PE ON REVERSAL 🔴"
 
         elif is_vcp and is_vol_dryup:
@@ -275,18 +293,10 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             support_level = "-"
             priority_group = 4
 
-    # Trend calculation for strictly locked Column N & O
-    if c_price > ema21_val:
-        trend_str = "📈 BULLISH"
-    elif c_price < ema21_val:
-        trend_str = "📉 BEARISH"
-    else:
-        trend_str = "↔️ SIDEWAYS"
-
-    # Strictly Lock Col M, N, O logic per row
-    bo_stock_m_val = clean_symbol if (c_price >= pivot_point and is_vol_spike) else ""
-    trend_n_val = trend_str if bo_stock_m_val != "" else ""
-    high_mom_o_val = clean_symbol if (bo_stock_m_val != "" and c_price > ema21_val and c_price > vwap_val and trend_str == "📈 BULLISH") else ""
+        # Strictly Lock Col M, N, O logic for individual stocks
+        bo_stock_m_val = clean_symbol if (c_price >= pivot_point and is_vol_spike) else ""
+        trend_n_val = trend_str if bo_stock_m_val != "" else ""
+        high_mom_o_val = clean_symbol if (bo_stock_m_val != "" and c_price > ema21_val and c_price > vwap_val and trend_str == "📈 BULLISH") else ""
 
     return {
         "clean_symbol": clean_symbol,
@@ -338,7 +348,7 @@ def main():
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
                     "BENCHMARK", pdata["support_level"], pdata["time_only_ist"],
-                    "", "", ""
+                    pdata["bo_stock_m_val"], pdata["trend_n_val"], pdata["high_mom_o_val"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -369,7 +379,6 @@ def main():
     ready_rank = 1
 
     for item in stock_data_list:
-        # Corrected Ranks Strategy
         if item["priority_group"] == 1:
             rank_tag = f"B/O #{bo_rank}"
             bo_rank += 1
@@ -395,9 +404,9 @@ def main():
             rank_tag,                    # Col J
             item["support_level"],       # Col K
             item["time_only_ist"],       # Col L
-            item["bo_stock_m_val"],      # Col M (Strictly Linked)
-            item["trend_n_val"],         # Col N (Strictly Linked)
-            item["high_mom_o_val"]       # Col O (Strictly Linked)
+            item["bo_stock_m_val"],      # Col M
+            item["trend_n_val"],         # Col N
+            item["high_mom_o_val"]       # Col O
         ]
         final_matrix.append(row)
 
@@ -416,7 +425,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet fully updated with ZERO Misalignment in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet fully updated with Nifty Bias in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
