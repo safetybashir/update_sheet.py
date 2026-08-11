@@ -165,7 +165,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     prev_low = float(df['Low'].iloc[-2])
     pct_change = ((c_price - prev_close) / prev_close) * 100
 
-    # Pivot Point Calculation
     pivot_point = (prev_high + prev_low + prev_close) / 3.0
 
     res_20 = df['High'].tail(21).iloc[:-1].max()
@@ -180,7 +179,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     ema21_val = float(df['EMA21'].iloc[-1])
 
     # 4. Intraday VWAP Engine
-    vwap_val = c_price  # Fallback
+    vwap_val = c_price
     if df_15m is not None and not df_15m.empty:
         today_date = df_15m.index[-1].date()
         today_candles = df_15m[df_15m.index.date == today_date].copy()
@@ -191,27 +190,28 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             vwap_series = cum_tp_vol / cum_vol
             vwap_val = float(vwap_series.iloc[-1])
 
-    # 5. OI Change Logic
-    if live_oi_pct is not None and live_oi_pct != 0.0:
+    # 5. OI Change Logic (STRICT CHECK - NO FAKE ESTIMATE)
+    if live_oi_pct is not None:
         oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
         oi_val_for_buildup = live_oi_pct
     else:
-        vol_ratio = vol_latest / vol_sma if vol_sma > 0 else 1.0
-        est_oi = round(pct_change * vol_ratio * 1.2, 2)
-        oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
-        oi_val_for_buildup = est_oi
+        oi_change_str = "0.0%"
+        oi_val_for_buildup = 0.0
 
     # 6. Option Buildup Logic
-    if pct_change > 0 and oi_val_for_buildup > 0:
-        option_buildup = "CE LONG BUILDUP 🔥"
-    elif pct_change < 0 and oi_val_for_buildup > 0:
-        option_buildup = "PE LONG BUILDUP 📉"
-    elif pct_change > 0 and oi_val_for_buildup < 0:
-        option_buildup = "CE SHORT COVERING ⚡"
-    elif pct_change < 0 and oi_val_for_buildup < 0:
-        option_buildup = "PE UNWINDING 💧"
+    if oi_val_for_buildup != 0.0:
+        if pct_change > 0 and oi_val_for_buildup > 0:
+            option_buildup = "CE LONG BUILDUP 🔥"
+        elif pct_change < 0 and oi_val_for_buildup > 0:
+            option_buildup = "PE LONG BUILDUP 📉"
+        elif pct_change > 0 and oi_val_for_buildup < 0:
+            option_buildup = "CE SHORT COVERING ⚡"
+        elif pct_change < 0 and oi_val_for_buildup < 0:
+            option_buildup = "PE UNWINDING 💧"
+        else:
+            option_buildup = "NEUTRAL ↔️"
     else:
-        option_buildup = "NEUTRAL ↔️"
+        option_buildup = "VOLUME BASED (NO OI) ⚠️"
 
     # 7. 15-Minute Confirmation
     is_15m_high_broken = False
@@ -230,7 +230,8 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 8. Breakout Status & Entry Trigger
+    # 8. Breakout Status & Priority Group Separation
+    # Group 1 = Bullish Breakout, Group 2 = Bearish Breakdown, Group 3 = VCP Ready, Group 4 = Neutral
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -251,7 +252,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
 
         elif is_vcp and is_sup_break and is_vol_spike:
             bo_status = "ALPHA PE B/O 📉💥"
-            priority_group = 1
+            priority_group = 2  # Separated Bearish Rank
             action_entry = "BUY PE (15M CONFIRMED) 🔴" if is_15m_low_broken else "WAIT FOR 15M BREAKDOWN ⏳"
 
         elif is_res_break and is_vol_spike:
@@ -261,18 +262,31 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
 
         elif is_sup_break and is_vol_spike:
             bo_status = "PE BREAKDOWN 📉"
-            priority_group = 1
+            priority_group = 2  # Separated Bearish Rank
             action_entry = "BUY PE ON REVERSAL 🔴"
 
         elif is_vcp and is_vol_dryup:
             bo_status = "VCP SQUEEZE 💥"
             action_entry = "READY FOR B/O (WATCH) 👁️"
-            priority_group = 2
+            priority_group = 3
         else:
             bo_status = "NONE"
             action_entry = "NO ENTRY (WAIT) ⏳"
             support_level = "-"
-            priority_group = 3
+            priority_group = 4
+
+    # Trend calculation for strictly locked Column N & O
+    if c_price > ema21_val:
+        trend_str = "📈 BULLISH"
+    elif c_price < ema21_val:
+        trend_str = "📉 BEARISH"
+    else:
+        trend_str = "↔️ SIDEWAYS"
+
+    # Strictly Lock Col M, N, O logic per row
+    bo_stock_m_val = clean_symbol if (c_price >= pivot_point and is_vol_spike) else ""
+    trend_n_val = trend_str if bo_stock_m_val != "" else ""
+    high_mom_o_val = clean_symbol if (bo_stock_m_val != "" and c_price > ema21_val and c_price > vwap_val and trend_str == "📈 BULLISH") else ""
 
     return {
         "clean_symbol": clean_symbol,
@@ -288,10 +302,9 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         "support_level": support_level,
         "priority_group": priority_group,
         "time_only_ist": time_only_ist,
-        "pivot_point": pivot_point,
-        "is_vol_spike": is_vol_spike,
-        "ema21": ema21_val,
-        "vwap": vwap_val
+        "bo_stock_m_val": bo_stock_m_val,
+        "trend_n_val": trend_n_val,
+        "high_mom_o_val": high_mom_o_val
     }
 
 # ==========================================
@@ -304,7 +317,6 @@ def main():
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
-    # Fetch Live OI and Market Data
     nse_oi_dict = fetch_nse_oi_data_bulk()
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
@@ -325,7 +337,8 @@ def main():
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"]
+                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"],
+                    "", "", ""
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -333,31 +346,43 @@ def main():
         except Exception:
             continue
 
-    # Auto Sorting (Priority Group first, then highest % Change)
+    # Sorting logic: Group 1 (Bullish), Group 2 (Bearish), Group 3 (VCP Ready), Group 4 (Rest)
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
-    # Prepare Matrix for Col A to L
-    stock_rows_a_l = []
+    final_matrix = []
+
+    # Headers Generation
+    headers = [
+        "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", 
+        "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
+        "Breakout Status", "Action / Entry Trigger", "Priority Rank", 
+        "Reversal Support Level", "Last Updated",
+        "B/O STOCKS", "TREND (STOCKS)", "MOMENTUM (EMA21+VWAP)"
+    ]
+    final_matrix.append(headers)
+
+    if nifty_row:
+        final_matrix.append(nifty_row)
+
     bo_rank = 1
+    bd_rank = 1
     ready_rank = 1
 
-    # Arrays for Col M, N, O Logic
-    bo_stocks_m = []
-    trends_n = []
-    high_mom_o = []
-
     for item in stock_data_list:
-        # Col A-L Priority Tagging
+        # Corrected Ranks Strategy
         if item["priority_group"] == 1:
             rank_tag = f"B/O #{bo_rank}"
             bo_rank += 1
         elif item["priority_group"] == 2:
+            rank_tag = f"B/D #{bd_rank}"
+            bd_rank += 1
+        elif item["priority_group"] == 3:
             rank_tag = f"READY #{ready_rank}"
             ready_rank += 1
         else:
             rank_tag = "WAIT"
 
-        stock_rows_a_l.append([
+        row = [
             item["clean_symbol"],        # Col A
             item["c_price"],             # Col B
             item["pct_change_str"],      # Col C
@@ -369,63 +394,12 @@ def main():
             item["action_entry"],        # Col I
             rank_tag,                    # Col J
             item["support_level"],       # Col K
-            item["time_only_ist"]        # Col L
-        ])
-
-        # --------------------------------------------------
-        # AUDITED LOGIC FOR COLUMNS M, N, O
-        # --------------------------------------------------
-        c_price = item["c_price"]
-        pivot = item["pivot_point"]
-        vol_spike = item["is_vol_spike"]
-        ema21 = item["ema21"]
-        vwap = item["vwap"]
-        symbol = item["clean_symbol"]
-
-        # Stock Trend
-        if c_price > ema21:
-            trend_str = "📈 BULLISH"
-        elif c_price < ema21:
-            trend_str = "📉 BEARISH"
-        else:
-            trend_str = "↔️ SIDEWAYS"
-
-        # Check Breakout Condition (Col M)
-        if (c_price >= pivot) and vol_spike:
-            bo_stocks_m.append(symbol)
-            trends_n.append(trend_str)
-
-            # High Momentum Uptrend Condition (Col O): EMA 21 के ऊपर + VWAP के ऊपर + BULLISH
-            if c_price > ema21 and c_price > vwap and trend_str == "📈 BULLISH":
-                high_mom_o.append(symbol)
-
-    # Headers Generation
-    headers = [
-        "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", 
-        "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
-        "Breakout Status", "Action / Entry Trigger", "Priority Rank", 
-        "Reversal Support Level", "Last Updated",
-        "B/O STOCKS", "TREND (STOCKS)", "MOMENTUM (EMA21+VWAP)"
-    ]
-
-    # Combine All Rows into a Single Standardized Matrix
-    final_matrix = [headers]
-
-    # NIFTY Row Padding for Col M, N, O
-    if nifty_row:
-        final_matrix.append(nifty_row + ["", "", ""])
-
-    total_stock_rows = len(stock_rows_a_l)
-    max_mno_length = max(len(bo_stocks_m), len(trends_n), len(high_mom_o))
-    max_rows = max(total_stock_rows, max_mno_length)
-
-    for i in range(max_rows):
-        row_a_l = stock_rows_a_l[i] if i < total_stock_rows else [""] * 12
-        m_val = bo_stocks_m[i] if i < len(bo_stocks_m) else ""
-        n_val = trends_n[i] if i < len(trends_n) else ""
-        o_val = high_mom_o[i] if i < len(high_mom_o) else ""
-
-        final_matrix.append(row_a_l + [m_val, n_val, o_val])
+            item["time_only_ist"],       # Col L
+            item["bo_stock_m_val"],      # Col M (Strictly Linked)
+            item["trend_n_val"],         # Col N (Strictly Linked)
+            item["high_mom_o_val"]       # Col O (Strictly Linked)
+        ]
+        final_matrix.append(row)
 
     # Google Sheets Push
     print("📊 Updating Google Sheet Matrix A1:O...")
@@ -442,7 +416,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet fully updated (Columns A to O) in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet fully updated with ZERO Misalignment in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
