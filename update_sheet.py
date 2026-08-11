@@ -15,187 +15,316 @@ from concurrent.futures import ThreadPoolExecutor
 # 1. CONFIGURATION
 # ==========================================
 INDEX_TICKER = "^NSEI"
+
 RAW_FNO_STOCKS = [
-    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
-    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
-    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
-    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "MOTILALOFS", "BHARATFORG", "TMPVSOLAR", "TATASTEEL", "LTF", "FORCEMOT", 
-    "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", 
-    "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", 
-    "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", 
-    "SONACOMS", "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", 
-    "SUPREMEIND", "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", 
-    "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", 
-    "ULTRACEMCO", "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
-    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", 
-    "CROMPTON", "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", 
-    "PFC", "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", 
-    "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", 
-    "GODREJCP", "FORTIS", "PGELAB", "SUNPHARMA", "MPHASIS", 
-    "PIIND", "COLPAL", "BLUESTARCO", "VOLTAS", "TECHM", "EICHERMOT", 
-    "INDIGO", "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", 
-    "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "MARICO", "PAGEIND", 
-    "MAXHEALTH", "BRITANNIA", "INFY", "TCS", "KALYANKJIL", "LODHA", 
+    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE",
+    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK",
+    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS",
+    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS",
+    "MOTILALOFS", "BHARATFORG", "TMPVSOLAR", "IND", "TATASTEEL", "LTF", "FORCEMOT",
+    "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART",
+    "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL",
+    "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN",
+    "SONACOMS", "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL",
+    "SUPREMEIND", "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET",
+    "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT",
+    "ULTRACEMCO", "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON",
+    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC",
+    "CROMPTON", "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM",
+    "PFC", "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP",
+    "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD",
+    "GODREJCP", "FORTIS", "PGELAB", "SUNPHARMA", "MPHASIS",
+    "PIIND", "COLPAL", "BLUESTARCO", "VOLTAS", "TECHM", "EICHERMOT",
+    "INDIGO", "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND",
+    "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "MARICO", "PAGEIND",
+    "MAXHEALTH", "BRITANNIA", "INFY", "TCS", "KALYANKJIL", "LODHA",
     "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
 STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
+# ==========================================
+# 2. GOOGLE SHEET CONNECTION
+# ==========================================
 def get_google_sheet():
     gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     sheet_id = os.environ.get("SHEET_ID")
+
     if not gcp_json_str or not sheet_id:
-        raise ValueError("❌ Missing Environment Variables!")
+        raise ValueError("Missing GCP_CREDENTIALS_JSON or SHEET_ID environment variables.")
+
     creds_dict = json.loads(gcp_json_str)
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(credentials)
     return client.open_by_key(sheet_id).sheet1
 
 # ==========================================
-# 2. DATA UTILITIES
+# 3. NSE OI FETCH
 # ==========================================
-def calculate_vcp_count(df):
-    """Calculates volatility contraction intensity (1-5)"""
-    highs = df['High'].values
-    lows = df['Low'].values
-    closes = df['Close'].values
-    
-    ranges = []
-    periods = [20, 10, 5, 3]
-    for p in periods:
-        r = (np.max(highs[-p:]) - np.min(lows[-p:])) / closes[-1]
-        ranges.append(r)
-    
-    count = 1
-    for i in range(len(ranges)-1):
-        if ranges[i] > ranges[i+1]:
-            count += 1
-    return count
-
 def fetch_nse_oi_data_bulk():
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    print("Fetching live OI data...")
+    headers = {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.nseindia.com'
+    }
+
     session = requests.Session()
+    session.headers.update(headers)
+
+    try:
+        session.get("https://www.nseindia.com", timeout=5)
+    except Exception:
+        pass
+
     oi_dict = {}
-    
+
     def fetch_single_oi(symbol):
         url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
         try:
-            resp = session.get(url, timeout=5, headers=headers)
+            resp = session.get(url, timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                p_change_oi = float(data['stocks'][0]['marketDeptOrderBook']['tradeInfo'].get('pchangeinOpenInterest', 0.0))
-                return symbol, round(p_change_oi, 2)
-        except: pass
-        return symbol, 0.0
+                stocks_data = data.get("stocks", [])
+                if stocks_data:
+                    trade_info = stocks_data[0]["marketDeptOrderBook"]["tradeInfo"]
+                    p_change_oi = float(trade_info.get("pchangeinOpenInterest", 0.0))
+                    return symbol, round(p_change_oi, 2)
+        except Exception:
+            pass
+        return symbol, None
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
-        for sym, val in results: oi_dict[sym] = val
+        for symbol, oi_pct in results:
+            oi_dict[symbol] = oi_pct
+
     return oi_dict
 
+# ==========================================
+# 4. YFINANCE FETCH
+# ==========================================
 def fetch_single_ticker(ticker):
     try:
         t = yf.Ticker(ticker)
         df_daily = t.history(period="65d", interval="1d")
         df_15m = t.history(period="2d", interval="15m")
-        if not df_daily.empty: return ticker, df_daily, df_15m
-    except: pass
+        if df_daily is not None and not df_daily.empty:
+            return ticker, df_daily, df_15m
+    except Exception:
+        pass
     return ticker, None, None
 
+def fetch_data_parallel(tickers):
+    all_data = {}
+    print(f"Fetching {len(tickers)} tickers...")
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        results = executor.map(fetch_single_ticker, tickers)
+        for ticker, df_daily, df_15m in results:
+            if df_daily is not None and not df_daily.empty:
+                all_data[ticker] = {
+                    "daily": df_daily,
+                    "intraday": df_15m
+                }
+    return all_data
+
 # ==========================================
-# 3. PROCESSING LOGIC
+# 5. CALCULATION HELPERS
+# ==========================================
+def calculate_vcp_count(df):
+    if len(df) < 20:
+        return 1
+
+    closes = df["Close"].values
+    highs = df["High"].values
+    lows = df["Low"].values
+
+    periods = [20, 10, 5, 3]
+    ranges = []
+
+    for p in periods:
+        if len(df) >= p:
+            r = (np.max(highs[-p:]) - np.min(lows[-p:])) / closes[-1] * 100
+            ranges.append(r)
+
+    count = 1
+    for i in range(len(ranges) - 1):
+        if ranges[i] > ranges[i + 1]:
+            count += 1
+
+    return min(count, 5)
+
+def calculate_volatility_pct(df):
+    if len(df) < 10:
+        return 0.0
+    intraday_range = ((df["High"] - df["Low"]) / df["Close"]) * 100
+    return round(float(intraday_range.tail(10).mean()), 2)
+
+def calculate_pivot(df):
+    if len(df) < 2:
+        return 0.0
+    prev_high = float(df["High"].iloc[-2])
+    prev_low = float(df["Low"].iloc[-2])
+    prev_close = float(df["Close"].iloc[-2])
+    return round((prev_high + prev_low + prev_close) / 3, 2)
+
+def calculate_volume_spike(df):
+    if len(df) < 20:
+        return 0.0
+    vol_sma20 = df["Volume"].rolling(20).mean().iloc[-1]
+    curr_vol = float(df["Volume"].iloc[-1])
+    if pd.isna(vol_sma20) or vol_sma20 <= 0:
+        return 0.0
+    return round(curr_vol / vol_sma20, 2)
+
+def calculate_breakout_status(df, ltp, vol_spike):
+    if len(df) < 21:
+        return "😴 TRACKING"
+
+    prev_20_high = float(df["High"].tail(21).iloc[:-1].max())
+    if ltp > prev_20_high and vol_spike >= 1.5:
+        return "🚀 BREAKOUT"
+    elif vol_spike >= 2.0:
+        return "👀 VOL SPIKE"
+    return "😴 TRACKING"
+
+def calculate_score(vcp_count, vol_spike, breakout_status, ltp, pivot):
+    score = 0
+    score += vcp_count * 2
+    score += vol_spike * 3
+
+    if "BREAKOUT" in breakout_status:
+        score += 10
+    if ltp > pivot:
+        score += 2
+
+    return round(score, 2)
+
+# ==========================================
+# 6. PROCESS SYMBOL DATA
 # ==========================================
 def process_symbol_data(data, symbol, live_oi_pct):
-    df = data["daily"].dropna()
+    df = data["daily"].dropna().copy()
     df_15m = data["intraday"]
-    if len(df) < 30: return None
 
-    ltp = round(df['Close'].iloc[-1], 2)
-    high = round(df['High'].iloc[-1], 2)
-    low = round(df['Low'].iloc[-1], 2)
-    
-    # 1. VCP & Volatility
+    if len(df) < 25:
+        return None
+
+    ticker_name = symbol.replace(".NS", "")
+
+    high = round(float(df["High"].iloc[-1]), 2)
+    low = round(float(df["Low"].iloc[-1]), 2)
+    close = round(float(df["Close"].iloc[-1]), 2)
+    ltp = close
+
     vcp_count = calculate_vcp_count(df)
-    volatility = round(((df['High'] - df['Low']) / df['Close']).tail(10).mean() * 100, 2)
-    
-    # 2. Volume Spike
-    vol_sma = df['Volume'].rolling(20).mean().iloc[-1]
-    curr_vol = df['Volume'].iloc[-1]
-    vol_spike = round(curr_vol / vol_sma, 2) if vol_sma > 0 else 0
+    volatility_pct = calculate_volatility_pct(df)
+    pivot = calculate_pivot(df)
+    vol_spike = calculate_volume_spike(df)
+    breakout_status = calculate_breakout_status(df, ltp, vol_spike)
 
-    # 3. Pivot, SL, Target
-    pivot = round((df['High'].iloc[-2] + df['Low'].iloc[-2] + df['Close'].iloc[-2]) / 3, 2)
-    sl = round(ltp * 0.98, 2)
-    target = round(ltp * 1.10, 2)
-    
-    # 4. Breakout Status
-    prev_20_high = df['High'].tail(21).iloc[:-1].max()
-    status = "🚀 BREAKOUT" if ltp > prev_20_high else ("😴 TRACKING" if vol_spike < 1.5 else "👀 WATCH VOL")
-    
-    # 5. Momentum Rank Logic
-    m_score = (vcp_count * 2) + (vol_spike * 3) + (1 if ltp > pivot else 0)
-    
+    sl_pct = 2.0
+    target_pct = 10.0
+    rr = "1:5"
+
+    oi_pct = live_oi_pct if live_oi_pct is not None else 0.0
+    oi_str = f"{oi_pct:.2f}%"
+
+    score = calculate_score(vcp_count, vol_spike, breakout_status, ltp, pivot)
+
+    live_rank = ""
+    if "BREAKOUT" in breakout_status:
+        live_rank = "⭐ RANK 1"
+
     return {
-        "Ticker": symbol.replace(".NS", ""),
+        "Ticker": ticker_name,
         "HIGH": high,
         "LOW": low,
-        "CLOSE": ltp,
-        "VCP_Count": vcp_count,
-        "Vol_Pct": volatility,
-        "Pivot": pivot,
+        "CLOSE": close,
+        "VCP Count": int(vcp_count),
+        "Volatility %": f"{volatility_pct:.2f}%",
+        "Pivot": round(pivot, 2),
         "LTP": ltp,
-        "OI_Chg": f"{live_oi_pct}%",
-        "Vol_Spike": f"{vol_spike}x",
-        "SL": "2%",
-        "Target": "10%",
-        "RR": "1:5",
-        "Status": status,
-        "Score": m_score
+        "OI % Chg": oi_str,
+        "Vol Spike": f"{vol_spike:.2f}x",
+        "SL": f"{sl_pct:.0f}%",
+        "Target": f"{target_pct:.0f}%",
+        "RR": rr,
+        "Status": breakout_status,
+        "Live Entry Rank": live_rank,
+        "Score": score
     }
 
+# ==========================================
+# 7. MAIN
+# ==========================================
 def main():
-    print("🚀 Starting Super Scanner Engine...")
-    ist = pytz.timezone('Asia/Kolkata')
+    start_time = time.time()
+    print("Starting scanner...")
+
+    ist = pytz.timezone("Asia/Kolkata")
     current_time = datetime.now(ist).strftime("%H:%M:%S")
 
     oi_data = fetch_nse_oi_data_bulk()
-    
-    all_data = {}
-    with ThreadPoolExecutor(max_workers=15) as executor:
-        results = executor.map(fetch_single_ticker, ALL_TICKERS)
-        for t, d, i in results:
-            if d is not None: all_data[t] = {"daily": d, "intraday": i}
+    all_data = fetch_data_parallel(ALL_TICKERS)
 
     processed_list = []
-    for ticker, data in all_data.items():
-        if ticker == INDEX_TICKER: continue
-        res = process_symbol_data(data, ticker, oi_data.get(ticker.replace(".NS",""), 0))
-        if res: processed_list.append(res)
 
-    # Sorting by Score (Rank 1 stocks top par aayenge)
-    processed_list.sort(key=lambda x: x['Score'], reverse=True)
+    for symbol, data in all_data.items():
+        if symbol == INDEX_TICKER:
+            continue
 
-    # Final Matrix building
-    headers = ["Ticker", "HIGH", "LOW", "CLOSE", "VCP Count", "Volatility %", "Pivot", "LTP", "OI % Chg", "Vol Spike", "SL", "Target", "RR", "Status", "Live Entry Rank"]
+        clean_symbol = symbol.replace(".NS", "")
+        live_oi_pct = oi_data.get(clean_symbol, None)
+        result = process_symbol_data(data, symbol, live_oi_pct)
+        if result:
+            processed_list.append(result)
+
+    processed_list.sort(key=lambda x: x["Score"], reverse=True)
+
+    headers = [
+        "Ticker", "HIGH", "LOW", "CLOSE", "VCP Count", "Volatility %", "Pivot",
+        "LTP", "OI % Chg", "Vol Spike", "SL", "Target", "RR", "Status", "Live Entry Rank"
+    ]
+
     final_rows = [headers]
-    
-    for i, item in enumerate(processed_list):
-        rank = "⭐ RANK 1" if i < 3 and "BREAKOUT" in item['Status'] else "-"
+
+    for item in processed_list:
         final_rows.append([
-            item["Ticker"], item["HIGH"], item["LOW"], item["CLOSE"], item["VCP_Count"],
-            item["Vol_Pct"], item["Pivot"], item["LTP"], item["OI_Chg"], item["Vol_Spike"],
-            item["SL"], item["Target"], item["RR"], item["Status"], rank
+            item["Ticker"],
+            item["HIGH"],
+            item["LOW"],
+            item["CLOSE"],
+            item["VCP Count"],
+            item["Volatility %"],
+            item["Pivot"],
+            item["LTP"],
+            item["OI % Chg"],
+            item["Vol Spike"],
+            item["SL"],
+            item["Target"],
+            item["RR"],
+            item["Status"],
+            item["Live Entry Rank"]
         ])
 
-    print("📊 Updating Sheet...")
+    print("Updating Google Sheet...")
     sheet = get_google_sheet()
     sheet.clear()
-    sheet.update(range_name=f"A1:O{len(final_rows)}", values=final_rows, value_input_option='USER_ENTERED')
-    print(f"✅ Updated at {current_time}!")
+    sheet.update(
+        range_name=f"A1:O{len(final_rows)}",
+        values=final_rows,
+        value_input_option="USER_ENTERED"
+    )
+
+    elapsed = round(time.time() - start_time, 2)
+    print(f"Done in {elapsed} seconds.")
 
 if __name__ == "__main__":
     main()
-
