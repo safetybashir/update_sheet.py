@@ -52,7 +52,7 @@ def get_google_sheet():
     sheet_id = os.environ.get("SHEET_ID")
 
     if not gcp_json_str or not sheet_id:
-        raise ValueError("Missing GCP_CREDENTIALS_JSON or SHEET_ID environment variables.")
+        raise ValueError("Missing environment variables!")
 
     creds_dict = json.loads(gcp_json_str)
     scopes = [
@@ -68,7 +68,7 @@ def get_google_sheet():
 # 3. NSE OI FETCH
 # ==========================================
 def fetch_nse_oi_data_bulk():
-    print("Fetching live OI data...")
+    print("📡 Fetching OI data from NSE...")
     headers = {
         'User-Agent': 'Mozilla/5.0',
         'Accept-Language': 'en-US,en;q=0.9',
@@ -98,7 +98,7 @@ def fetch_nse_oi_data_bulk():
                     return symbol, round(p_change_oi, 2)
         except Exception:
             pass
-        return symbol, None
+        return symbol, 0.0
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
@@ -123,7 +123,7 @@ def fetch_single_ticker(ticker):
 
 def fetch_data_parallel(tickers):
     all_data = {}
-    print(f"Fetching {len(tickers)} tickers...")
+    print(f"⚡ Fetching {len(tickers)} tickers...")
     with ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df_daily, df_15m in results:
@@ -188,11 +188,27 @@ def calculate_breakout_status(df, ltp, vol_spike):
         return "😴 TRACKING"
 
     prev_20_high = float(df["High"].tail(21).iloc[:-1].max())
+    prev_20_low = float(df["Low"].tail(21).iloc[:-1].min())
+
     if ltp > prev_20_high and vol_spike >= 1.5:
         return "🚀 BREAKOUT"
+    elif ltp < prev_20_low and vol_spike >= 1.5:
+        return "📉 BREAKDOWN"
     elif vol_spike >= 2.0:
         return "👀 VOL SPIKE"
     return "😴 TRACKING"
+
+def calculate_trend(df, ltp):
+    if len(df) < 50:
+        return "NEUTRAL"
+    
+    ema_50 = df["Close"].ewm(span=50, adjust=False).mean().iloc[-1]
+    
+    if ltp > ema_50:
+        return "📈 BULLISH"
+    elif ltp < ema_50:
+        return "📉 BEARISH"
+    return "↔️ NEUTRAL"
 
 def calculate_score(vcp_count, vol_spike, breakout_status, ltp, pivot):
     score = 0
@@ -201,6 +217,9 @@ def calculate_score(vcp_count, vol_spike, breakout_status, ltp, pivot):
 
     if "BREAKOUT" in breakout_status:
         score += 10
+    elif "BREAKDOWN" in breakout_status:
+        score += 5
+    
     if ltp > pivot:
         score += 2
 
@@ -211,13 +230,13 @@ def calculate_score(vcp_count, vol_spike, breakout_status, ltp, pivot):
 # ==========================================
 def process_symbol_data(data, symbol, live_oi_pct):
     df = data["daily"].dropna().copy()
-    df_15m = data["intraday"]
 
     if len(df) < 25:
         return None
 
     ticker_name = symbol.replace(".NS", "")
 
+    # ❌ FIX: Make sure HIGH, LOW, CLOSE are numeric values, not percentages
     high = round(float(df["High"].iloc[-1]), 2)
     low = round(float(df["Low"].iloc[-1]), 2)
     close = round(float(df["Close"].iloc[-1]), 2)
@@ -228,37 +247,34 @@ def process_symbol_data(data, symbol, live_oi_pct):
     pivot = calculate_pivot(df)
     vol_spike = calculate_volume_spike(df)
     breakout_status = calculate_breakout_status(df, ltp, vol_spike)
-
-    sl_pct = 2.0
-    target_pct = 10.0
-    rr = "1:5"
+    trend = calculate_trend(df, ltp)
 
     oi_pct = live_oi_pct if live_oi_pct is not None else 0.0
     oi_str = f"{oi_pct:.2f}%"
 
     score = calculate_score(vcp_count, vol_spike, breakout_status, ltp, pivot)
 
-    live_rank = ""
-    if "BREAKOUT" in breakout_status:
-        live_rank = "⭐ RANK 1"
+    # Rank logic: Only BREAKOUT status gets RANK 1
+    rank = 1 if "BREAKOUT" in breakout_status else 0
 
     return {
         "Ticker": ticker_name,
+        "LTP": ltp,
         "HIGH": high,
         "LOW": low,
         "CLOSE": close,
-        "VCP Count": int(vcp_count),
-        "Volatility %": f"{volatility_pct:.2f}%",
+        "VCP_Count": int(vcp_count),
+        "Volatility_Pct": f"{volatility_pct:.2f}%",
         "Pivot": round(pivot, 2),
-        "LTP": ltp,
-        "OI % Chg": oi_str,
-        "Vol Spike": f"{vol_spike:.2f}x",
-        "SL": f"{sl_pct:.0f}%",
-        "Target": f"{target_pct:.0f}%",
-        "RR": rr,
-        "Status": breakout_status,
-        "Live Entry Rank": live_rank,
-        "Score": score
+        "OI_Chg": oi_str,
+        "Vol_Spike": f"{vol_spike:.2f}x",
+        "SL": "2%",
+        "Target": "10%",
+        "RR": "1:5",
+        "Breakout_Status": breakout_status,
+        "Trend": trend,
+        "Score": score,
+        "Rank": rank
     }
 
 # ==========================================
@@ -266,12 +282,15 @@ def process_symbol_data(data, symbol, live_oi_pct):
 # ==========================================
 def main():
     start_time = time.time()
-    print("Starting scanner...")
+    print("🚀 Starting FnO Scanner Engine...")
 
     ist = pytz.timezone("Asia/Kolkata")
     current_time = datetime.now(ist).strftime("%H:%M:%S")
 
+    # Fetch OI Data
     oi_data = fetch_nse_oi_data_bulk()
+
+    # Fetch Price Data
     all_data = fetch_data_parallel(ALL_TICKERS)
 
     processed_list = []
@@ -281,50 +300,32 @@ def main():
             continue
 
         clean_symbol = symbol.replace(".NS", "")
-        live_oi_pct = oi_data.get(clean_symbol, None)
+        live_oi_pct = oi_data.get(clean_symbol, 0.0)
         result = process_symbol_data(data, symbol, live_oi_pct)
         if result:
             processed_list.append(result)
 
-    processed_list.sort(key=lambda x: x["Score"], reverse=True)
+    # ❌ CRITICAL FIX: Filter ONLY RANK 1 stocks
+    rank_1_stocks = [s for s in processed_list if s["Rank"] == 1]
+    
+    # Sort by score (descending)
+    rank_1_stocks.sort(key=lambda x: x["Score"], reverse=True)
 
-    headers = [
-        "Ticker", "HIGH", "LOW", "CLOSE", "VCP Count", "Volatility %", "Pivot",
-        "LTP", "OI % Chg", "Vol Spike", "SL", "Target", "RR", "Status", "Live Entry Rank"
+    # ==========================================
+    # PART A: LEFT SIDE - ALL STOCKS (A to N)
+    # ==========================================
+    headers_left = [
+        "Ticker", "LTP", "HIGH", "LOW", "CLOSE", "VCP Count",
+        "Volatility %", "Pivot", "OI % Chg", "Vol Spike", "SL", "Target", "RR", "Breakout Status"
     ]
 
-    final_rows = [headers]
-
+    # Sort all stocks by score for general reference
+    processed_list.sort(key=lambda x: x["Score"], reverse=True)
+    
+    rows_left = [headers_left]
     for item in processed_list:
-        final_rows.append([
+        rows_left.append([
             item["Ticker"],
-            item["HIGH"],
-            item["LOW"],
-            item["CLOSE"],
-            item["VCP Count"],
-            item["Volatility %"],
-            item["Pivot"],
             item["LTP"],
-            item["OI % Chg"],
-            item["Vol Spike"],
-            item["SL"],
-            item["Target"],
-            item["RR"],
-            item["Status"],
-            item["Live Entry Rank"]
-        ])
+            item["HIGH
 
-    print("Updating Google Sheet...")
-    sheet = get_google_sheet()
-    sheet.clear()
-    sheet.update(
-        range_name=f"A1:O{len(final_rows)}",
-        values=final_rows,
-        value_input_option="USER_ENTERED"
-    )
-
-    elapsed = round(time.time() - start_time, 2)
-    print(f"Done in {elapsed} seconds.")
-
-if __name__ == "__main__":
-    main()
