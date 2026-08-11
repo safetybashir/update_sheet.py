@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import math
 import pytz
 import requests
 import pandas as pd
@@ -178,19 +179,25 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
     ema21_val = float(df['EMA21'].iloc[-1])
 
-    # 4. Intraday VWAP Engine
-    vwap_val = c_price
+    # 4. Robust VWAP Engine
+    vwap_val = None
     if df_15m is not None and not df_15m.empty:
         today_date = df_15m.index[-1].date()
         today_candles = df_15m[df_15m.index.date == today_date].copy()
-        if not today_candles.empty:
+        
+        if not today_candles.empty and today_candles['Volume'].sum() > 0:
             typical_price = (today_candles['High'] + today_candles['Low'] + today_candles['Close']) / 3
             cum_tp_vol = (typical_price * today_candles['Volume']).cumsum()
             cum_vol = today_candles['Volume'].cumsum()
             vwap_series = cum_tp_vol / cum_vol
-            vwap_val = float(vwap_series.iloc[-1])
+            latest_vwap = float(vwap_series.iloc[-1])
+            if not math.isnan(latest_vwap):
+                vwap_val = latest_vwap
 
-    # 5. OI Change Logic (STRICT CHECK - NO FAKE ESTIMATE)
+    if vwap_val is None or math.isnan(vwap_val):
+        vwap_val = pivot_point
+
+    # 5. OI Change Logic
     if live_oi_pct is not None:
         oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
         oi_val_for_buildup = live_oi_pct
@@ -247,8 +254,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         option_buildup = "N/A"
         oi_change_str = "N/A"
         
-        # --- INDEX SPECIFIC LOGIC FOR COL K TO O ---
-        support_level = f"VWAP: ₹{round(vwap_val, 1)}"
+        support_level = f"PIVOT/VWAP: ₹{round(vwap_val, 1)}"
         bo_stock_m_val = "ABOVE VWAP 🟢" if c_price >= vwap_val else "BELOW VWAP 🔻"
         trend_n_val = "📈 BULLISH TREND" if c_price > ema21_val else "📉 BEARISH TREND"
         
@@ -293,7 +299,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             support_level = "-"
             priority_group = 4
 
-        # Strictly Lock Col M, N, O logic for individual stocks
         bo_stock_m_val = clean_symbol if (c_price >= pivot_point and is_vol_spike) else ""
         trend_n_val = trend_str if bo_stock_m_val != "" else ""
         high_mom_o_val = clean_symbol if (bo_stock_m_val != "" and c_price > ema21_val and c_price > vwap_val and trend_str == "📈 BULLISH") else ""
@@ -322,7 +327,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
 # ==========================================
 def main():
     start_time = time.time()
-    print("🚀 Starting Audited FnO Scanner Engine (Col A to O)...")
+    print("🚀 Starting Audited FnO Scanner Engine...")
 
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
@@ -347,7 +352,7 @@ def main():
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"],
+                    "INDEX 🎯", pdata["support_level"], pdata["time_only_ist"],
                     pdata["bo_stock_m_val"], pdata["trend_n_val"], pdata["high_mom_o_val"]
                 ]
             else:
@@ -356,12 +361,10 @@ def main():
         except Exception:
             continue
 
-    # Sorting logic: Group 1 (Bullish), Group 2 (Bearish), Group 3 (VCP Ready), Group 4 (Rest)
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     final_matrix = []
 
-    # Headers Generation
     headers = [
         "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", 
         "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
@@ -410,7 +413,6 @@ def main():
         ]
         final_matrix.append(row)
 
-    # Google Sheets Push
     print("📊 Updating Google Sheet Matrix A1:O...")
     sheet = get_google_sheet()
     sheet.clear()
@@ -425,7 +427,7 @@ def main():
     )
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet fully updated with Nifty Bias in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet updated with compact Col J ('INDEX 🎯') in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     main()
