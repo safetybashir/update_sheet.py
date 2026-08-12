@@ -11,8 +11,10 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
-# 1. SELECTED FNO TICKERS CONFIGURATION
+# 1. GOOGLE SHEET & TICKERS CONFIGURATION
 # ==========================================
+TARGET_SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
+
 INDEX_TICKER = "^NSEI"
 RAW_FNO_STOCKS = [
     "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
@@ -42,37 +44,37 @@ STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 # ==========================================
-# GOOGLE SHEET AUTHENTICATION (HYBRID SAFE)
+# GOOGLE SHEET CONNECTOR
 # ==========================================
 def get_google_sheet():
-    gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
-    sheet_id = os.environ.get("SHEET_ID")
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
+    
+    # Priority 1: Check Environment Variables (Cloud / Automation)
+    gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
+    sheet_id = os.environ.get("SHEET_ID") or TARGET_SHEET_ID
 
-    # Local credentials.json fallback if env variables not set
-    if gcp_json_str and sheet_id:
+    if gcp_json_str:
         creds_dict = json.loads(gcp_json_str)
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
+    
+    # Priority 2: Check Local credentials.json File (Local Machine)
+    elif os.path.exists("credentials.json"):
+        credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
+        client = gspread.authorize(credentials)
+        return client.open_by_key(sheet_id).sheet1
     else:
-        # Local JSON File Fallback
-        if os.path.exists("credentials.json"):
-            credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
-            client = gspread.authorize(credentials)
-            # Yahan apni sheet ka exact naam daalein
-            return client.open("Live Screener").sheet1
-        else:
-            raise ValueError("❌ Neither Environment Variables nor credentials.json found!")
+        raise ValueError("❌ Local 'credentials.json' file not found in script folder!")
 
 # ==========================================
-# 2. FAST NON-BLOCKING LIVE NSE OI FETCH ENGINE
+# 2. LIVE NSE OPEN INTEREST (OI) FETCH ENGINE
 # ==========================================
 def fetch_nse_oi_data_bulk():
-    print("📡 Fetching Live OI Data (Fast Non-Blocking Mode)...")
+    print("📡 Fetching Live OI Data from NSE...")
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Referer': 'https://www.nseindia.com/'
@@ -89,7 +91,7 @@ def fetch_nse_oi_data_bulk():
     def fetch_single_oi(symbol):
         url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
         try:
-            resp = session.get(url, timeout=1.5)  # Fast 1.5s Timeout
+            resp = session.get(url, timeout=1.5)
             if resp.status_code == 200:
                 data = resp.json()
                 stocks_data = data.get('stocks', [])
@@ -101,7 +103,6 @@ def fetch_nse_oi_data_bulk():
             pass
         return symbol, None
 
-    # Reduced workers to prevent IP blocking
     with ThreadPoolExecutor(max_workers=5) as executor:
         results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
         for symbol, oi_pct in results:
@@ -123,7 +124,7 @@ def fetch_single_ticker(ticker):
 
 def fetch_data_parallel(tickers):
     all_data = {}
-    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers via YFinance...")
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers...")
     with ThreadPoolExecutor(max_workers=12) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df_daily, df_15m in results:
@@ -157,7 +158,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vcp = (r20 > r10) and (r10 > r5)
     vcp_str = "YES 🔥" if is_vcp else "NO"
 
-    # 3. Price Actions & Support
+    # 3. Price Actions & Support Calculations
     prev_close = float(df['Close'].iloc[-2]) if len(df) >= 2 else c_price
     pct_change = ((c_price - prev_close) / prev_close) * 100
     res_20 = df['High'].tail(21).iloc[:-1].max()
@@ -167,7 +168,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
-    # 4. OI % CHANGE LOGIC
+    # 4. OI CHANGE % LOGIC
     if live_oi_pct is not None and live_oi_pct != 0.0:
         oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
         oi_val_for_buildup = live_oi_pct
@@ -177,7 +178,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
         oi_val_for_buildup = est_oi
 
-    # 5. OPTION BUILDUP SIGNAL
+    # 5. CE/PE BUILDUP SIGNAL LOGIC
     if pct_change > 0 and oi_val_for_buildup > 0:
         option_buildup = "CE LONG BUILDUP 🔥"
     elif pct_change < 0 and oi_val_for_buildup > 0:
@@ -189,7 +190,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 6. AUTO 15-MINUTE CONFIRMATION
+    # 6. AUTO 15-MINUTE CONFIRMATION ENGINE
     is_15m_high_broken = False
     is_15m_low_broken = False
     if df_15m is not None and not df_15m.empty:
@@ -203,7 +204,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 7. BREAKOUT STATUS & ACTION
+    # 7. Breakout Status, Action Trigger & Support Level
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -260,7 +261,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     }
 
 # ==========================================
-# 5. CONTINUOUS RUN LOOP (SAFE OVERWRITE)
+# 5. MAIN CONTINUOUS EXECUTION LOOP
 # ==========================================
 def run_scanner_once():
     start_time = time.time()
@@ -295,7 +296,7 @@ def run_scanner_once():
         except Exception:
             continue
 
-    # Auto Sorting
+    # Auto Sorting by Priority & % Gain
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -338,7 +339,7 @@ def run_scanner_once():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # Overwrite ONLY Columns A to L (PRESERVES COLUMNS M TO R FORMULAS)
+    # Safe Google Sheet Update (Columns A1:L Only)
     sheet = get_google_sheet()
     end_row = len(final_matrix)
     range_to_update = f"A1:L{end_row}"
@@ -349,17 +350,17 @@ def run_scanner_once():
         value_input_option='USER_ENTERED'
     )
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet A1:L updated at {time_only_ist} in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet updated at {time_only_ist} in {elapsed} Seconds! 🔥🚀")
 
 if __name__ == "__main__":
     print("🚀 LIVE FNO SCANNER ENGINE STARTED (Non-Stop Loop)")
     while True:
         try:
             run_scanner_once()
-            time.sleep(10)  # Refresh every 10 seconds
+            time.sleep(10)
         except KeyboardInterrupt:
-            print("\n🛑 Stopped by user.")
+            print("\n🛑 Stopped cleanly by user.")
             break
         except Exception as e:
-            print(f"⚠️ Loop Exception: {e}")
+            print(f"⚠️ Loop Warning: {e}")
             time.sleep(5)
