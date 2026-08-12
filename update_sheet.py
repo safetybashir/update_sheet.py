@@ -11,7 +11,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
-# 1. GOOGLE SHEET & TICKERS CONFIGURATION
+# 1. GOOGLE SHEET & CLEAN FNO TICKERS CONFIGURATION
 # ==========================================
 TARGET_SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
@@ -21,7 +21,7 @@ RAW_FNO_STOCKS = [
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
     "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
     "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "MOTILALOFS", "BHARATFORG", "TMPVSOLAR", "IND", "TATASTEEL", "LTF", "FORCEMOT", 
+    "MOTILALOFS", "BHARATFORG", "TATAMTRDVR", "INDIAMART", "TATASTEEL", "LTF", "FORCEMOT", 
     "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", 
     "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", 
     "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", 
@@ -29,17 +29,19 @@ RAW_FNO_STOCKS = [
     "SUPREMEIND", "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", 
     "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", 
     "ULTRACEMCO", "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
-    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", 
+    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTIM", 
     "CROMPTON", "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", 
     "PFC", "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", 
     "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", 
-    "GODREJCP", "FORTIS", "PGELAB", "BCOALINDIA", "SUNPHARMA", "MPHASIS", 
+    "GODREJCP", "FORTIS", "PGHL", "COALINDIA", "SUNPHARMA", "MPHASIS", 
     "PIIND", "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", 
     "INDIGO", "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", 
     "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALLTM", "MARICO", "PAGEIND", 
     "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
-    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
+    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO", "ASTRAL"
 ]
+# Unique tickers to prevent duplicates
+RAW_FNO_STOCKS = list(dict.fromkeys(RAW_FNO_STOCKS))
 STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
@@ -52,7 +54,6 @@ def get_google_sheet():
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # Priority 1: Check GitHub Actions / Cloud Environment Secret
     gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     sheet_id = os.environ.get("SHEET_ID") or TARGET_SHEET_ID
 
@@ -61,14 +62,12 @@ def get_google_sheet():
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
-    
-    # Priority 2: Check Local credentials.json File
     elif os.path.exists("credentials.json"):
         credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
     else:
-        raise ValueError("❌ 'credentials.json' file not found!")
+        raise ValueError("❌ Neither GCP_CREDENTIALS_JSON secret nor credentials.json file found!")
 
 # ==========================================
 # 2. LIVE NSE OPEN INTEREST (OI) FETCH ENGINE
@@ -83,7 +82,7 @@ def fetch_nse_oi_data_bulk():
     session.headers.update(headers)
     
     try:
-        session.get("https://www.nseindia.com", timeout=2)
+        session.get("https://www.nseindia.com", timeout=3)
     except Exception:
         pass
 
@@ -91,7 +90,7 @@ def fetch_nse_oi_data_bulk():
     def fetch_single_oi(symbol):
         url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
         try:
-            resp = session.get(url, timeout=1.5)
+            resp = session.get(url, timeout=2)
             if resp.status_code == 200:
                 data = resp.json()
                 stocks_data = data.get('stocks', [])
@@ -103,7 +102,7 @@ def fetch_nse_oi_data_bulk():
             pass
         return symbol, None
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
         for symbol, oi_pct in results:
             oi_dict[symbol] = oi_pct
@@ -138,13 +137,14 @@ def fetch_data_parallel(tickers):
 def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     df = data["daily"].dropna()
     df_15m = data["intraday"]
-    if len(df) < 25:
+    if len(df) < 20:
         return None
 
     # 1. Volume Metrics
     df['Vol_SMA20'] = df['Volume'].rolling(20).mean()
     vol_latest = float(df['Volume'].iloc[-1])
-    vol_sma = float(df['Vol_SMA20'].iloc[-1]) if float(df['Vol_SMA20'].iloc[-1]) > 0 else 1.0
+    vol_sma_val = float(df['Vol_SMA20'].iloc[-1])
+    vol_sma = vol_sma_val if vol_sma_val > 0 else 1.0
     
     is_vol_spike = vol_latest > (1.5 * vol_sma)
     is_vol_dryup = vol_latest < (0.6 * vol_sma)
@@ -261,7 +261,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     }
 
 # ==========================================
-# 5. SINGLE-RUN FUNCTION (GITHUB ACTIONS FRIENDLY)
+# 5. MAIN SINGLE-RUN EXECUTION
 # ==========================================
 def run_scanner_once():
     start_time = time.time()
@@ -344,14 +344,13 @@ def run_scanner_once():
     end_row = len(final_matrix)
     range_to_update = f"A1:L{end_row}"
 
-    sheet.update(
-        range_name=range_to_update, 
-        values=final_matrix, 
-        value_input_option='USER_ENTERED'
-    )
+    try:
+        sheet.update(range_name=range_to_update, values=final_matrix, value_input_option='USER_ENTERED')
+    except TypeError:
+        sheet.update(range_to_update, final_matrix)
+
     elapsed = round(time.time() - start_time, 2)
     print(f"🎉 SUCCESS! Sheet A1:L updated at {time_only_ist} in {elapsed} Seconds!")
 
 if __name__ == "__main__":
-    # GitHub Actions loop crash ko rokne ke liye single run rakha gaya hai
     run_scanner_once()
