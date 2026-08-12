@@ -206,7 +206,7 @@ def run_scanner_once():
                     "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"],
+                    "BENCHMARK 🏛️", pdata["support_level"], pdata["time_only_ist"],
                     pdata["intraday_trend"], "MARKET REGIME 🏛️", "N/A"
                 ]
             else:
@@ -215,14 +215,23 @@ def run_scanner_once():
             print(f"Error processing {symbol}: {e}")
             continue
 
+    # STRICT SORTING ENGINE:
+    # 1. Priority Group (Group 1: Active Breakouts First)
+    # 2. Volume Ratio (Highest Institutional Spike)
+    # 3. % Change (Highest Price Momentum)
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["vol_ratio"], -x["pct_change_num"]))
 
     stock_rows = []
     bo_rank = 1
     ready_rank = 1
+    
     for item in stock_data_list:
+        # Dynamic Priority Tagging Engine
         if item["priority_group"] == 1:
-            rank_tag = f"🔥 B/O #{bo_rank}"
+            if bo_rank <= 3:
+                rank_tag = f"🔥 TOP PRIORITY #{bo_rank} ⚡"
+            else:
+                rank_tag = f"✅ B/O #{bo_rank}"
             bo_rank += 1
         elif item["priority_group"] == 2:
             rank_tag = f"👀 READY #{ready_rank}"
@@ -240,7 +249,7 @@ def run_scanner_once():
             item["option_buildup"],
             item["bo_status"],
             item["action_entry"],
-            rank_tag,
+            rank_tag,  # Column J: Priority Rank
             item["support_level"],
             item["time_only_ist"],
             item["intraday_trend"],
@@ -251,7 +260,7 @@ def run_scanner_once():
     headers = [
         "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", 
         "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
-        "Breakout Status", "Action / Entry Trigger", "Priority Rank", 
+        "Breakout Status", "Action / Entry Trigger", "Priority Rank 🎯", 
         "Reversal Support Level", "Last Updated", "Intraday Trend (VWAP / 15M)",
         "Institutional Activity 🐋", "Risk-Reward & Target 🎯"
     ]
@@ -273,7 +282,7 @@ def run_scanner_once():
         sheet.update(range_to_update, final_matrix)
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet updated and cleared false warning triggers at {time_only_ist} IST!")
+    print(f"🎉 SUCCESS! Sheet sorted with TOP PRIORITY tags at {time_only_ist} IST!")
 
 if __name__ == "__main__":
     run_scanner_once()
