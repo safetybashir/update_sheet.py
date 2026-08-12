@@ -45,7 +45,7 @@ STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 # ==========================================
-# GOOGLE SHEET CONNECTOR
+# GOOGLE SHEET CONNECTOR WITH DEBUG LOGS
 # ==========================================
 def get_google_sheet():
     scopes = [
@@ -58,10 +58,16 @@ def get_google_sheet():
 
     if gcp_json_str:
         creds_dict = json.loads(gcp_json_str)
+        print(f"🔎 DEBUG EMAIL: {creds_dict.get('client_email')}")
+        print(f"🔎 DEBUG SHEET ID: {sheet_id}")
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
     elif os.path.exists("credentials.json"):
+        with open("credentials.json") as f:
+            cdata = json.load(f)
+            print(f"🔎 DEBUG EMAIL: {cdata.get('client_email')}")
+            print(f"🔎 DEBUG SHEET ID: {sheet_id}")
         credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
@@ -140,7 +146,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     if len(df) < 20:
         return None
 
-    # Volume Metrics
     df.loc[:, 'Vol_SMA20'] = df['Volume'].rolling(20).mean()
     vol_latest = float(df['Volume'].iloc[-1])
     vol_sma_val = float(df['Vol_SMA20'].iloc[-1])
@@ -150,7 +155,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vol_dryup = vol_latest < (0.6 * vol_sma)
     vol_status = "SPIKE ⚡" if is_vol_spike else ("DRY-UP 💧" if is_vol_dryup else "NORMAL")
 
-    # VCP Shrinkage Engine
     c_price = float(df['Close'].iloc[-1])
     r20 = (df['High'].tail(20).max() - df['Low'].tail(20).min()) / c_price
     r10 = (df['High'].tail(10).max() - df['Low'].tail(10).min()) / c_price
@@ -158,7 +162,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vcp = (r20 > r10) and (r10 > r5)
     vcp_str = "YES 🔥" if is_vcp else "NO"
 
-    # Price Actions & Support Calculations
     prev_close = float(df['Close'].iloc[-2]) if len(df) >= 2 else c_price
     pct_change = ((c_price - prev_close) / prev_close) * 100
     res_20 = df['High'].tail(21).iloc[:-1].max()
@@ -168,7 +171,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     df.loc[:, 'EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
-    # OI Change Logic
     if live_oi_pct is not None and live_oi_pct != 0.0:
         oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
         oi_val_for_buildup = live_oi_pct
@@ -178,7 +180,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
         oi_val_for_buildup = est_oi
 
-    # CE/PE Buildup Signal Logic
     if pct_change > 0 and oi_val_for_buildup > 0:
         option_buildup = "CE LONG BUILDUP 🔥"
     elif pct_change < 0 and oi_val_for_buildup > 0:
@@ -190,7 +191,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 15-Minute Confirmation Engine
     is_15m_high_broken = False
     is_15m_low_broken = False
     if df_15m is not None and not df_15m.empty:
@@ -204,7 +204,6 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # Breakout Status & Entry Triggers
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -268,10 +267,7 @@ def run_scanner_once():
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
-    # 1. Fetch NSE OI Data
     nse_oi_dict = fetch_nse_oi_data_bulk()
-
-    # 2. Parallel Fetch Yahoo Data
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
     nifty_row = None
@@ -296,7 +292,6 @@ def run_scanner_once():
         except Exception:
             continue
 
-    # 3. Sort Results
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -339,7 +334,6 @@ def run_scanner_once():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # 4. Write to Google Sheet
     sheet = get_google_sheet()
     end_row = len(final_matrix)
     range_to_update = f"A1:L{end_row}"
