@@ -11,9 +11,9 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 # 1. GOOGLE SHEETS & TICKER SETUP
 # ==========================================
-SPREADSHEET_NAME = 'Stock_Scanner'          # Fallback name
-WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' # Exact tab name matching your Google Sheet
-INDEX_TICKER = "^NSEI"                      # NIFTY 50 Index
+SPREADSHEET_NAME = 'Stock_Scanner'          
+WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' 
+INDEX_TICKER = "^NSEI"                      
 
 ALL_TICKERS = [
     INDEX_TICKER, "NATIONALUM.NS", "FORCEMOT.NS", "PNB.NS", 
@@ -27,11 +27,8 @@ def get_google_sheet():
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # 1. Local PC Execution
     if os.path.exists('credentials.json'):
         creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
-    
-    # 2. GitHub Actions Runner Execution
     elif "GCP_SA_KEY" in os.environ and os.environ["GCP_SA_KEY"].strip():
         secret_json_str = os.environ["GCP_SA_KEY"].strip()
         service_account_info = json.loads(secret_json_str)
@@ -40,15 +37,13 @@ def get_google_sheet():
         raise FileNotFoundError("Neither 'credentials.json' file nor 'GCP_SA_KEY' environment variable was found!")
 
     client = gspread.authorize(creds)
-    
-    # Priority: Open Sheet using SHEET_ID secret
     sheet_id = os.environ.get("SHEET_ID")
+    
     if sheet_id and sheet_id.strip():
         spreadsheet = client.open_by_key(sheet_id.strip())
     else:
         spreadsheet = client.open(SPREADSHEET_NAME)
         
-    # First search exact worksheet name, if missing then auto-pick index 0 (first tab)
     try:
         return spreadsheet.worksheet(WORKSHEET_NAME)
     except gspread.exceptions.WorksheetNotFound:
@@ -59,7 +54,6 @@ def get_google_sheet():
 # 2. DATA FETCHING HELPERS
 # ==========================================
 def fetch_nse_oi_data_bulk():
-    # Placeholder for NSE OI Bulk API logic
     return {}
 
 def fetch_data_parallel(tickers):
@@ -85,15 +79,19 @@ def fetch_data_parallel(tickers):
 # 3. ANALYSIS HELPERS (COL N & COL O)
 # ==========================================
 def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_15m_high_broken):
-    if pct_change > 1.0 and is_15m_high_broken:
-        col_n = "RETAIL TRAP / WEAK ⚠️"
-        col_o = f"HIGH RISK (SL TOO FAR: {round(abs(pct_change - 1.0), 1)}%) ⚠️"
-    elif pct_change > 0:
+    if is_15m_high_broken and c_price > vwap and pct_change > 0:
+        sl_price = round(c_price * 0.985, 1)
+        tgt_price = round(c_price * 1.04, 1)
+        col_n = "INSTITUTIONAL BUYING 🐋🟢"
+        col_o = f"EXCELLENT (SL: ₹{sl_price} | TGT: ₹{tgt_price}) 🎯"
+    elif pct_change > 0 and c_price > vwap:
+        sl_price = round(c_price * 0.99, 1)
+        tgt_price = round(c_price * 1.025, 1)
         col_n = "SMART ACCUMULATION 📈"
-        col_o = f"EXCELLENT (SL: ₹{round(c_price * 0.98, 1)} | TGT: ₹{round(c_price * 1.05, 1)}) 🎯"
+        col_o = f"GOOD RISK-REWARD (SL: ₹{sl_price} | TGT: ₹{tgt_price}) 👍"
     else:
-        col_n = "NO BIG MONEY 💤"
-        col_o = f"WAIT ENTRY (SL: ₹{round(c_price * 0.99, 1)}) ⏳"
+        col_n = "NO BIG MONEY / WEAK 💤🔴"
+        col_o = f"AVOID / WAIT (SL: ₹{round(c_price * 0.99, 1)}) ⏳"
     return col_n, col_o
 
 
@@ -104,7 +102,6 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     if df is None or len(df) < 5:
         return None
 
-    # Clean Symbol Name
     if symbol == INDEX_TICKER or "^NSEI" in symbol:
         clean_symbol = "NIFTY 50"
     else:
@@ -115,37 +112,33 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     pct_change_num = ((c_price - prev_close) / prev_close) * 100
     pct_change_str = f"{round(pct_change_num, 2)}%"
 
-    # VWAP & EMA 20 Calculation
     v = df['Volume']
     tp = (df['High'] + df['Low'] + df['Close']) / 3
     vwap = float((tp * v).sum() / v.sum()) if v.sum() > 0 else c_price
     ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().iloc[-1])
 
-    # Volume Spike Check
     avg_vol = df['Volume'].mean()
     last_vol = df['Volume'].iloc[-1]
     vol_ratio = last_vol / avg_vol if avg_vol > 0 else 1.0
     vol_status = "SPIKE ⚡" if vol_ratio > 1.5 else "DRY-UP 💧"
 
-    # Strict Breakout Conditions (Above VWAP & Above EMA20 & 15M High Broken)
     is_15m_high_broken = c_price > float(df['High'].iloc[-2])
     is_above_vwap = c_price > vwap
     is_above_ema20 = c_price > ema20
 
-    # High Momentum Priority Engine
     if is_above_vwap and is_above_ema20 and is_15m_high_broken:
         intraday_trend = "STRONG BULLISH (+ve) 🚀🟢"
-        priority_group = 1  # CONFIRMED B/O (TOP PRIORITY)
+        priority_group = 1
         bo_status = "ALPHA CE B/O 🚀"
         action_entry = "🔥BUY CE (15M CONFIRMED) 🟢"
     elif is_above_vwap and is_above_ema20:
         intraday_trend = "ABOVE VWAP (+ve) 🟢"
-        priority_group = 2  # READY FOR BREAKOUT
+        priority_group = 2
         bo_status = "READY TO FLY ⏳"
         action_entry = "WATCH FOR BREAKOUT 👁️"
     else:
         intraday_trend = "BELOW VWAP (-ve) 🔴"
-        priority_group = 3  # NO ENTRY / NOISE
+        priority_group = 3
         bo_status = "CONSOLIDATING 💤"
         action_entry = "NO ENTRY 🚫"
 
@@ -222,10 +215,6 @@ def run_scanner_once():
             print(f"Error processing {symbol}: {e}")
             continue
 
-    # STRICT SORTING ENGINE: 
-    # 1st Priority: Priority Group (Group 1: B/O Top First)
-    # 2nd Priority: Volume Spike Ratio (Highest Volume Surge)
-    # 3rd Priority: Price % Change (Highest Momentum Gain)
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["vol_ratio"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -284,4 +273,7 @@ def run_scanner_once():
         sheet.update(range_to_update, final_matrix)
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet sorted by High Momentum B/O stocks successfully at {time_only_ist} IST!")
+    print(f"🎉 SUCCESS! Sheet updated and cleared false warning triggers at {time_only_ist} IST!")
+
+if __name__ == "__main__":
+    run_scanner_once()
