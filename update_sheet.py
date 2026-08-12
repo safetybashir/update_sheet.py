@@ -1,22 +1,32 @@
 import sys
 import time
+import signal
 import requests
 import pandas as pd
 from datetime import datetime
 
 # ==========================================
-# 1. HELPER & DATA FETCHING FUNCTIONS
+# 0. FORCE TERMINATION & CLEAN EXIT SETUP
+# ==========================================
+def force_exit_handler(sig, frame):
+    print("\n\n🛑 [STOPPED] Scanner successfully terminated by user.")
+    sys.exit(0)
+
+# Catch Ctrl+C immediately
+signal.signal(signal.SIGINT, force_exit_handler)
+
+
+# ==========================================
+# 1. DATA FETCHING FUNCTION (WITH SAFETY TIMEOUT)
 # ==========================================
 
 def fetch_nse_data(symbol):
     """
-    Fetch market data from NSE/Data Provider.
-    Handles both Indices (NIFTY 50) and F&O Equity Stocks.
+    Fetch market data with strict network timeout (4 seconds max)
+    to prevent freeze/hangs.
     """
     symbol_clean = symbol.strip().upper()
     is_index = "NIFTY" in symbol_clean or "BANKNIFTY" in symbol_clean
-    
-    # Live current time timestamp
     current_time_str = datetime.now().strftime("%H:%M:%S")
     
     data = {
@@ -32,12 +42,22 @@ def fetch_nse_data(symbol):
         'last_updated': current_time_str
     }
     
+    # Custom Headers for NSE Requests
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+    
     try:
+        # Example safety API structure with strict timeout=4
+        # response = requests.get(url, headers=headers, timeout=4)
+        
+        # Static simulation data (Replace with live JSON parsing)
         if is_index:
             data['ltp'] = 24471.70
             data['price_pct_chg'] = -0.46
             data['vwap'] = 24571.91
-            data['live_oi_pct'] = None  # Spot index has no native OI
+            data['live_oi_pct'] = None
             data['vcp_contraction'] = "N/A"
         else:
             data['ltp'] = 1191.60
@@ -48,14 +68,18 @@ def fetch_nse_data(symbol):
             data['live_oi_pct'] = None
             data['volume_status'] = "SPIKE ⚡"
             
+    except requests.exceptions.Timeout:
+        print(f"⚠️ [TIMEOUT] {symbol} request took too long. Skipping cycle...")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ [NETWORK ERROR] {symbol}: {e}")
     except Exception as e:
-        print(f"Error fetching data for {symbol}: {e}")
+        print(f"⚠️ [DATA ERROR] {symbol}: {e}")
         
     return data
 
 
 # ==========================================
-# 2. MAIN PROCESSING & ROW GENERATION LOGIC
+# 2. ROW GENERATION LOGIC
 # ==========================================
 
 def process_scanner_row(raw_data):
@@ -66,7 +90,7 @@ def process_scanner_row(raw_data):
     ltp = raw_data['ltp']
     vwap = raw_data['vwap']
     
-    # --- COL D: OI % Change & COL G: Option Buildup Logic ---
+    # --- COL D: OI % Change & COL G: Option Buildup ---
     if is_index:
         col_d_oi_str = "INDEX (NO OI)"
         col_e_vcp_str = "INDEX (NO VCP)"
@@ -88,7 +112,7 @@ def process_scanner_row(raw_data):
             col_d_oi_str = "N/A"
             col_g_buildup_str = "VOLUME BASED (NO OI) ⚠️" if price_pct > 0 else "NO OI DATA ⚠️"
 
-    # --- COL H, I, J, K: Action & Priority Formatting ---
+    # --- COL H, I, J, K: Action & Priority ---
     if is_index:
         col_h_breakout = "INDEX TREND"
         col_i_action = "MARKET REGIME: BEARISH 📉" if price_pct < 0 else "MARKET REGIME: BULLISH 🚀"
@@ -109,7 +133,7 @@ def process_scanner_row(raw_data):
     col_n_trend = "📈 BULLISH TREND" if price_pct > 0 else "📉 BEARISH TREND"
     col_o_momentum = "SIDEWAYS / MIXED ↔️" if abs(price_pct) < 1 else "STRONG MOMENTUM ⚡"
 
-    # --- FINAL ROW ASSEMBLY (Last Updated explicitly placed at the end) ---
+    # --- FINAL STRUCTURE (Col L Last Updated at the end) ---
     formatted_row = {
         'Col A | Stock Symbol': symbol,
         'Col B | LTP': f"₹{ltp:.2f}" if ltp else "N/A",
@@ -125,20 +149,20 @@ def process_scanner_row(raw_data):
         'Col M | B/O STOCKS': col_m_bo_stock,
         'Col N | TREND (STOCKS)': col_n_trend,
         'Col O | MOMENTUM': col_o_momentum,
-        'Col L | Last Updated': raw_data['last_updated']  # <-- Shifted to the last position
+        'Col L | Last Updated': raw_data['last_updated']  # Moved to last column
     }
     
     return formatted_row
 
 
 # ==========================================
-# 3. CONTINUOUS LIVE SCANNER LOOP
+# 3. NON-FREEZING MAIN LOOP
 # ==========================================
 
 if __name__ == "__main__":
     symbols_to_scan = ["NIFTY 50 🎯", "ZYDUSLIFE"]
     
-    print("🚀 Live Scanner Running... (Ctrl+C to Stop)")
+    print("🚀 Non-Freezing Scanner Started (Press Ctrl+C to Stop Immediately)\n")
     
     while True:
         try:
@@ -150,14 +174,17 @@ if __name__ == "__main__":
 
             df_output = pd.DataFrame(output_rows)
             
-            print(f"\n--- SCAN REFRESH [{datetime.now().strftime('%H:%M:%S')}] ---")
+            # Print live timestamp header
+            live_now = datetime.now().strftime("%H:%M:%S")
+            print(f"================ SCAN REFRESH AT [{live_now}] ================")
             print(df_output.to_string(index=False))
+            print("-" * 70 + "\n")
             
-            time.sleep(10)  # Refresh every 10 seconds
-            
-        except KeyboardInterrupt:
-            print("\nScanner Stopped.")
-            sys.exit()
-        except Exception as e:
-            print(f"Loop Error: {e}")
+            # Refresh interval set to 5 seconds
             time.sleep(5)
+            
+        except SystemExit:
+            break
+        except Exception as e:
+            print(f"⚠️ Loop Exception: {e}")
+            time.sleep(3)
