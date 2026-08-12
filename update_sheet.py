@@ -45,7 +45,7 @@ STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 # ==========================================
-# GOOGLE SHEET CONNECTOR WITH DEBUG LOGS
+# GOOGLE SHEET CONNECTOR
 # ==========================================
 def get_google_sheet():
     scopes = [
@@ -58,16 +58,10 @@ def get_google_sheet():
 
     if gcp_json_str:
         creds_dict = json.loads(gcp_json_str)
-        print(f"🔎 DEBUG EMAIL: {creds_dict.get('client_email')}")
-        print(f"🔎 DEBUG SHEET ID: {sheet_id}")
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
     elif os.path.exists("credentials.json"):
-        with open("credentials.json") as f:
-            cdata = json.load(f)
-            print(f"🔎 DEBUG EMAIL: {cdata.get('client_email')}")
-            print(f"🔎 DEBUG SHEET ID: {sheet_id}")
         credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
@@ -146,6 +140,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     if len(df) < 20:
         return None
 
+    # Volume Metrics
     df.loc[:, 'Vol_SMA20'] = df['Volume'].rolling(20).mean()
     vol_latest = float(df['Volume'].iloc[-1])
     vol_sma_val = float(df['Vol_SMA20'].iloc[-1])
@@ -155,6 +150,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vol_dryup = vol_latest < (0.6 * vol_sma)
     vol_status = "SPIKE ⚡" if is_vol_spike else ("DRY-UP 💧" if is_vol_dryup else "NORMAL")
 
+    # VCP Shrinkage Engine
     c_price = float(df['Close'].iloc[-1])
     r20 = (df['High'].tail(20).max() - df['Low'].tail(20).min()) / c_price
     r10 = (df['High'].tail(10).max() - df['Low'].tail(10).min()) / c_price
@@ -162,6 +158,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vcp = (r20 > r10) and (r10 > r5)
     vcp_str = "YES 🔥" if is_vcp else "NO"
 
+    # Price Actions & Support Calculations
     prev_close = float(df['Close'].iloc[-2]) if len(df) >= 2 else c_price
     pct_change = ((c_price - prev_close) / prev_close) * 100
     res_20 = df['High'].tail(21).iloc[:-1].max()
@@ -171,6 +168,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     df.loc[:, 'EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
+    # OI Change Logic
     if live_oi_pct is not None and live_oi_pct != 0.0:
         oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
         oi_val_for_buildup = live_oi_pct
@@ -180,6 +178,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
         oi_val_for_buildup = est_oi
 
+    # CE/PE Buildup Signal Logic
     if pct_change > 0 and oi_val_for_buildup > 0:
         option_buildup = "CE LONG BUILDUP 🔥"
     elif pct_change < 0 and oi_val_for_buildup > 0:
@@ -191,19 +190,43 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     else:
         option_buildup = "NEUTRAL ↔️"
 
+    # 15-Minute & Intraday VWAP Calculation Engine
     is_15m_high_broken = False
     is_15m_low_broken = False
+    intraday_trend = "NEUTRAL ↔️"
+
     if df_15m is not None and not df_15m.empty:
         today_date = df_15m.index[-1].date()
-        today_candles = df_15m[df_15m.index.date == today_date]
+        today_candles = df_15m[df_15m.index.date == today_date].copy()
+        
         if len(today_candles) >= 1:
             first_15m_high = today_candles['High'].iloc[0]
             first_15m_low = today_candles['Low'].iloc[0]
+            
             if c_price > first_15m_high:
                 is_15m_high_broken = True
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
+            # VWAP Calculation: Cumulative (Typical Price * Volume) / Cumulative Volume
+            today_candles['TP'] = (today_candles['High'] + today_candles['Low'] + today_candles['Close']) / 3.0
+            today_candles['TPV'] = today_candles['TP'] * today_candles['Volume']
+            cum_tpv = today_candles['TPV'].sum()
+            cum_vol = today_candles['Volume'].sum()
+            
+            vwap = cum_tpv / cum_vol if cum_vol > 0 else c_price
+
+            # Trend determination (+ve vs -ve)
+            if c_price > vwap and is_15m_high_broken:
+                intraday_trend = "STRONG BULLISH (+ve) 🚀🟢"
+            elif c_price > vwap:
+                intraday_trend = "ABOVE VWAP (+ve) 🟢"
+            elif c_price < vwap and is_15m_low_broken:
+                intraday_trend = "STRONG BEARISH (-ve) 💥🔴"
+            else:
+                intraday_trend = "BELOW VWAP (-ve) 🔴"
+
+    # Breakout Status & Entry Triggers
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -213,6 +236,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         priority_group = 0
         option_buildup = "N/A"
         oi_change_str = "N/A"
+        intraday_trend = "INDEX REGIME"
     else:
         clean_symbol = symbol.replace(".NS", "")
         support_level = f"EMA20: ₹{ema20_val}"
@@ -256,6 +280,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         "action_entry": action_entry,
         "support_level": support_level,
         "priority_group": priority_group,
+        "intraday_trend": intraday_trend,
         "time_only_ist": time_only_ist
     }
 
@@ -285,7 +310,8 @@ def run_scanner_once():
                     pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"]
+                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"],
+                    pdata["intraday_trend"]
                 ]
             else:
                 stock_data_list.append(pdata)
@@ -319,14 +345,15 @@ def run_scanner_once():
             item["action_entry"],
             rank_tag,
             item["support_level"],
-            item["time_only_ist"]
+            item["time_only_ist"],
+            item["intraday_trend"]
         ])
 
     headers = [
         "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", 
         "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
         "Breakout Status", "Action / Entry Trigger", "Priority Rank", 
-        "Reversal Support Level", "Last Updated"
+        "Reversal Support Level", "Last Updated", "Intraday Trend (VWAP / 15M)"
     ]
 
     final_matrix = [headers]
@@ -336,7 +363,7 @@ def run_scanner_once():
 
     sheet = get_google_sheet()
     end_row = len(final_matrix)
-    range_to_update = f"A1:L{end_row}"
+    range_to_update = f"A1:M{end_row}"
 
     try:
         sheet.update(range_name=range_to_update, values=final_matrix, value_input_option='USER_ENTERED')
