@@ -104,7 +104,7 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     if df is None or len(df) < 5:
         return None
 
-    # Name Clean Routine (Explicit NIFTY 50 Fix)
+    # Clean Symbol Name
     if symbol == INDEX_TICKER or "^NSEI" in symbol:
         clean_symbol = "NIFTY 50"
     else:
@@ -115,36 +115,43 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     pct_change_num = ((c_price - prev_close) / prev_close) * 100
     pct_change_str = f"{round(pct_change_num, 2)}%"
 
-    # VWAP Calculation
+    # VWAP & EMA 20 Calculation
     v = df['Volume']
     tp = (df['High'] + df['Low'] + df['Close']) / 3
     vwap = float((tp * v).sum() / v.sum()) if v.sum() > 0 else c_price
+    ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().iloc[-1])
 
     # Volume Spike Check
     avg_vol = df['Volume'].mean()
     last_vol = df['Volume'].iloc[-1]
-    vol_status = "SPIKE ⚡" if last_vol > avg_vol * 1.5 else "DRY-UP 💧"
+    vol_ratio = last_vol / avg_vol if avg_vol > 0 else 1.0
+    vol_status = "SPIKE ⚡" if vol_ratio > 1.5 else "DRY-UP 💧"
 
-    # Intraday Trend (VWAP & 15M High)
+    # Strict Breakout Conditions (Above VWAP & Above EMA20 & 15M High Broken)
     is_15m_high_broken = c_price > float(df['High'].iloc[-2])
-    if c_price > vwap and is_15m_high_broken:
+    is_above_vwap = c_price > vwap
+    is_above_ema20 = c_price > ema20
+
+    # High Momentum Priority Engine
+    if is_above_vwap and is_above_ema20 and is_15m_high_broken:
         intraday_trend = "STRONG BULLISH (+ve) 🚀🟢"
-        priority_group = 1
-    elif c_price > vwap:
+        priority_group = 1  # CONFIRMED B/O (TOP PRIORITY)
+        bo_status = "ALPHA CE B/O 🚀"
+        action_entry = "🔥BUY CE (15M CONFIRMED) 🟢"
+    elif is_above_vwap and is_above_ema20:
         intraday_trend = "ABOVE VWAP (+ve) 🟢"
-        priority_group = 2
+        priority_group = 2  # READY FOR BREAKOUT
+        bo_status = "READY TO FLY ⏳"
+        action_entry = "WATCH FOR BREAKOUT 👁️"
     else:
         intraday_trend = "BELOW VWAP (-ve) 🔴"
-        priority_group = 3
+        priority_group = 3  # NO ENTRY / NOISE
+        bo_status = "CONSOLIDATING 💤"
+        action_entry = "NO ENTRY 🚫"
 
     oi_change_str = f"{live_oi_pct}%" if live_oi_pct is not None else "13.5%"
     vcp_str = "YES 🔥" if pct_change_num > 1.0 else "NO 💤"
     option_buildup = "CE LONG BUILDUP 🔥" if pct_change_num > 0 else "PE LONG BUILDUP 🩸"
-    bo_status = "ALPHA CE B/O 🚀" if priority_group == 1 else "CONSOLIDATING ⏳"
-    action_entry = "🔥BUY CE (15M CONFIRMED) 🟢" if priority_group == 1 else "WAIT FOR BREAKOUT ⏳"
-    
-    # EMA 20 Support
-    ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().iloc[-1])
     support_level = f"EMA20: ₹{round(ema20, 2)}"
 
     return {
@@ -155,6 +162,7 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
         "oi_change_str": oi_change_str,
         "vcp_str": vcp_str,
         "vol_status": vol_status,
+        "vol_ratio": vol_ratio,
         "option_buildup": option_buildup,
         "bo_status": bo_status,
         "action_entry": action_entry,
@@ -214,23 +222,25 @@ def run_scanner_once():
             print(f"Error processing {symbol}: {e}")
             continue
 
-    # Sorting by Priority Group (1: B/O, 2: READY, 3: WAIT) then by % Gain
-    stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
+    # STRICT SORTING ENGINE: 
+    # 1st Priority: Priority Group (Group 1: B/O Top First)
+    # 2nd Priority: Volume Spike Ratio (Highest Volume Surge)
+    # 3rd Priority: Price % Change (Highest Momentum Gain)
+    stock_data_list.sort(key=lambda x: (x["priority_group"], -x["vol_ratio"], -x["pct_change_num"]))
 
     stock_rows = []
     bo_rank = 1
     ready_rank = 1
     for item in stock_data_list:
         if item["priority_group"] == 1:
-            rank_tag = f"B/O #{bo_rank}"
+            rank_tag = f"🔥 B/O #{bo_rank}"
             bo_rank += 1
         elif item["priority_group"] == 2:
-            rank_tag = f"READY #{ready_rank}"
+            rank_tag = f"👀 READY #{ready_rank}"
             ready_rank += 1
         else:
-            rank_tag = "WAIT"
+            rank_tag = "💤 WAIT"
 
-        # Explicitly placing clean_symbol as Column A (Index 0)
         stock_rows.append([
             str(item["clean_symbol"]),
             item["c_price"],
@@ -263,8 +273,6 @@ def run_scanner_once():
     final_matrix.extend(stock_rows)
 
     sheet = get_google_sheet()
-    
-    # Clear sheet content before fresh update to avoid layout overlapping
     sheet.clear()
     
     end_row = len(final_matrix)
@@ -276,8 +284,4 @@ def run_scanner_once():
         sheet.update(range_to_update, final_matrix)
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet updated A1:O successfully at {time_only_ist} IST in {elapsed}s!")
-
-
-if __name__ == "__main__":
-    run_scanner_once()
+    print(f"🎉 SUCCESS! Sheet sorted by High Momentum B/O stocks successfully at {time_only_ist} IST!")
