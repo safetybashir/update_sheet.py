@@ -1,16 +1,16 @@
-name: Live FnO Screener Auto-Run
+name: Run Stock Screener
 
 on:
   schedule:
-    # Har 15 minute me ek baar chalega (Market hours)
+    # Har 15 minute me auto run hoga (Market hours)
     - cron: '*/15 * * * *'
-  workflow_dispatch: # Manual Run button ke liye
+  workflow_dispatch: # Manual "Run workflow" button ke liye
 
 jobs:
-  run-screener:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout repository code
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -18,12 +18,13 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           pip install requests pandas yfinance gspread google-auth pytz
 
-      - name: Run Screener (Single Pass)
+      - name: Run Screener Script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: python main.py
+        # FIX: Yahan 'main.py' ke bajaye aapki asli file 'update_sheet.py' set kar di gayi hai
+        run: python update_sheet.py
