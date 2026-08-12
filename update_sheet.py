@@ -149,7 +149,7 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     if df is None or len(df) < 5:
         return None
 
-    clean_symbol = symbol.replace(".NS", "")
+    clean_symbol = symbol.replace(".NS", "").replace("^", "")
     c_price = float(df['Close'].iloc[-1])
     prev_close = float(df['Close'].iloc[0])
     pct_change_num = ((c_price - prev_close) / prev_close) * 100
@@ -223,7 +223,7 @@ def run_scanner_once():
 
     for symbol, data in data_dict.items():
         try:
-            clean_sym = symbol.replace(".NS", "")
+            clean_sym = symbol.replace(".NS", "").replace("^", "")
             live_oi_pct = nse_oi_dict.get(clean_sym, None)
             pdata = process_symbol_data(data, symbol, time_only_ist, live_oi_pct)
             if not pdata:
@@ -242,7 +242,7 @@ def run_scanner_once():
 
             if symbol == INDEX_TICKER:
                 nifty_row = [
-                    pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
+                    "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
                     "BENCHMARK", pdata["support_level"], pdata["time_only_ist"],
@@ -253,6 +253,7 @@ def run_scanner_once():
         except Exception:
             continue
 
+    # Sorting by Priority Group (1: B/O, 2: READY, 3: WAIT) then by % Gain
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -268,8 +269,9 @@ def run_scanner_once():
         else:
             rank_tag = "WAIT"
 
+        # Explicitly placing clean_symbol as Column A (Index 0)
         stock_rows.append([
-            item["clean_symbol"],
+            str(item["clean_symbol"]),
             item["c_price"],
             item["pct_change_str"],
             item["oi_change_str"],
@@ -300,6 +302,10 @@ def run_scanner_once():
     final_matrix.extend(stock_rows)
 
     sheet = get_google_sheet()
+    
+    # Existing data clear karke fresh write karega taaki formatting mix up na ho
+    sheet.clear()
+    
     end_row = len(final_matrix)
     range_to_update = f"A1:O{end_row}"
 
@@ -310,6 +316,3 @@ def run_scanner_once():
 
     elapsed = round(time.time() - start_time, 2)
     print(f"🎉 SUCCESS! Sheet updated A1:O successfully at {time_only_ist} IST in {elapsed}s!")
-
-if __name__ == "__main__":
-    run_scanner_once()
