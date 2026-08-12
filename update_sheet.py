@@ -2,6 +2,7 @@ import sys
 import time
 import requests
 import pandas as pd
+from datetime import datetime
 
 # ==========================================
 # 1. HELPER & DATA FETCHING FUNCTIONS
@@ -15,7 +16,9 @@ def fetch_nse_data(symbol):
     symbol_clean = symbol.strip().upper()
     is_index = "NIFTY" in symbol_clean or "BANKNIFTY" in symbol_clean
     
-    # Placeholder structure for output
+    # Live current time timestamp
+    current_time_str = datetime.now().strftime("%H:%M:%S")
+    
     data = {
         'symbol': symbol_clean,
         'is_index': is_index,
@@ -26,12 +29,10 @@ def fetch_nse_data(symbol):
         'vcp_contraction': 'NO',
         'vwap': None,
         'ema20': None,
-        'last_updated': time.strftime("%H:%M:%S")
+        'last_updated': current_time_str
     }
     
-    # Simulation / Fetching Block (Replace with your actual API session/urls)
     try:
-        # Example data mapping logic (Connect your live payload here)
         if is_index:
             data['ltp'] = 24471.70
             data['price_pct_chg'] = -0.46
@@ -39,14 +40,12 @@ def fetch_nse_data(symbol):
             data['live_oi_pct'] = None  # Spot index has no native OI
             data['vcp_contraction'] = "N/A"
         else:
-            # Individual F&O Stock Example (e.g. ZYDUSLIFE)
             data['ltp'] = 1191.60
             data['price_pct_chg'] = 6.43
             data['vwap'] = 1150.00
             data['ema20'] = 1127.15
             data['vcp_contraction'] = "NO"
-            # If live OI is fetched, store float. If API drops, store None
-            data['live_oi_pct'] = None  # Set to None if API fails, or numeric e.g. 5.2
+            data['live_oi_pct'] = None
             data['volume_status'] = "SPIKE ⚡"
             
     except Exception as e:
@@ -73,14 +72,10 @@ def process_scanner_row(raw_data):
         col_e_vcp_str = "INDEX (NO VCP)"
         col_g_buildup_str = "INDEX TREND"
     else:
-        # VCP Contraction for Stocks
         col_e_vcp_str = raw_data['vcp_contraction']
         
-        # OI Calculation & Fallback logic for Stocks
         if live_oi_pct is not None:
             col_d_oi_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct:.2f}%"
-            
-            # Buildup determination based on Price and OI
             if price_pct > 0 and live_oi_pct > 0:
                 col_g_buildup_str = "LONG BUILDUP 🚀"
             elif price_pct > 0 and live_oi_pct < 0:
@@ -90,15 +85,14 @@ def process_scanner_row(raw_data):
             else:
                 col_g_buildup_str = "LONG UNWINDING ⚠️"
         else:
-            # When stock OI fetch drops or unavailable
             col_d_oi_str = "N/A"
             col_g_buildup_str = "VOLUME BASED (NO OI) ⚠️" if price_pct > 0 else "NO OI DATA ⚠️"
 
-    # --- COL H, I, J: Action & Priority Formatting ---
+    # --- COL H, I, J, K: Action & Priority Formatting ---
     if is_index:
         col_h_breakout = "INDEX TREND"
         col_i_action = "MARKET REGIME: BEARISH 📉" if price_pct < 0 else "MARKET REGIME: BULLISH 🚀"
-        col_j_priority = "INDEX 🎯"  # Compact format retained
+        col_j_priority = "INDEX 🎯"
         col_k_support = f"PIVOT/VWAP: ₹{vwap}" if vwap else "N/A"
     else:
         col_h_breakout = "CE BREAKOUT 🚀" if price_pct > 3 else "RANGE BOUND ↔️"
@@ -115,7 +109,7 @@ def process_scanner_row(raw_data):
     col_n_trend = "📈 BULLISH TREND" if price_pct > 0 else "📉 BEARISH TREND"
     col_o_momentum = "SIDEWAYS / MIXED ↔️" if abs(price_pct) < 1 else "STRONG MOMENTUM ⚡"
 
-    # Assemble Formatted Row (Columns A to O)
+    # --- FINAL ROW ASSEMBLY (Last Updated explicitly placed at the end) ---
     formatted_row = {
         'Col A | Stock Symbol': symbol,
         'Col B | LTP': f"₹{ltp:.2f}" if ltp else "N/A",
@@ -128,33 +122,42 @@ def process_scanner_row(raw_data):
         'Col I | Action / Entry Trigger': col_i_action,
         'Col J | Priority Rank': col_j_priority,
         'Col K | Reversal Support Level': col_k_support,
-        'Col L | Last Updated': raw_data['last_updated'],
         'Col M | B/O STOCKS': col_m_bo_stock,
         'Col N | TREND (STOCKS)': col_n_trend,
-        'Col O | MOMENTUM': col_o_momentum
+        'Col O | MOMENTUM': col_o_momentum,
+        'Col L | Last Updated': raw_data['last_updated']  # <-- Shifted to the last position
     }
     
     return formatted_row
 
 
 # ==========================================
-# 3. EXECUTION & TEST RUN
+# 3. CONTINUOUS LIVE SCANNER LOOP
 # ==========================================
 
 if __name__ == "__main__":
     symbols_to_scan = ["NIFTY 50 🎯", "ZYDUSLIFE"]
-    output_rows = []
-
-    for sym in symbols_to_scan:
-        raw_market_data = fetch_nse_data(sym)
-        processed_row = process_scanner_row(raw_market_data)
-        output_rows.append(processed_row)
-
-    # Convert to DataFrame for displaying in Google Sheets structure
-    df_output = pd.DataFrame(output_rows)
     
-    print("\n--- PROCESSED SHEET OUTPUT ---")
-    for index, row in df_output.iterrows():
-        print(f"\n--- {row['Col A | Stock Symbol']} ---")
-        for col_name, value in row.items():
-            print(f"{col_name}: {value}")
+    print("🚀 Live Scanner Running... (Ctrl+C to Stop)")
+    
+    while True:
+        try:
+            output_rows = []
+            for sym in symbols_to_scan:
+                raw_market_data = fetch_nse_data(sym)
+                processed_row = process_scanner_row(raw_market_data)
+                output_rows.append(processed_row)
+
+            df_output = pd.DataFrame(output_rows)
+            
+            print(f"\n--- SCAN REFRESH [{datetime.now().strftime('%H:%M:%S')}] ---")
+            print(df_output.to_string(index=False))
+            
+            time.sleep(10)  # Refresh every 10 seconds
+            
+        except KeyboardInterrupt:
+            print("\nScanner Stopped.")
+            sys.exit()
+        except Exception as e:
+            print(f"Loop Error: {e}")
+            time.sleep(5)
