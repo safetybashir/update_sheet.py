@@ -1,3 +1,6 @@
+import os
+import io
+import json
 import time
 from datetime import datetime
 import pytz
@@ -12,13 +15,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ==========================================
 # 1. GOOGLE SHEETS & TICKER SETUP
 # ==========================================
-SERVICE_ACCOUNT_FILE = 'credentials.json'  # Path to your JSON credentials
 SPREADSHEET_NAME = 'Stock_Scanner'          # Name of your Google Sheet
 WORKSHEET_NAME = 'Sheet1'                   # Worksheet name
+INDEX_TICKER = "^NSEI"                      # NIFTY 50 Index
 
-INDEX_TICKER = "^NSEI"  # NIFTY 50
-
-# List of tickers to track
 ALL_TICKERS = [
     INDEX_TICKER, "NATIONALUM.NS", "FORCEMOT.NS", "PNB.NS", 
     "BOSCHLTD.NS", "HINDALCO.NS", "BDL.NS", "TATASTEEL.NS", 
@@ -26,17 +26,35 @@ ALL_TICKERS = [
 ]
 
 def get_google_sheet():
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    
+    # 1. Local PC Execution (agar credentials.json local file majood hai)
+    if os.path.exists('credentials.json'):
+        creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
+    
+    # 2. GitHub Actions Runner Execution (GCP_SA_KEY secret env var se load karega)
+    elif "GCP_SA_KEY" in os.environ and os.environ["GCP_SA_KEY"].strip():
+        secret_json_str = os.environ["GCP_SA_KEY"].strip()
+        service_account_info = json.loads(secret_json_str)
+        creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+        
+    else:
+        raise FileNotFoundError(
+            "Neither 'credentials.json' file nor 'GCP_SA_KEY' environment variable was found!"
+        )
+
     client = gspread.authorize(creds)
     return client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
 
 
 # ==========================================
-# 2. NSE BULK DATA & YAHOO FETCHERS
+# 2. DATA FETCHERS
 # ==========================================
 def fetch_nse_oi_data_bulk():
-    """Fetch live OI % change data from NSE option chain bulk endpoint."""
+    """Fetch live OI % change data from NSE bulk option chain."""
     oi_dict = {}
     try:
         headers = {
@@ -48,7 +66,6 @@ def fetch_nse_oi_data_bulk():
         url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
         response = session.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
-            # Parse logic if custom stock OI is integrated
             pass
     except Exception:
         pass
@@ -81,9 +98,9 @@ def fetch_data_parallel(tickers):
 def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_15m_high_broken):
     """
     Column N: Institutional Activity (Big Money vs Retail Trap)
-    Column O: Risk-Reward & Exact SL/Target
+    Column O: Risk-Reward & Exact Target Engine
     """
-    # 1. Column N Logic: Big Money Detection
+    # 1. Column N: Institutional Activity Filter
     is_spike = "SPIKE" in str(vol_status).upper()
     is_bo = "ALPHA" in str(bo_status).upper() or "BREAKOUT" in str(bo_status).upper()
     
@@ -98,7 +115,7 @@ def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_1
     else:
         col_n_inst = "NO BIG MONEY 💤"
 
-    # 2. Column O Logic: Risk-Reward & Target Engine (1:2 RRR based on VWAP)
+    # 2. Column O: Risk-Reward Assessment (1:2 RRR based on VWAP SL)
     sl_level = vwap
     risk_distance = abs(c_price - sl_level)
     
@@ -106,7 +123,7 @@ def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_1
         col_o_rr = "NEUTRAL ⚖️"
     else:
         risk_pct = (risk_distance / c_price) * 100
-        target_level = c_price + (risk_distance * 2)  # 1:2 Target
+        target_level = c_price + (risk_distance * 2)
         
         if risk_pct <= 2.5 and is_15m_high_broken:
             col_o_rr = f"EXCELLENT (SL: ₹{round(sl_level,1)} | TGT: ₹{round(target_level,1)}) 🎯"
@@ -141,7 +158,7 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     last_vol = df['Volume'].iloc[-1]
     vol_status = "SPIKE ⚡" if last_vol > avg_vol * 1.5 else "DRY-UP 💧"
 
-    # Trend & Breakout Logic
+    # Intraday Trend (VWAP & 15M High)
     is_15m_high_broken = c_price > float(df['High'].iloc[-2])
     if c_price > vwap and is_15m_high_broken:
         intraday_trend = "STRONG BULLISH (+ve) 🚀🟢"
@@ -159,7 +176,7 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     bo_status = "ALPHA CE B/O 🚀" if priority_group == 1 else "CONSOLIDATING ⏳"
     action_entry = "🔥BUY CE (15M CONFIRMED) 🟢" if priority_group == 1 else "WAIT FOR BREAKOUT ⏳"
     
-    # EMA 20 Support Level
+    # EMA 20 Support
     ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().iloc[-1])
     support_level = f"EMA20: ₹{round(ema20, 2)}"
 
@@ -205,7 +222,7 @@ def run_scanner_once():
             if not pdata:
                 continue
 
-            # Calculate Col N & Col O values
+            # Compute Col N & Col O
             col_n_val, col_o_val = calculate_col_n_and_o(
                 c_price=pdata["c_price"],
                 vwap=pdata.get("vwap", pdata["c_price"]),
@@ -279,7 +296,7 @@ def run_scanner_once():
     sheet = get_google_sheet()
     end_row = len(final_matrix)
     
-    # Writing complete matrix to Range A1:O
+    # Range updated to Column O (A1:O)
     range_to_update = f"A1:O{end_row}"
 
     try:
