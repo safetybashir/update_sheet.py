@@ -108,13 +108,14 @@ def fetch_nse_oi_data_bulk():
     return oi_dict
 
 # ==========================================
-# 3. YFINANCE PARALLEL FETCHING
+# 3. SAFE YFINANCE PARALLEL FETCHING
 # ==========================================
 def fetch_single_ticker(ticker):
     try:
-        df_daily = yf.Ticker(ticker).history(period="60d", interval="1d")
-        df_15m = yf.Ticker(ticker).history(period="2d", interval="15m")
-        if df_daily is not None and len(df_daily) >= 20:
+        t = yf.Ticker(ticker)
+        df_daily = t.history(period="60d", interval="1d")
+        df_15m = t.history(period="2d", interval="15m")
+        if df_daily is not None and not df_daily.empty and len(df_daily) >= 20:
             return ticker, df_daily, df_15m
     except Exception:
         pass
@@ -123,7 +124,7 @@ def fetch_single_ticker(ticker):
 def fetch_data_parallel(tickers):
     all_data = {}
     print(f"⚡ Parallel fetching {len(tickers)} FnO tickers...")
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         results = executor.map(fetch_single_ticker, tickers)
         for ticker, df_daily, df_15m in results:
             if df_daily is not None and not df_daily.empty:
@@ -203,7 +204,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 7. Breakout Status, Action Trigger & Support Level
+    # 7. Breakout Status & Entry Triggers
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -260,17 +261,17 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     }
 
 # ==========================================
-# 5. MAIN SINGLE-RUN EXECUTION
+# 5. MAIN EXECUTION ROUTINE
 # ==========================================
 def run_scanner_once():
     start_time = time.time()
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
-    # Fetch Live NSE Open Interest Data
+    # 1. Fetch NSE OI Data
     nse_oi_dict = fetch_nse_oi_data_bulk()
 
-    # Parallel Fetch Yahoo Finance Data
+    # 2. Parallel Fetch Yahoo Data
     data_dict = fetch_data_parallel(ALL_TICKERS)
 
     nifty_row = None
@@ -295,7 +296,7 @@ def run_scanner_once():
         except Exception:
             continue
 
-    # Auto Sorting
+    # 3. Sort Results
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -338,7 +339,7 @@ def run_scanner_once():
         final_matrix.append(nifty_row)
     final_matrix.extend(stock_rows)
 
-    # Safe Google Sheet Update (Columns A1:L Only)
+    # 4. Write to Google Sheet
     sheet = get_google_sheet()
     end_row = len(final_matrix)
     range_to_update = f"A1:L{end_row}"
@@ -349,7 +350,7 @@ def run_scanner_once():
         sheet.update(range_to_update, final_matrix)
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet A1:L updated at {time_only_ist} in {elapsed} Seconds!")
+    print(f"🎉 SUCCESS! Sheet updated successfully at {time_only_ist} IST in {elapsed}s!")
 
 if __name__ == "__main__":
     run_scanner_once()
