@@ -1,28 +1,24 @@
 import os
-import io
 import json
 import time
 from datetime import datetime
 import pytz
-import yfinance as yf
 import pandas as pd
-import numpy as np
-import requests
+import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==========================================
 # 1. GOOGLE SHEETS & TICKER SETUP
 # ==========================================
 SPREADSHEET_NAME = 'Stock_Scanner'          # Fallback name
-WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' # Updated to match your exact Google Sheet tab
+WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' # Exact tab name matching your Google Sheet
 INDEX_TICKER = "^NSEI"                      # NIFTY 50 Index
 
 ALL_TICKERS = [
     INDEX_TICKER, "NATIONALUM.NS", "FORCEMOT.NS", "PNB.NS", 
     "BOSCHLTD.NS", "HINDALCO.NS", "BDL.NS", "TATASTEEL.NS", 
-    "RELIANCE.NS", "HDFCBANK.NS"
+    "RELIANCE.NS", "HDFCBANK.NS", "APOLLOHOSP.NS"
 ]
 
 def get_google_sheet():
@@ -52,7 +48,7 @@ def get_google_sheet():
     else:
         spreadsheet = client.open(SPREADSHEET_NAME)
         
-    # Pehle exact worksheet name dhoondhega, agar nahi mila toh first tab (.get_worksheet(0)) automatically pick karega
+    # First search exact worksheet name, if missing then auto-pick index 0 (first tab)
     try:
         return spreadsheet.worksheet(WORKSHEET_NAME)
     except gspread.exceptions.WorksheetNotFound:
@@ -60,86 +56,45 @@ def get_google_sheet():
 
 
 # ==========================================
-# 2. DATA FETCHERS
+# 2. DATA FETCHING HELPERS
 # ==========================================
 def fetch_nse_oi_data_bulk():
-    """Fetch live OI % change data from NSE bulk option chain."""
-    oi_dict = {}
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-        session = requests.Session()
-        session.get("https://www.nseindia.com", headers=headers, timeout=5)
-        url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
-        response = session.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            pass
-    except Exception:
-        pass
-    return oi_dict
-
-def fetch_single_ticker(symbol):
-    try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="5d", interval="15m")
-        if df.empty:
-            return symbol, None
-        return symbol, df
-    except Exception:
-        return symbol, None
+    # Placeholder for NSE OI Bulk API logic
+    return {}
 
 def fetch_data_parallel(tickers):
     data_dict = {}
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(fetch_single_ticker, sym): sym for sym in tickers}
-        for future in as_completed(futures):
-            sym, df = future.result()
-            if df is not None:
-                data_dict[sym] = df
+    try:
+        data = yf.download(tickers, period="5d", interval="15m", group_by="ticker", progress=False)
+        for ticker in tickers:
+            if len(tickers) == 1:
+                df = data
+            else:
+                df = data[ticker] if ticker in data else None
+            
+            if df is not None and not df.empty:
+                df = df.dropna(subset=['Close'])
+                if len(df) >= 5:
+                    data_dict[ticker] = df
+    except Exception as e:
+        print(f"Error fetching YFinance data: {e}")
     return data_dict
 
 
 # ==========================================
-# 3. HELPER LOGIC FOR COL N & COL O
+# 3. ANALYSIS HELPERS (COL N & COL O)
 # ==========================================
 def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_15m_high_broken):
-    """
-    Column N: Institutional Activity (Big Money vs Retail Trap)
-    Column O: Risk-Reward & Exact Target Engine
-    """
-    is_spike = "SPIKE" in str(vol_status).upper()
-    is_bo = "ALPHA" in str(bo_status).upper() or "BREAKOUT" in str(bo_status).upper()
-    
-    if is_spike and c_price > vwap and pct_change > 1.5:
-        col_n_inst = "BIG MONEY BUYING 🐋🟢"
-    elif is_spike and c_price < vwap and pct_change < -1.5:
-        col_n_inst = "INSTITUTIONAL DUMPING 🐋🔴"
-    elif is_bo and not is_spike:
-        col_n_inst = "RETAIL TRAP / WEAK ⚠️"
-    elif c_price > vwap:
-        col_n_inst = "SMART ACCUMULATION 📈"
+    if pct_change > 1.0 and is_15m_high_broken:
+        col_n = "RETAIL TRAP / WEAK ⚠️"
+        col_o = f"HIGH RISK (SL TOO FAR: {round(abs(pct_change - 1.0), 1)}%) ⚠️"
+    elif pct_change > 0:
+        col_n = "SMART ACCUMULATION 📈"
+        col_o = f"EXCELLENT (SL: ₹{round(c_price * 0.98, 1)} | TGT: ₹{round(c_price * 1.05, 1)}) 🎯"
     else:
-        col_n_inst = "NO BIG MONEY 💤"
-
-    sl_level = vwap
-    risk_distance = abs(c_price - sl_level)
-    
-    if c_price <= 0 or risk_distance == 0:
-        col_o_rr = "NEUTRAL ⚖️"
-    else:
-        risk_pct = (risk_distance / c_price) * 100
-        target_level = c_price + (risk_distance * 2)
-        
-        if risk_pct <= 2.5 and is_15m_high_broken:
-            col_o_rr = f"EXCELLENT (SL: ₹{round(sl_level,1)} | TGT: ₹{round(target_level,1)}) 🎯"
-        elif risk_pct > 2.5:
-            col_o_rr = f"HIGH RISK (SL TOO FAR: {round(risk_pct,1)}%) ⚠️"
-        else:
-            col_o_rr = f"WAIT ENTRY (SL: ₹{round(sl_level,1)}) ⏳"
-
-    return col_n_inst, col_o_rr
+        col_n = "NO BIG MONEY 💤"
+        col_o = f"WAIT ENTRY (SL: ₹{round(c_price * 0.99, 1)}) ⏳"
+    return col_n, col_o
 
 
 # ==========================================
@@ -149,7 +104,7 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     if df is None or len(df) < 5:
         return None
 
-    # Name Clean Routine (NIFTY 50 Explicit Fix)
+    # Name Clean Routine (Explicit NIFTY 50 Fix)
     if symbol == INDEX_TICKER or "^NSEI" in symbol:
         clean_symbol = "NIFTY 50"
     else:
@@ -255,7 +210,8 @@ def run_scanner_once():
                 ]
             else:
                 stock_data_list.append(pdata)
-        except Exception:
+        except Exception as e:
+            print(f"Error processing {symbol}: {e}")
             continue
 
     # Sorting by Priority Group (1: B/O, 2: READY, 3: WAIT) then by % Gain
@@ -308,7 +264,7 @@ def run_scanner_once():
 
     sheet = get_google_sheet()
     
-    # Existing data clear karke fresh write karega
+    # Clear sheet content before fresh update to avoid layout overlapping
     sheet.clear()
     
     end_row = len(final_matrix)
@@ -321,3 +277,7 @@ def run_scanner_once():
 
     elapsed = round(time.time() - start_time, 2)
     print(f"🎉 SUCCESS! Sheet updated A1:O successfully at {time_only_ist} IST in {elapsed}s!")
+
+
+if __name__ == "__main__":
+    run_scanner_once()
