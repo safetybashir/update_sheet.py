@@ -1,188 +1,365 @@
-import sys
+import os
+import json
 import time
-import signal
+import pytz
 import requests
 import pandas as pd
+import yfinance as yf
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
-# 1. FORCE TERMINATION HANDLER (Ctrl + C)
+# 1. SELECTED FNO TICKERS CONFIGURATION
 # ==========================================
-def force_exit_handler(sig, frame):
-    print("\n\n🛑 [STOPPED] Scanner terminated cleanly by user.")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, force_exit_handler)
-
-
-# ==========================================
-# 2. ROBUST LIVE NSE FETCH WITH COOKIE HANDLING
-# ==========================================
-class NSENonStopFetcher:
-    def __init__(self):
-        self.session = requests.Session()
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://www.nseindia.com/'
-        }
-        self.session.headers.update(self.headers)
-        self.cookies_active = False
-
-    def refresh_cookies(self):
-        """Fetches home page to refresh NSE session cookies"""
-        try:
-            self.session.get("https://www.nseindia.com", headers=self.headers, timeout=4)
-            self.cookies_active = True
-        except Exception:
-            self.cookies_active = False
-
-    def fetch_data(self, symbol):
-        symbol_clean = symbol.strip().upper()
-        is_index = "NIFTY" in symbol_clean or "BANKNIFTY" in symbol_clean
-        live_time_str = datetime.now().strftime("%H:%M:%S")
-
-        data = {
-            'symbol': symbol_clean,
-            'is_index': is_index,
-            'ltp': None,
-            'price_pct_chg': None,
-            'live_oi_pct': None,
-            'volume_status': 'NORMAL (1.0x)',
-            'vcp_contraction': 'NO',
-            'vwap': None,
-            'ema20': None,
-            'last_updated': live_time_str
-        }
-
-        # Ensure active cookies before request
-        if not self.cookies_active:
-            self.refresh_cookies()
-
-        try:
-            # Safe live simulation or real API endpoint hit
-            # URL Example: https://www.nseindia.com/api/quote-equity?symbol=TORNTPHARM
-            
-            # Non-blocking Execution Safeguard
-            if is_index:
-                data['ltp'] = 24470.50
-                data['price_pct_chg'] = -0.35
-                data['vwap'] = 24550.00
-                data['live_oi_pct'] = None
-                data['vcp_contraction'] = "N/A"
-            else:
-                data['ltp'] = 1195.00
-                data['price_pct_chg'] = 4.20
-                data['vwap'] = 1160.00
-                data['ema20'] = 1130.00
-                data['vcp_contraction'] = "NO"
-                data['live_oi_pct'] = 3.50
-                data['volume_status'] = "SPIKE ⚡ (1.8x)"
-
-        except requests.exceptions.Timeout:
-            print(f"⚠️ [TIMEOUT] {symbol} fetch timed out. Skipping to prevent loop freeze.")
-            self.cookies_active = False  # Reset cookie on timeout
-        except Exception as e:
-            print(f"⚠️ [FETCH ERROR] {symbol}: {e}")
-            self.cookies_active = False
-
-        return data
-
+INDEX_TICKER = "^NSEI"
+RAW_FNO_STOCKS = [
+    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
+    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
+    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
+    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
+    "MOTILALOFS", "BHARATFORG", "TMPVSOLAR", "IND", "TATASTEEL", "LTF", "FORCEMOT", 
+    "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", 
+    "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", 
+    "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", 
+    "SONACOMS", "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", 
+    "SUPREMEIND", "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", 
+    "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", 
+    "ULTRACEMCO", "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
+    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", 
+    "CROMPTON", "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", 
+    "PFC", "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", 
+    "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", 
+    "GODREJCP", "FORTIS", "PGELAB", "BCOALINDIA", "SUNPHARMA", "MPHASIS", 
+    "PIIND", "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", 
+    "INDIGO", "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", 
+    "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALLTM", "MARICO", "PAGEIND", 
+    "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
+    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
+]
+STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
+ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
 
 # ==========================================
-# 3. SCANNER LOGIC PROCESSOR
+# GOOGLE SHEET AUTHENTICATION (HYBRID SAFE)
 # ==========================================
-def process_scanner_row(raw_data):
-    symbol = raw_data['symbol']
-    is_index = raw_data['is_index']
-    price_pct = raw_data['price_pct_chg']
-    live_oi_pct = raw_data['live_oi_pct']
-    ltp = raw_data['ltp']
-    vwap = raw_data['vwap']
+def get_google_sheet():
+    gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
+    sheet_id = os.environ.get("SHEET_ID")
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
 
-    # --- OI & Buildup Logic ---
-    if is_index:
-        col_d_oi_str = "INDEX (NO OI)"
-        col_e_vcp_str = "INDEX (NO VCP)"
-        col_g_buildup_str = "INDEX TREND"
+    # Local credentials.json fallback if env variables not set
+    if gcp_json_str and sheet_id:
+        creds_dict = json.loads(gcp_json_str)
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(credentials)
+        return client.open_by_key(sheet_id).sheet1
     else:
-        col_e_vcp_str = raw_data['vcp_contraction']
-        if live_oi_pct is not None:
-            col_d_oi_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct:.2f}%"
-            if price_pct > 0 and live_oi_pct > 0:
-                col_g_buildup_str = "LONG BUILDUP 🚀"
-            elif price_pct > 0 and live_oi_pct < 0:
-                col_g_buildup_str = "SHORT COVERING 🟢"
-            else:
-                col_g_buildup_str = "SHORT BUILDUP 🔻"
+        # Local JSON File Fallback
+        if os.path.exists("credentials.json"):
+            credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
+            client = gspread.authorize(credentials)
+            # Yahan apni sheet ka exact naam daalein
+            return client.open("Live Screener").sheet1
         else:
-            col_d_oi_str = "N/A"
-            col_g_buildup_str = "NO OI DATA ⚠️"
+            raise ValueError("❌ Neither Environment Variables nor credentials.json found!")
 
-    # --- Action & Priority ---
-    if is_index:
-        col_h_breakout = "INDEX TREND"
-        col_i_action = "MARKET REGIME: BEARISH 📉" if price_pct < 0 else "MARKET REGIME: BULLISH 🚀"
-        col_j_priority = "INDEX 🎯"
-        col_k_support = f"PIVOT/VWAP: ₹{vwap}" if vwap else "N/A"
+# ==========================================
+# 2. FAST NON-BLOCKING LIVE NSE OI FETCH ENGINE
+# ==========================================
+def fetch_nse_oi_data_bulk():
+    print("📡 Fetching Live OI Data (Fast Non-Blocking Mode)...")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://www.nseindia.com/'
+    }
+    session = requests.Session()
+    session.headers.update(headers)
+    
+    try:
+        session.get("https://www.nseindia.com", timeout=2)
+    except Exception:
+        pass
+
+    oi_dict = {}
+    def fetch_single_oi(symbol):
+        url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
+        try:
+            resp = session.get(url, timeout=1.5)  # Fast 1.5s Timeout
+            if resp.status_code == 200:
+                data = resp.json()
+                stocks_data = data.get('stocks', [])
+                if stocks_data:
+                    fut_info = stocks_data[0]['marketDeptOrderBook']['tradeInfo']
+                    p_change_oi = float(fut_info.get('pchangeinOpenInterest', 0.0))
+                    return symbol, round(p_change_oi, 2)
+        except Exception:
+            pass
+        return symbol, None
+
+    # Reduced workers to prevent IP blocking
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = executor.map(fetch_single_oi, RAW_FNO_STOCKS)
+        for symbol, oi_pct in results:
+            oi_dict[symbol] = oi_pct
+    return oi_dict
+
+# ==========================================
+# 3. YFINANCE PARALLEL FETCHING
+# ==========================================
+def fetch_single_ticker(ticker):
+    try:
+        df_daily = yf.Ticker(ticker).history(period="60d", interval="1d")
+        df_15m = yf.Ticker(ticker).history(period="2d", interval="15m")
+        if df_daily is not None and len(df_daily) >= 20:
+            return ticker, df_daily, df_15m
+    except Exception:
+        pass
+    return ticker, None, None
+
+def fetch_data_parallel(tickers):
+    all_data = {}
+    print(f"⚡ Parallel fetching {len(tickers)} FnO tickers via YFinance...")
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        results = executor.map(fetch_single_ticker, tickers)
+        for ticker, df_daily, df_15m in results:
+            if df_daily is not None and not df_daily.empty:
+                all_data[ticker] = {"daily": df_daily, "intraday": df_15m}
+    return all_data
+
+# ==========================================
+# 4. PROCESS SYMBOL DATA
+# ==========================================
+def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
+    df = data["daily"].dropna()
+    df_15m = data["intraday"]
+    if len(df) < 25:
+        return None
+
+    # 1. Volume Metrics
+    df['Vol_SMA20'] = df['Volume'].rolling(20).mean()
+    vol_latest = float(df['Volume'].iloc[-1])
+    vol_sma = float(df['Vol_SMA20'].iloc[-1]) if float(df['Vol_SMA20'].iloc[-1]) > 0 else 1.0
+    
+    is_vol_spike = vol_latest > (1.5 * vol_sma)
+    is_vol_dryup = vol_latest < (0.6 * vol_sma)
+    vol_status = "SPIKE ⚡" if is_vol_spike else ("DRY-UP 💧" if is_vol_dryup else "NORMAL")
+
+    # 2. VCP Shrinkage Engine
+    c_price = float(df['Close'].iloc[-1])
+    r20 = (df['High'].tail(20).max() - df['Low'].tail(20).min()) / c_price
+    r10 = (df['High'].tail(10).max() - df['Low'].tail(10).min()) / c_price
+    r5  = (df['High'].tail(5).max()  - df['Low'].tail(5).min())  / c_price
+    is_vcp = (r20 > r10) and (r10 > r5)
+    vcp_str = "YES 🔥" if is_vcp else "NO"
+
+    # 3. Price Actions & Support
+    prev_close = float(df['Close'].iloc[-2]) if len(df) >= 2 else c_price
+    pct_change = ((c_price - prev_close) / prev_close) * 100
+    res_20 = df['High'].tail(21).iloc[:-1].max()
+    sup_20 = df['Low'].tail(21).iloc[:-1].min()
+    is_res_break = c_price >= res_20
+    is_sup_break = c_price <= sup_20
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
+
+    # 4. OI % CHANGE LOGIC
+    if live_oi_pct is not None and live_oi_pct != 0.0:
+        oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
+        oi_val_for_buildup = live_oi_pct
     else:
-        col_h_breakout = "CE BREAKOUT 🚀" if price_pct > 3 else "RANGE BOUND ↔️"
-        col_i_action = "BUY CE ON REVERSAL 🟢" if price_pct > 3 else "NO TRADE ⏸️"
-        col_j_priority = "B/O #1"
-        col_k_support = f"EMA20: ₹{raw_data['ema20']}" if raw_data['ema20'] else "N/A"
+        vol_ratio = vol_latest / vol_sma
+        est_oi = round(pct_change * vol_ratio * 1.2, 2)
+        oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
+        oi_val_for_buildup = est_oi
 
-    col_m_bo_stock = "ABOVE VWAP 🟢" if (ltp and vwap and ltp >= vwap) else "BELOW VWAP 🔻"
-    col_n_trend = "📈 BULLISH TREND" if price_pct and price_pct > 0 else "📉 BEARISH TREND"
-    col_o_momentum = "SIDEWAYS ↔️" if price_pct and abs(price_pct) < 1 else "STRONG MOMENTUM ⚡"
+    # 5. OPTION BUILDUP SIGNAL
+    if pct_change > 0 and oi_val_for_buildup > 0:
+        option_buildup = "CE LONG BUILDUP 🔥"
+    elif pct_change < 0 and oi_val_for_buildup > 0:
+        option_buildup = "PE LONG BUILDUP 📉"
+    elif pct_change > 0 and oi_val_for_buildup < 0:
+        option_buildup = "CE SHORT COVERING ⚡"
+    elif pct_change < 0 and oi_val_for_buildup < 0:
+        option_buildup = "PE UNWINDING 💧"
+    else:
+        option_buildup = "NEUTRAL ↔️"
+
+    # 6. AUTO 15-MINUTE CONFIRMATION
+    is_15m_high_broken = False
+    is_15m_low_broken = False
+    if df_15m is not None and not df_15m.empty:
+        today_date = df_15m.index[-1].date()
+        today_candles = df_15m[df_15m.index.date == today_date]
+        if len(today_candles) >= 1:
+            first_15m_high = today_candles['High'].iloc[0]
+            first_15m_low = today_candles['Low'].iloc[0]
+            if c_price > first_15m_high:
+                is_15m_high_broken = True
+            elif c_price < first_15m_low:
+                is_15m_low_broken = True
+
+    # 7. BREAKOUT STATUS & ACTION
+    if symbol == INDEX_TICKER:
+        vcp_str = "N/A"
+        clean_symbol = "NIFTY 50 🎯"
+        bo_status = "INDEX TREND"
+        action_entry = "MARKET REGIME: " + ("BULLISH 📈" if pct_change > 0 else "BEARISH 📉")
+        support_level = "N/A"
+        priority_group = 0
+        option_buildup = "N/A"
+        oi_change_str = "N/A"
+    else:
+        clean_symbol = symbol.replace(".NS", "")
+        support_level = f"EMA20: ₹{ema20_val}"
+        
+        if is_vcp and is_res_break and is_vol_spike:
+            bo_status = "ALPHA CE B/O 🚀🔥"
+            priority_group = 1
+            action_entry = "BUY CE (15M CONFIRMED) 🟢" if is_15m_high_broken else "WAIT FOR 15M BREAKOUT ⏳"
+        elif is_vcp and is_sup_break and is_vol_spike:
+            bo_status = "ALPHA PE B/O 📉💥"
+            priority_group = 1
+            action_entry = "BUY PE (15M CONFIRMED) 🔴" if is_15m_low_broken else "WAIT FOR 15M BREAKDOWN ⏳"
+        elif is_res_break and is_vol_spike:
+            bo_status = "CE BREAKOUT 🚀"
+            priority_group = 1
+            action_entry = "BUY CE ON REVERSAL 🟢"
+        elif is_sup_break and is_vol_spike:
+            bo_status = "PE BREAKDOWN 📉"
+            priority_group = 1
+            action_entry = "BUY PE ON REVERSAL 🔴"
+        elif is_vcp and is_vol_dryup:
+            bo_status = "VCP SQUEEZE 💥"
+            action_entry = "READY FOR B/O (WATCH) 👁️"
+            priority_group = 2
+        else:
+            bo_status = "NONE"
+            action_entry = "NO ENTRY (WAIT) ⏳"
+            support_level = "-"
+            priority_group = 3
 
     return {
-        'Col A | Stock Symbol': symbol,
-        'Col B | LTP': f"₹{ltp:.2f}" if ltp else "N/A",
-        'Col C | Price % Change': f"{price_pct:+.2f}%" if price_pct is not None else "N/A",
-        'Col D | OI % Change': col_d_oi_str,
-        'Col E | VCP Contraction': col_e_vcp_str,
-        'Col F | Volume Status': raw_data['volume_status'],
-        'Col G | CE/PE Option Buildup': col_g_buildup_str,
-        'Col H | Breakout Status': col_h_breakout,
-        'Col I | Action / Entry Trigger': col_i_action,
-        'Col J | Priority Rank': col_j_priority,
-        'Col K | Reversal Support Level': col_k_support,
-        'Col M | B/O STOCKS': col_m_bo_stock,
-        'Col N | TREND (STOCKS)': col_n_trend,
-        'Col O | MOMENTUM': col_o_momentum,
-        'Col L | Last Updated': raw_data['last_updated']
+        "clean_symbol": clean_symbol,
+        "c_price": round(c_price, 2),
+        "pct_change_num": pct_change,
+        "pct_change_str": f"{round(pct_change, 2)}%",
+        "oi_change_str": oi_change_str,
+        "vcp_str": vcp_str,
+        "vol_status": vol_status,
+        "option_buildup": option_buildup,
+        "bo_status": bo_status,
+        "action_entry": action_entry,
+        "support_level": support_level,
+        "priority_group": priority_group,
+        "time_only_ist": time_only_ist
     }
 
+# ==========================================
+# 5. CONTINUOUS RUN LOOP (SAFE OVERWRITE)
+# ==========================================
+def run_scanner_once():
+    start_time = time.time()
+    ist = pytz.timezone('Asia/Kolkata')
+    time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
-# ==========================================
-# 4. MAIN LOOP EXECUTION
-# ==========================================
+    # Fetch Live NSE Open Interest Data
+    nse_oi_dict = fetch_nse_oi_data_bulk()
+
+    # Parallel Fetch Yahoo Finance Data
+    data_dict = fetch_data_parallel(ALL_TICKERS)
+
+    nifty_row = None
+    stock_data_list = []
+
+    for symbol, data in data_dict.items():
+        try:
+            clean_sym = symbol.replace(".NS", "")
+            live_oi_pct = nse_oi_dict.get(clean_sym, None)
+            pdata = process_symbol_data(data, symbol, time_only_ist, live_oi_pct)
+            if not pdata:
+                continue
+            if symbol == INDEX_TICKER:
+                nifty_row = [
+                    pdata["clean_symbol"], pdata["c_price"], pdata["pct_change_str"],
+                    pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
+                    pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
+                    "BENCHMARK", pdata["support_level"], pdata["time_only_ist"]
+                ]
+            else:
+                stock_data_list.append(pdata)
+        except Exception:
+            continue
+
+    # Auto Sorting
+    stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
+
+    stock_rows = []
+    bo_rank = 1
+    ready_rank = 1
+    for item in stock_data_list:
+        if item["priority_group"] == 1:
+            rank_tag = f"B/O #{bo_rank}"
+            bo_rank += 1
+        elif item["priority_group"] == 2:
+            rank_tag = f"READY #{ready_rank}"
+            ready_rank += 1
+        else:
+            rank_tag = "WAIT"
+
+        stock_rows.append([
+            item["clean_symbol"],        # Col A
+            item["c_price"],             # Col B
+            item["pct_change_str"],      # Col C
+            item["oi_change_str"],       # Col D
+            item["vcp_str"],             # Col E
+            item["vol_status"],          # Col F
+            item["option_buildup"],      # Col G
+            item["bo_status"],           # Col H
+            item["action_entry"],        # Col I
+            rank_tag,                    # Col J
+            item["support_level"],       # Col K
+            item["time_only_ist"]        # Col L
+        ])
+
+    headers = [
+        "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", 
+        "VCP Contraction", "Volume Status", "CE/PE Option Buildup", 
+        "Breakout Status", "Action / Entry Trigger", "Priority Rank", 
+        "Reversal Support Level", "Last Updated"
+    ]
+
+    final_matrix = [headers]
+    if nifty_row:
+        final_matrix.append(nifty_row)
+    final_matrix.extend(stock_rows)
+
+    # Overwrite ONLY Columns A to L (PRESERVES COLUMNS M TO R FORMULAS)
+    sheet = get_google_sheet()
+    end_row = len(final_matrix)
+    range_to_update = f"A1:L{end_row}"
+
+    sheet.update(
+        range_name=range_to_update, 
+        values=final_matrix, 
+        value_input_option='USER_ENTERED'
+    )
+    elapsed = round(time.time() - start_time, 2)
+    print(f"🎉 SUCCESS! Sheet A1:L updated at {time_only_ist} in {elapsed} Seconds! 🔥🚀")
+
 if __name__ == "__main__":
-    fetcher = NSENonStopFetcher()
-    symbols_to_scan = ["NIFTY 50 🎯", "TORNTPHARM", "ASHOKLEY", "PNB"]
-
-    print("🚀 LIVE SCANNER ACTIVE (Press Ctrl+C to Stop Instantly)\n")
-
+    print("🚀 LIVE FNO SCANNER ENGINE STARTED (Non-Stop Loop)")
     while True:
         try:
-            output_rows = []
-            for sym in symbols_to_scan:
-                raw_market_data = fetcher.fetch_data(sym)
-                processed_row = process_scanner_row(raw_market_data)
-                output_rows.append(processed_row)
-
-            df_output = pd.DataFrame(output_rows)
-            live_now = datetime.now().strftime("%H:%M:%S")
-
-            print(f"================ SCAN REFRESH AT [{live_now}] ================")
-            print(df_output.to_string(index=False))
-            print("=" * 85 + "\n")
-
-            time.sleep(5)  # Refresh interval
-
-        except SystemExit:
+            run_scanner_once()
+            time.sleep(10)  # Refresh every 10 seconds
+        except KeyboardInterrupt:
+            print("\n🛑 Stopped by user.")
             break
         except Exception as e:
-            print(f"⚠️ Loop Warning: {e}")
-            time.sleep(3)
+            print(f"⚠️ Loop Exception: {e}")
+            time.sleep(5)
