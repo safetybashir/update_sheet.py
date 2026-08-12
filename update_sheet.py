@@ -52,7 +52,7 @@ def get_google_sheet():
         "https://www.googleapis.com/auth/drive"
     ]
     
-    # Priority 1: Check Environment Variables (Cloud / Automation)
+    # Priority 1: Check GitHub Actions / Cloud Environment Secret
     gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     sheet_id = os.environ.get("SHEET_ID") or TARGET_SHEET_ID
 
@@ -62,13 +62,13 @@ def get_google_sheet():
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
     
-    # Priority 2: Check Local credentials.json File (Local Machine)
+    # Priority 2: Check Local credentials.json File
     elif os.path.exists("credentials.json"):
         credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
         client = gspread.authorize(credentials)
         return client.open_by_key(sheet_id).sheet1
     else:
-        raise ValueError("❌ Local 'credentials.json' file not found in script folder!")
+        raise ValueError("❌ 'credentials.json' file not found!")
 
 # ==========================================
 # 2. LIVE NSE OPEN INTEREST (OI) FETCH ENGINE
@@ -261,7 +261,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     }
 
 # ==========================================
-# 5. MAIN CONTINUOUS EXECUTION LOOP
+# 5. SINGLE-RUN FUNCTION (GITHUB ACTIONS FRIENDLY)
 # ==========================================
 def run_scanner_once():
     start_time = time.time()
@@ -296,7 +296,7 @@ def run_scanner_once():
         except Exception:
             continue
 
-    # Auto Sorting by Priority & % Gain
+    # Auto Sorting
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -350,17 +350,8 @@ def run_scanner_once():
         value_input_option='USER_ENTERED'
     )
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet updated at {time_only_ist} in {elapsed} Seconds! 🔥🚀")
+    print(f"🎉 SUCCESS! Sheet A1:L updated at {time_only_ist} in {elapsed} Seconds!")
 
 if __name__ == "__main__":
-    print("🚀 LIVE FNO SCANNER ENGINE STARTED (Non-Stop Loop)")
-    while True:
-        try:
-            run_scanner_once()
-            time.sleep(10)
-        except KeyboardInterrupt:
-            print("\n🛑 Stopped cleanly by user.")
-            break
-        except Exception as e:
-            print(f"⚠️ Loop Warning: {e}")
-            time.sleep(5)
+    # GitHub Actions loop crash ko rokne ke liye single run rakha gaya hai
+    run_scanner_once()
