@@ -1,30 +1,33 @@
-name: Run Stock Screener
+name: Update Google Sheet Daily
 
 on:
   schedule:
-    # Har 15 minute me auto run hoga (Market hours)
-    - cron: '*/15 * * * *'
-  workflow_dispatch: # Manual "Run workflow" button ke liye
+    # Example: Runs every 15 minutes during Indian market hours (Mon-Fri)
+    - cron: '*/15 3-10 * * 1-5'
+  workflow_dispatch: # Allows manual run button in GitHub
 
 jobs:
-  build:
+  update-sheet:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository code
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install requests pandas yfinance gspread google-auth pytz
 
-      - name: Run Screener Script
+      - name: Run Market Scanner & Update Sheet
         env:
+          # CRITICAL: Secrets must be passed explicitly to environment variables here
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-        # FIX: Yahan 'main.py' ke bajaye aapki asli file 'update_sheet.py' set kar di gayi hai
-        run: python update_sheet.py
+        run: |
+          python update_sheet.py
