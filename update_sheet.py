@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # 1. GOOGLE SHEETS & TICKER SETUP
 # ==========================================
 SPREADSHEET_NAME = 'Stock_Scanner'          # Fallback name
-WORKSHEET_NAME = 'Sheet1'                   # Worksheet tab name
+WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' # Updated to match your exact Google Sheet tab
 INDEX_TICKER = "^NSEI"                      # NIFTY 50 Index
 
 ALL_TICKERS = [
@@ -52,7 +52,11 @@ def get_google_sheet():
     else:
         spreadsheet = client.open(SPREADSHEET_NAME)
         
-    return spreadsheet.worksheet(WORKSHEET_NAME)
+    # Pehle exact worksheet name dhoondhega, agar nahi mila toh first tab (.get_worksheet(0)) automatically pick karega
+    try:
+        return spreadsheet.worksheet(WORKSHEET_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        return spreadsheet.get_worksheet(0)
 
 
 # ==========================================
