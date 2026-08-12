@@ -21,7 +21,7 @@ RAW_FNO_STOCKS = [
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
     "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
     "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "MOTILALOFS", "BHARATFORG", "TATAMTRDVR", "INDIAMART", "TATASTEEL", "LTF", "FORCEMOT", 
+    "MOTILALOFS", "BHARATFORG", "TATAMOTORS", "INDIAMART", "TATASTEEL", "LTF", "FORCEMOT", 
     "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", 
     "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", 
     "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", 
@@ -29,18 +29,17 @@ RAW_FNO_STOCKS = [
     "SUPREMEIND", "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", 
     "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", 
     "ULTRACEMCO", "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
-    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTIM", 
+    "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LT", 
     "CROMPTON", "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", 
     "PFC", "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", 
     "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", 
     "GODREJCP", "FORTIS", "PGHL", "COALINDIA", "SUNPHARMA", "MPHASIS", 
-    "PIIND", "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", 
+    "PIIND", "COLPAL", "BLUESTARCO", "VOLTAS", "TECHM", "EICHERMOT", 
     "INDIGO", "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", 
-    "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALLTM", "MARICO", "PAGEIND", 
-    "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
+    "NAUKRI", "WIPRO", "ALKEM", "ITC", "COFORGE", "MARICO", "PAGEIND", 
+    "MAXHEALTH", "BRITANNIA", "INFY", "TCS", "KALYANKJIL", "LODHA", 
     "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO", "ASTRAL"
 ]
-# Unique tickers to prevent duplicates
 RAW_FNO_STOCKS = list(dict.fromkeys(RAW_FNO_STOCKS))
 STOCKS_TICKERS = [f"{stock}.NS" for stock in RAW_FNO_STOCKS]
 ALL_TICKERS = [INDEX_TICKER] + STOCKS_TICKERS
@@ -135,13 +134,13 @@ def fetch_data_parallel(tickers):
 # 4. PROCESS SYMBOL DATA
 # ==========================================
 def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
-    df = data["daily"].dropna()
+    df = data["daily"].dropna().copy()
     df_15m = data["intraday"]
     if len(df) < 20:
         return None
 
     # 1. Volume Metrics
-    df['Vol_SMA20'] = df['Volume'].rolling(20).mean()
+    df.loc[:, 'Vol_SMA20'] = df['Volume'].rolling(20).mean()
     vol_latest = float(df['Volume'].iloc[-1])
     vol_sma_val = float(df['Vol_SMA20'].iloc[-1])
     vol_sma = vol_sma_val if vol_sma_val > 0 else 1.0
@@ -165,7 +164,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     sup_20 = df['Low'].tail(21).iloc[:-1].min()
     is_res_break = c_price >= res_20
     is_sup_break = c_price <= sup_20
-    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df.loc[:, 'EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
     # 4. OI CHANGE % LOGIC
