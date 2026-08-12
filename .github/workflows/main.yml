@@ -26,6 +26,6 @@ jobs:
 
       - name: Execute Stock Scanner Script
         env:
-          # Yahan GCP_CREDENTIALS_JSON kar diya hai jo aapki repo mein secret name hai
-          GCP_SA_KEY: ${{ secrets.GCP_CREDENTIALS_JSON }} 
+          GCP_SA_KEY: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
