@@ -149,7 +149,12 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     if df is None or len(df) < 5:
         return None
 
-    clean_symbol = symbol.replace(".NS", "").replace("^", "")
+    # Name Clean Routine (NIFTY 50 Explicit Fix)
+    if symbol == INDEX_TICKER or "^NSEI" in symbol:
+        clean_symbol = "NIFTY 50"
+    else:
+        clean_symbol = symbol.replace(".NS", "").replace("^", "").strip()
+
     c_price = float(df['Close'].iloc[-1])
     prev_close = float(df['Close'].iloc[0])
     pct_change_num = ((c_price - prev_close) / prev_close) * 100
@@ -223,7 +228,7 @@ def run_scanner_once():
 
     for symbol, data in data_dict.items():
         try:
-            clean_sym = symbol.replace(".NS", "").replace("^", "")
+            clean_sym = "NIFTY 50" if symbol == INDEX_TICKER else symbol.replace(".NS", "").replace("^", "").strip()
             live_oi_pct = nse_oi_dict.get(clean_sym, None)
             pdata = process_symbol_data(data, symbol, time_only_ist, live_oi_pct)
             if not pdata:
@@ -303,7 +308,7 @@ def run_scanner_once():
 
     sheet = get_google_sheet()
     
-    # Existing data clear karke fresh write karega taaki formatting mix up na ho
+    # Existing data clear karke fresh write karega
     sheet.clear()
     
     end_row = len(final_matrix)
