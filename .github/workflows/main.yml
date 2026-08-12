@@ -1,30 +1,29 @@
-name: Fast Swing Scanner Automation
+name: Live FnO Screener Auto-Run
 
 on:
   schedule:
+    # Har 15 minute me ek baar chalega (Market hours)
     - cron: '*/15 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Manual Run button ke liye
 
 jobs:
-  run-scanner:
+  run-screener:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pandas yfinance gspread google-auth pytz
+          pip install requests pandas yfinance gspread google-auth pytz
 
-      - name: Execute Scanner Script
+      - name: Run Screener (Single Pass)
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: |
-          python update_sheet.py
+        run: python main.py
