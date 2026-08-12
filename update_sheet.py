@@ -11,7 +11,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
-# 1. GOOGLE SHEET & CLEAN FNO TICKERS CONFIGURATION
+# 1. CONFIGURATION & TICKER LIST
 # ==========================================
 TARGET_SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
@@ -21,7 +21,7 @@ RAW_FNO_STOCKS = [
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
     "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
     "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "MOTILALOFS", "BHARATFORG", "TATAMOTORS", "INDIAMART", "TATASTEEL", "LTF", "FORCEMOT", 
+    "MOTILALOFS", "BHARATFORG", "TATAMTRDVR", "INDIAMART", "TATASTEEL", "LTF", "FORCEMOT", 
     "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", 
     "HEROMOTOCO", "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", 
     "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", 
@@ -108,7 +108,7 @@ def fetch_nse_oi_data_bulk():
     return oi_dict
 
 # ==========================================
-# 3. SAFE YFINANCE PARALLEL FETCHING
+# 3. PARALLEL YFINANCE FETCHING
 # ==========================================
 def fetch_single_ticker(ticker):
     try:
@@ -140,7 +140,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     if len(df) < 20:
         return None
 
-    # 1. Volume Metrics
+    # Volume Metrics
     df.loc[:, 'Vol_SMA20'] = df['Volume'].rolling(20).mean()
     vol_latest = float(df['Volume'].iloc[-1])
     vol_sma_val = float(df['Vol_SMA20'].iloc[-1])
@@ -150,7 +150,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vol_dryup = vol_latest < (0.6 * vol_sma)
     vol_status = "SPIKE ⚡" if is_vol_spike else ("DRY-UP 💧" if is_vol_dryup else "NORMAL")
 
-    # 2. VCP Shrinkage Engine
+    # VCP Shrinkage Engine
     c_price = float(df['Close'].iloc[-1])
     r20 = (df['High'].tail(20).max() - df['Low'].tail(20).min()) / c_price
     r10 = (df['High'].tail(10).max() - df['Low'].tail(10).min()) / c_price
@@ -158,7 +158,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     is_vcp = (r20 > r10) and (r10 > r5)
     vcp_str = "YES 🔥" if is_vcp else "NO"
 
-    # 3. Price Actions & Support Calculations
+    # Price Actions & Support Calculations
     prev_close = float(df['Close'].iloc[-2]) if len(df) >= 2 else c_price
     pct_change = ((c_price - prev_close) / prev_close) * 100
     res_20 = df['High'].tail(21).iloc[:-1].max()
@@ -168,7 +168,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     df.loc[:, 'EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
     ema20_val = round(float(df['EMA20'].iloc[-1]), 2)
 
-    # 4. OI CHANGE % LOGIC
+    # OI Change Logic
     if live_oi_pct is not None and live_oi_pct != 0.0:
         oi_change_str = f"{'+' if live_oi_pct > 0 else ''}{live_oi_pct}%"
         oi_val_for_buildup = live_oi_pct
@@ -178,7 +178,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
         oi_change_str = f"{'+' if est_oi > 0 else ''}{est_oi}%"
         oi_val_for_buildup = est_oi
 
-    # 5. CE/PE BUILDUP SIGNAL LOGIC
+    # CE/PE Buildup Signal Logic
     if pct_change > 0 and oi_val_for_buildup > 0:
         option_buildup = "CE LONG BUILDUP 🔥"
     elif pct_change < 0 and oi_val_for_buildup > 0:
@@ -190,7 +190,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
     else:
         option_buildup = "NEUTRAL ↔️"
 
-    # 6. AUTO 15-MINUTE CONFIRMATION ENGINE
+    # 15-Minute Confirmation Engine
     is_15m_high_broken = False
     is_15m_low_broken = False
     if df_15m is not None and not df_15m.empty:
@@ -204,7 +204,7 @@ def process_symbol_data(data, symbol, time_only_ist, live_oi_pct):
             elif c_price < first_15m_low:
                 is_15m_low_broken = True
 
-    # 7. Breakout Status & Entry Triggers
+    # Breakout Status & Entry Triggers
     if symbol == INDEX_TICKER:
         vcp_str = "N/A"
         clean_symbol = "NIFTY 50 🎯"
@@ -313,18 +313,18 @@ def run_scanner_once():
             rank_tag = "WAIT"
 
         stock_rows.append([
-            item["clean_symbol"],        # Col A
-            item["c_price"],             # Col B
-            item["pct_change_str"],      # Col C
-            item["oi_change_str"],       # Col D
-            item["vcp_str"],             # Col E
-            item["vol_status"],          # Col F
-            item["option_buildup"],      # Col G
-            item["bo_status"],           # Col H
-            item["action_entry"],        # Col I
-            rank_tag,                    # Col J
-            item["support_level"],       # Col K
-            item["time_only_ist"]        # Col L
+            item["clean_symbol"],
+            item["c_price"],
+            item["pct_change_str"],
+            item["oi_change_str"],
+            item["vcp_str"],
+            item["vol_status"],
+            item["option_buildup"],
+            item["bo_status"],
+            item["action_entry"],
+            rank_tag,
+            item["support_level"],
+            item["time_only_ist"]
         ])
 
     headers = [
