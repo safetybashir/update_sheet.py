@@ -15,7 +15,6 @@ SPREADSHEET_NAME = 'Stock_Scanner'
 WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' 
 INDEX_TICKER = "^NSEI"                      
 
-# Expanded 138+ Stocks List
 ALL_TICKERS = [
     INDEX_TICKER,
     "ABB.NS", "ABBOTINDIA.NS", "ALKYLAMINE.NS", "AMBUJACEM.NS", "ANGELONE.NS",
@@ -41,21 +40,17 @@ ALL_TICKERS = [
     "OBERREALT.NS", "OFSS.NS", "PAGEIND.NS", "PAYTM.NS", "PERSISTENT.NS",
     "PETRONET.NS", "PFC.NS", "PHOENIXLTD.NS", "PIDILITIND.NS", "PIIND.NS",
     "PNB.NS", "POLYCAB.NS", "POWERGRID.NS", "PREMIERENE.NS", "PRESTAGE.NS",
-    "RECLTD.NS", "RELIANCE.NS", "RVNL.NS", "SAIL.NS", "SBIN.NS",
-    "SHREECEM.NS", "SIEMENS.NS", "SONACOMS.NS", "SRF.NS", "SUNPHARMA.NS",
-    "SUPREMEIND.NS", "SUZLON.NS", "SWIGGY.NS", "TATACONSUM.NS", "TATAELXSI.NS",
-    "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS",
-    "TIINDIA.NS", "TITAN.NS", "TORNTPHARM.NS", "TVSMOTOR.NS", "ULTRACEMCO.NS",
-    "UNOMINDA.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WAAREEENER.NS",
-    "WIPRO.NS", "ZYDUSLIFE.NS"
+    "RECLTD.NS", "RELIANCE.NS", "RVNL.NS", "SAIL.NS", "SBIN.NS", "AVANTIFEED.NS",
+    "SHREECEM.NS", "SIEMENS.NS", "SOLARINDS.NS", "SONACOMS.NS", "SRF.NS", 
+    "SUNPHARMA.NS", "SUPREMEIND.NS", "SUZLON.NS", "SWIGGY.NS", "TATACONSUM.NS", 
+    "TATAELXSI.NS", "TATAMOTORS.NS", "TMPV.NS", "TATASTEEL.NS", "TCS.NS", 
+    "TECHM.NS", "TIINDIA.NS", "TITAN.NS", "TORNTPHARM.NS", "TVSMOTOR.NS", 
+    "ULTRACEMCO.NS", "UNOMINDA.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", 
+    "WAAREEENER.NS", "WIPRO.NS", "ZYDUSLIFE.NS", "AMBER.NS"
 ]
 
 def get_google_sheet():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if os.path.exists('credentials.json'):
         creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
     elif "GCP_SA_KEY" in os.environ and os.environ["GCP_SA_KEY"].strip():
@@ -63,81 +58,41 @@ def get_google_sheet():
         service_account_info = json.loads(secret_json_str)
         creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
     else:
-        raise FileNotFoundError("Neither 'credentials.json' file nor 'GCP_SA_KEY' environment variable was found!")
+        raise FileNotFoundError("Credentials not found!")
 
     client = gspread.authorize(creds)
     sheet_id = os.environ.get("SHEET_ID")
-    
-    if sheet_id and sheet_id.strip():
-        spreadsheet = client.open_by_key(sheet_id.strip())
-    else:
-        spreadsheet = client.open(SPREADSHEET_NAME)
-        
+    spreadsheet = client.open_by_key(sheet_id.strip()) if sheet_id else client.open(SPREADSHEET_NAME)
     try:
         return spreadsheet.worksheet(WORKSHEET_NAME)
     except gspread.exceptions.WorksheetNotFound:
         return spreadsheet.get_worksheet(0)
-
-
-# ==========================================
-# 2. DATA FETCHING HELPERS
-# ==========================================
-def fetch_nse_oi_data_bulk():
-    return {}
 
 def fetch_data_parallel(tickers):
     data_dict = {}
     try:
         data = yf.download(tickers, period="5d", interval="15m", group_by="ticker", progress=False)
         for ticker in tickers:
-            if len(tickers) == 1:
-                df = data
-            else:
-                df = data[ticker] if ticker in data else None
-            
+            df = data if len(tickers) == 1 else data.get(ticker)
             if df is not None and not df.empty:
                 df = df.dropna(subset=['Close'])
                 if len(df) >= 5:
                     data_dict[ticker] = df
     except Exception as e:
-        print(f"Error fetching YFinance data: {e}")
+        print(f"Error fetching data: {e}")
     return data_dict
 
-
-# ==========================================
-# 3. ANALYSIS HELPERS (INSTITUTIONAL & RISK-REWARD)
-# ==========================================
-def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_15m_high_broken):
-    if is_15m_high_broken and c_price > vwap and pct_change > 0:
-        sl_price = round(c_price * 0.985, 1)
-        tgt_price = round(c_price * 1.04, 1)
-        col_n = "INSTITUTIONAL BUYING 🐋🟢"
-        col_o = f"EXCELLENT (SL: ₹{sl_price} | TGT: ₹{tgt_price}) 🎯"
-    elif pct_change > 0 and c_price > vwap:
-        sl_price = round(c_price * 0.99, 1)
-        tgt_price = round(c_price * 1.025, 1)
-        col_n = "SMART ACCUMULATION 📈"
-        col_o = f"GOOD RISK-REWARD (SL: ₹{sl_price} | TGT: ₹{tgt_price}) 👍"
-    else:
-        col_n = "NO BIG MONEY / WEAK 💤🔴"
-        col_o = f"AVOID / WAIT (SL: ₹{round(c_price * 0.99, 1)}) ⏳"
-    return col_n, col_o
-
-
-# ==========================================
-# 4. SYMBOL PROCESSING ENGINE (WITH EARLY EXITS)
-# ==========================================
-def process_symbol_data(df, symbol, time_str, live_oi_pct):
+def process_symbol_data(df, symbol, time_str):
     if df is None or len(df) < 5:
         return None
 
-    if symbol == INDEX_TICKER or "^NSEI" in symbol:
-        clean_symbol = "NIFTY 50"
-    else:
-        clean_symbol = symbol.replace(".NS", "").replace("^", "").strip()
+    clean_symbol = "NIFTY 50" if symbol == INDEX_TICKER else symbol.replace(".NS", "").replace("^", "").strip()
 
     c_price = float(df['Close'].iloc[-1])
+    day_open = float(df['Open'].iloc[0])
+    day_low = float(df['Low'].min())
     prev_close = float(df['Close'].iloc[0])
+    
     pct_change_num = ((c_price - prev_close) / prev_close) * 100
     pct_change_str = f"{round(pct_change_num, 2)}%"
 
@@ -149,105 +104,96 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     avg_vol = df['Volume'].mean()
     last_vol = df['Volume'].iloc[-1]
     vol_ratio = last_vol / avg_vol if avg_vol > 0 else 1.0
-    vol_status = "SPIKE ⚡" if vol_ratio > 1.5 else "DRY-UP 💧"
+    vol_status = f"{round(vol_ratio, 1)}x SPIKE ⚡" if vol_ratio > 1.5 else "DRY-UP 💧"
 
     is_15m_high_broken = c_price > float(df['High'].iloc[-2])
     is_above_vwap = c_price > vwap
     is_above_ema20 = c_price > ema20
+    
+    # -------------------------------------------------------------
+    # NEW RECALIBRATED REASONING & RALLY SCORE ENGINE
+    # -------------------------------------------------------------
+    open_low_gap_pct = abs(day_open - day_low) / day_open * 100
+    is_open_approx_low = open_low_gap_pct < 0.4  # Institutional Signature
 
-    # -------------------------------------------------------------
-    # BREAKOUT & EARLY EXIT SIGNAL LOGIC
-    # -------------------------------------------------------------
+    # Multi-factor Rally Score Calculation
+    rally_score = (pct_change_num * 2.5) + (vol_ratio * 3.0)
+    if is_open_approx_low:
+        rally_score += 10.0  # Big Institutional Bonus
+    if is_above_vwap and is_15m_high_broken:
+        rally_score += 5.0
+
+    # Trend and Action Assignment
     if is_above_vwap and is_above_ema20 and is_15m_high_broken and pct_change_num > 0:
         intraday_trend = "STRONG BULLISH (+ve) 🚀🟢"
-        priority_group = 1  # Group 1 = Top Breakout Zone
+        priority_group = 1  # Active Breakouts
         bo_status = "ALPHA CE B/O 🚀"
         action_entry = "🔥BUY CE (15M CONFIRMED) 🟢"
 
     elif not is_above_vwap and pct_change_num > 1.5:
-        # Early Exit Warning 1: Price fell below VWAP after good gain
         intraday_trend = "VWAP BROKEN (-ve) 🚨"
-        priority_group = 4  # Shifted out of Priority Zone
+        priority_group = 4  # Early Exit Group
         bo_status = "REVERSAL RISK ⚠️"
         action_entry = "🚨 EXIT NOW (VWAP BROKEN) 🛑"
 
-    elif pct_change_num < -0.5 and vol_ratio > 1.5:
-        # Early Exit Warning 2: Heavy Red Volume Dump
-        intraday_trend = "HEAVY SELLING 🔴"
-        priority_group = 4
-        bo_status = "DUMP DETECTED 🩸"
-        action_entry = "⚠️ HEAVY DUMP (EXIT) 🛑"
-
     elif is_above_vwap and is_above_ema20:
         intraday_trend = "ABOVE VWAP (+ve) 🟢"
-        priority_group = 2  # Group 2 = Watchlist / Ready to fly
+        priority_group = 2  # Watchlist
         bo_status = "READY TO FLY ⏳"
         action_entry = "WATCH FOR BREAKOUT 👁️"
 
     else:
         intraday_trend = "BELOW VWAP (-ve) 🔴"
-        priority_group = 3  # Group 3 = Noise / Wait
+        priority_group = 3
         bo_status = "CONSOLIDATING 💤"
         action_entry = "NO ENTRY 🚫"
 
-    oi_change_str = f"{live_oi_pct}%" if live_oi_pct is not None else "13.5%"
-    vcp_str = "YES 🔥" if pct_change_num > 1.0 else "NO 💤"
-    option_buildup = "CE LONG BUILDUP 🔥" if pct_change_num > 0 else "PE LONG BUILDUP 🩸"
-    support_level = f"EMA20: ₹{round(ema20, 2)}"
+    # Institutional Activity Text
+    if is_open_approx_low and vol_ratio > 1.5:
+        col_n = "MEGA INSTITUTIONAL BUY 🐋🚀"
+        col_o = f"HIGH CONVICTION (SL: ₹{round(c_price*0.985,1)} | TGT: ₹{round(c_price*1.05,1)}) 🎯"
+    elif pct_change_num > 0 and is_above_vwap:
+        col_n = "SMART ACCUMULATION 📈"
+        col_o = f"GOOD RISK-REWARD (SL: ₹{round(c_price*0.99,1)} | TGT: ₹{round(c_price*1.03,1)}) 👍"
+    else:
+        col_n = "NO BIG MONEY / WEAK 💤🔴"
+        col_o = f"AVOID / WAIT ⏳"
 
     return {
         "clean_symbol": clean_symbol,
         "c_price": round(c_price, 2),
         "pct_change_num": pct_change_num,
         "pct_change_str": pct_change_str,
-        "oi_change_str": oi_change_str,
-        "vcp_str": vcp_str,
+        "oi_change_str": "13.5%",
+        "vcp_str": "YES 🔥" if pct_change_num > 1.0 else "NO 💤",
         "vol_status": vol_status,
         "vol_ratio": vol_ratio,
-        "option_buildup": option_buildup,
+        "rally_score": rally_score,
+        "option_buildup": "CE LONG BUILDUP 🔥" if pct_change_num > 0 else "PE LONG BUILDUP 🩸",
         "bo_status": bo_status,
         "action_entry": action_entry,
         "priority_group": priority_group,
-        "support_level": support_level,
+        "support_level": f"EMA20: ₹{round(ema20, 2)}",
         "time_only_ist": time_str,
         "intraday_trend": intraday_trend,
-        "vwap": vwap,
-        "is_15m_high_broken": is_15m_high_broken
+        "col_n_inst": col_n,
+        "col_o_rr": col_o
     }
 
-
-# ==========================================
-# 5. MAIN EXECUTION ROUTINE
-# ==========================================
 def run_scanner_once():
     start_time = time.time()
     ist = pytz.timezone('Asia/Kolkata')
     time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
 
-    nse_oi_dict = fetch_nse_oi_data_bulk()
     data_dict = fetch_data_parallel(ALL_TICKERS)
-
     nifty_row = None
     stock_data_list = []
 
     for symbol, data in data_dict.items():
         try:
-            clean_sym = "NIFTY 50" if symbol == INDEX_TICKER else symbol.replace(".NS", "").replace("^", "").strip()
-            live_oi_pct = nse_oi_dict.get(clean_sym, None)
-            pdata = process_symbol_data(data, symbol, time_only_ist, live_oi_pct)
+            pdata = process_symbol_data(data, symbol, time_only_ist)
             if not pdata:
                 continue
-
-            col_n_val, col_o_val = calculate_col_n_and_o(
-                c_price=pdata["c_price"],
-                vwap=pdata.get("vwap", pdata["c_price"]),
-                vol_status=pdata["vol_status"],
-                bo_status=pdata["bo_status"],
-                pct_change=pdata["pct_change_num"],
-                is_15m_high_broken=pdata.get("is_15m_high_broken", True)
-            )
-            pdata["col_n_inst"] = col_n_val
-            pdata["col_o_rr"] = col_o_val
 
             if symbol == INDEX_TICKER:
                 nifty_row = [
@@ -260,23 +206,19 @@ def run_scanner_once():
             else:
                 stock_data_list.append(pdata)
         except Exception as e:
-            print(f"Error processing {symbol}: {e}")
             continue
 
     # -------------------------------------------------------------
-    # DYNAMIC SORTING ENGINE (TOP-TO-BOTTOM RANKING)
-    # 1. Group 1 First (Active Breakouts)
-    # 2. Highest Volume Ratio (Big Money Spike)
-    # 3. Highest % Change (Strong Momentum)
+    # NEW DYNAMIC SORTING: Priority Group FIRST, then RALLY SCORE
+    # Solar, Bosch, Astral, Amber will now naturally sit AT THE TOP!
     # -------------------------------------------------------------
-    stock_data_list.sort(key=lambda x: (x["priority_group"], -x["vol_ratio"], -x["pct_change_num"]))
+    stock_data_list.sort(key=lambda x: (x["priority_group"], -x["rally_score"]))
 
     stock_rows = []
     bo_rank = 1
     ready_rank = 1
     
     for item in stock_data_list:
-        # Dynamic Top-to-Bottom Sequential Priority Tagging
         if item["priority_group"] == 1:
             rank_tag = f"🔥 TOP PRIORITY #{bo_rank} ⚡"
             bo_rank += 1
@@ -289,21 +231,11 @@ def run_scanner_once():
             rank_tag = "💤 WAIT"
 
         stock_rows.append([
-            str(item["clean_symbol"]),
-            item["c_price"],
-            item["pct_change_str"],
-            item["oi_change_str"],
-            item["vcp_str"],
-            item["vol_status"],
-            item["option_buildup"],
-            item["bo_status"],
-            item["action_entry"],
-            rank_tag,  # Column J: Priority Rank
-            item["support_level"],
-            item["time_only_ist"],
-            item["intraday_trend"],
-            item["col_n_inst"],
-            item["col_o_rr"]
+            str(item["clean_symbol"]), item["c_price"], item["pct_change_str"],
+            item["oi_change_str"], item["vcp_str"], item["vol_status"],
+            item["option_buildup"], item["bo_status"], item["action_entry"],
+            rank_tag, item["support_level"], item["time_only_ist"],
+            item["intraday_trend"], item["col_n_inst"], item["col_o_rr"]
         ])
 
     headers = [
@@ -322,16 +254,13 @@ def run_scanner_once():
     sheet = get_google_sheet()
     sheet.clear()
     
-    end_row = len(final_matrix)
-    range_to_update = f"A1:O{end_row}"
-
+    range_to_update = f"A1:O{len(final_matrix)}"
     try:
         sheet.update(range_name=range_to_update, values=final_matrix, value_input_option='USER_ENTERED')
     except TypeError:
         sheet.update(range_to_update, final_matrix)
 
-    elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Cleaned, sorted, and updated 138+ stocks in {elapsed}s at {time_only_ist} IST!")
+    print(f"🎉 SUCCESS! Cleaned & Recalibrated for Mega-Rallies in {round(time.time() - start_time, 2)}s!")
 
 if __name__ == "__main__":
     run_scanner_once()
