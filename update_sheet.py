@@ -15,6 +15,7 @@ SPREADSHEET_NAME = 'Stock_Scanner'
 WORKSHEET_NAME = 'VALUE TRADING BREAKOUT LIVE' 
 INDEX_TICKER = "^NSEI"                      
 
+# Expanded 138+ Stocks List
 ALL_TICKERS = [
     INDEX_TICKER,
     "ABB.NS", "ABBOTINDIA.NS", "ALKYLAMINE.NS", "AMBUJACEM.NS", "ANGELONE.NS",
@@ -104,7 +105,7 @@ def fetch_data_parallel(tickers):
 
 
 # ==========================================
-# 3. ANALYSIS HELPERS (COL N & COL O)
+# 3. ANALYSIS HELPERS (INSTITUTIONAL & RISK-REWARD)
 # ==========================================
 def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_15m_high_broken):
     if is_15m_high_broken and c_price > vwap and pct_change > 0:
@@ -124,7 +125,7 @@ def calculate_col_n_and_o(c_price, vwap, vol_status, bo_status, pct_change, is_1
 
 
 # ==========================================
-# 4. SYMBOL PROCESSING ENGINE
+# 4. SYMBOL PROCESSING ENGINE (WITH EARLY EXITS)
 # ==========================================
 def process_symbol_data(df, symbol, time_str, live_oi_pct):
     if df is None or len(df) < 5:
@@ -154,19 +155,38 @@ def process_symbol_data(df, symbol, time_str, live_oi_pct):
     is_above_vwap = c_price > vwap
     is_above_ema20 = c_price > ema20
 
-    if is_above_vwap and is_above_ema20 and is_15m_high_broken:
+    # -------------------------------------------------------------
+    # BREAKOUT & EARLY EXIT SIGNAL LOGIC
+    # -------------------------------------------------------------
+    if is_above_vwap and is_above_ema20 and is_15m_high_broken and pct_change_num > 0:
         intraday_trend = "STRONG BULLISH (+ve) 🚀🟢"
-        priority_group = 1
+        priority_group = 1  # Group 1 = Top Breakout Zone
         bo_status = "ALPHA CE B/O 🚀"
         action_entry = "🔥BUY CE (15M CONFIRMED) 🟢"
+
+    elif not is_above_vwap and pct_change_num > 1.5:
+        # Early Exit Warning 1: Price fell below VWAP after good gain
+        intraday_trend = "VWAP BROKEN (-ve) 🚨"
+        priority_group = 4  # Shifted out of Priority Zone
+        bo_status = "REVERSAL RISK ⚠️"
+        action_entry = "🚨 EXIT NOW (VWAP BROKEN) 🛑"
+
+    elif pct_change_num < -0.5 and vol_ratio > 1.5:
+        # Early Exit Warning 2: Heavy Red Volume Dump
+        intraday_trend = "HEAVY SELLING 🔴"
+        priority_group = 4
+        bo_status = "DUMP DETECTED 🩸"
+        action_entry = "⚠️ HEAVY DUMP (EXIT) 🛑"
+
     elif is_above_vwap and is_above_ema20:
         intraday_trend = "ABOVE VWAP (+ve) 🟢"
-        priority_group = 2
+        priority_group = 2  # Group 2 = Watchlist / Ready to fly
         bo_status = "READY TO FLY ⏳"
         action_entry = "WATCH FOR BREAKOUT 👁️"
+
     else:
         intraday_trend = "BELOW VWAP (-ve) 🔴"
-        priority_group = 3
+        priority_group = 3  # Group 3 = Noise / Wait
         bo_status = "CONSOLIDATING 💤"
         action_entry = "NO ENTRY 🚫"
 
@@ -243,10 +263,12 @@ def run_scanner_once():
             print(f"Error processing {symbol}: {e}")
             continue
 
-    # STRICT SORTING ENGINE:
-    # 1. Priority Group (Group 1: Active Breakouts First)
-    # 2. Volume Ratio (Highest Institutional Spike)
-    # 3. % Change (Highest Price Momentum)
+    # -------------------------------------------------------------
+    # DYNAMIC SORTING ENGINE (TOP-TO-BOTTOM RANKING)
+    # 1. Group 1 First (Active Breakouts)
+    # 2. Highest Volume Ratio (Big Money Spike)
+    # 3. Highest % Change (Strong Momentum)
+    # -------------------------------------------------------------
     stock_data_list.sort(key=lambda x: (x["priority_group"], -x["vol_ratio"], -x["pct_change_num"]))
 
     stock_rows = []
@@ -254,16 +276,15 @@ def run_scanner_once():
     ready_rank = 1
     
     for item in stock_data_list:
-        # Dynamic Priority Tagging Engine
+        # Dynamic Top-to-Bottom Sequential Priority Tagging
         if item["priority_group"] == 1:
-            if bo_rank <= 3:
-                rank_tag = f"🔥 TOP PRIORITY #{bo_rank} ⚡"
-            else:
-                rank_tag = f"✅ B/O #{bo_rank}"
+            rank_tag = f"🔥 TOP PRIORITY #{bo_rank} ⚡"
             bo_rank += 1
         elif item["priority_group"] == 2:
             rank_tag = f"👀 READY #{ready_rank}"
             ready_rank += 1
+        elif item["priority_group"] == 4:
+            rank_tag = "🚨 EXIT SIGNAL"
         else:
             rank_tag = "💤 WAIT"
 
@@ -310,7 +331,7 @@ def run_scanner_once():
         sheet.update(range_to_update, final_matrix)
 
     elapsed = round(time.time() - start_time, 2)
-    print(f"🎉 SUCCESS! Sheet sorted with TOP PRIORITY tags at {time_only_ist} IST!")
+    print(f"🎉 SUCCESS! Cleaned, sorted, and updated 138+ stocks in {elapsed}s at {time_only_ist} IST!")
 
 if __name__ == "__main__":
     run_scanner_once()
