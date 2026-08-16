@@ -2,6 +2,7 @@ name: Run PE Bearish Scanner
 
 on:
   schedule:
+    # Mon-Fri every 15 mins during market hours (IST 9:15 AM to 3:30 PM)
     - cron: '15/15 3-10 * * 1-5'
   workflow_dispatch:
 
@@ -24,6 +25,6 @@ jobs:
 
       - name: Run PE Scanner
         env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_pe_screener.py
