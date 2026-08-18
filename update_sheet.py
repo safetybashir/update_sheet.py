@@ -13,16 +13,18 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SERVICE_ACCOUNT_FILE = "credentials.json"
 INDEX_TICKER = "^NSEI"
 
-# Target CE Stocks List
+# Expanded CE / Bullish Stocks List (Nifty 50 & Active Momentum Stocks)
 STOCKS = [
-    INDEX_TICKER, "PHOENIXLTD.NS", "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS",
-    "INFY.NS", "ICICIBANK.NS", "BHARTIARTL.NS", "SBIN.NS", "LTIM.NS"
+    INDEX_TICKER, "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
+    "TCS.NS", "TATAMOTORS.NS", "SBIN.NS", "LT.NS", "AXISBANK.NS",
+    "MARUTI.NS", "BHARTIARTL.NS", "ULTRACEMCO.NS", "ADANIPORTS.NS", "TITAN.NS",
+    "M&M.NS", "BAJFINANCE.NS", "NTPC.NS", "POWERGRID.NS", "TATASTEEL.NS",
+    "HINDALCO.NS", "GRASIM.NS", "COALINDIA.NS", "WIPRO.NS", "HCLTECH.NS",
+    "KOTAKBANK.NS", "PHOENIXLTD.NS", "LTIM.NS", "BEL.NS", "HAL.NS"
 ]
 
 def get_google_sheet_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # Direct Secret Fallback using GCP_CREDENTIALS_JSON secret
     creds_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     
     if creds_json_str:
@@ -41,7 +43,6 @@ def fetch_stock_data(ticker):
         if df.empty or len(df) < 10:
             return None
         
-        # Flatten MultiIndex columns if present
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
@@ -49,7 +50,6 @@ def fetch_stock_data(ticker):
         prev_close = df["Close"].iloc[0]
         pct_change = round(((c_price - prev_close) / prev_close) * 100, 2)
         
-        # Volume Spike & Indicators
         avg_vol = df["Volume"].rolling(10).mean().iloc[-1]
         curr_vol = df["Volume"].iloc[-1]
         vol_ratio = round(curr_vol / avg_vol, 1) if avg_vol > 0 else 1.0
@@ -57,11 +57,9 @@ def fetch_stock_data(ticker):
         vol_status = f"{vol_ratio}x SPIKE ⚡" if vol_ratio >= 2.0 else "DRY-UP 💧"
         vcp_str = "YES 🔥" if vol_ratio >= 1.8 and pct_change > 0.5 else "NO 💤"
         
-        # VWAP Trend
         vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
         intraday_trend = "STRONG BULLISH (+ve) 🚀" if c_price > vwap else "BELOW VWAP (-ve) 🔴"
         
-        # Option Buildup & Breakout
         option_buildup = "CE LONG BUILDUP 🔥" if pct_change > 0 else "PE LONG BUILDUP 🩸"
         bo_status = "ALPHA CE B/O 🚀🔥" if pct_change > 1.5 else "CONSOLIDATING 💤"
         action_entry = "🔥 BUY CE (15M CONFIRMED) 🟢" if pct_change > 1.0 else "NO ENTRY 🚫"
@@ -97,7 +95,12 @@ def fetch_stock_data(ticker):
 def run_ce_scanner():
     gc = get_google_sheet_client()
     sh = gc.open_by_key(SPREADSHEET_ID)
-    worksheet = sh.worksheet("CE_BULLISH")
+    
+    # Matching exact tab name: LIVE_DASHBOARD
+    try:
+        worksheet = sh.worksheet("LIVE_DASHBOARD")
+    except gspread.exceptions.WorksheetNotFound:
+        worksheet = sh.add_worksheet(title="LIVE_DASHBOARD", rows="150", cols="20")
     
     stock_data_list = []
     nifty_row = []
@@ -108,22 +111,21 @@ def run_ce_scanner():
             continue
             
         if symbol == INDEX_TICKER:
-                # Simple NIFTY Action for CE
-                pct_val = pdata.get("pct_change", 0)
-                intra_tr = pdata.get("intraday_trend", "")
-                
-                if pct_val > 0.3 or "ABOVE VWAP" in intra_tr:
-                    nifty_rr = "ENTRY......BULLISH 🟢"
-                else:
-                    nifty_rr = "NO ENTRY.........BEARISH 🔴"
+            pct_val = pdata.get("pct_change", 0)
+            intra_tr = pdata.get("intraday_trend", "")
+            
+            if pct_val > 0.3 or "ABOVE VWAP" in intra_tr:
+                nifty_rr = "ENTRY......BULLISH 🟢"
+            else:
+                nifty_rr = "NO ENTRY.........BEARISH 🔴"
 
-                nifty_row = [
-                    "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
-                    pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
-                    pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                    "BENCHMARK 🏛️", pdata["support_level"], pdata["time_only_ist"],
-                    pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
-                ]
+            nifty_row = [
+                "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
+                pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
+                pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
+                "BENCHMARK 🏛️", pdata["support_level"], pdata["time_only_ist"],
+                pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
+            ]
         else:
             rr_str = f"GOOD RISK-REWARD (SL: ₹{pdata['sl']} | TGT: ₹{pdata['target']}) 👍"
             row = [
