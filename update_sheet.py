@@ -13,7 +13,6 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SERVICE_ACCOUNT_FILE = "credentials.json"
 INDEX_TICKER = "^NSEI"
 
-# Expanded CE / Bullish Stocks Universe (~120 Active Stocks)
 STOCKS = [
     INDEX_TICKER, "TCS.NS", "HINDPETRO.NS", "IREDA.NS", "SUNPHARMA.NS", "ITC.NS",
     "TITAN.NS", "LAURUSLABS.NS", "JSWENERGY.NS", "VEDL.NS", "COALINDIA.NS",
@@ -48,7 +47,6 @@ STOCKS = [
 def get_google_sheet_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
-    
     if creds_json_str:
         creds_dict = json.loads(creds_json_str)
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
@@ -56,7 +54,6 @@ def get_google_sheet_client():
         creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
     else:
         raise FileNotFoundError("Google Credentials file or environment secret not found!")
-        
     return gspread.authorize(creds)
 
 def fetch_stock_data(ticker):
@@ -64,7 +61,6 @@ def fetch_stock_data(ticker):
         df = yf.download(ticker, period="5d", interval="15m", progress=False)
         if df.empty or len(df) < 10:
             return None
-        
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
@@ -80,7 +76,7 @@ def fetch_stock_data(ticker):
         vcp_str = "YES 🔥" if vol_ratio >= 1.8 and pct_change > 0.5 else "NO 💤"
         
         vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
-        intraday_trend = "STRONG BULLISH (+ve) 🚀" if c_price > vwap else "BELOW VWAP (-ve) 🔴"
+        intraday_trend = "ABOVE VWAP (+ve) 🟢" if c_price > vwap else "BELOW VWAP (-ve) 🔴"
         
         option_buildup = "CE LONG BUILDUP 🔥" if pct_change > 0 else "PE LONG BUILDUP 🩸"
         bo_status = "ALPHA CE B/O 🚀🔥" if pct_change > 1.5 else "CONSOLIDATING 💤"
@@ -160,7 +156,7 @@ def run_ce_scanner():
             
     final_data = [nifty_row] + stock_data_list if nifty_row else stock_data_list
     worksheet.update(f"A2:O{len(final_data)+1}", final_data)
-    print("CE Screener Updated Successfully!")
+    print("LIVE_DASHBOARD Updated Successfully!")
 
 if __name__ == "__main__":
     run_ce_scanner()
