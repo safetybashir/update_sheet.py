@@ -1,4 +1,5 @@
 import os
+import json
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -20,7 +21,19 @@ STOCKS = [
 
 def get_google_sheet_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    
+    # 1. Direct Secret Fallback (Safe & Multi-Layered)
+    creds_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
+    
+    if creds_json_str:
+        creds_dict = json.loads(creds_json_str)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    elif os.path.exists(SERVICE_ACCOUNT_FILE):
+        # 2. File-based auth if credentials.json is created by YAML
+        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    else:
+        raise FileNotFoundError("Google Credentials file or environment secret not found!")
+        
     return gspread.authorize(creds)
 
 def fetch_stock_data(ticker):
