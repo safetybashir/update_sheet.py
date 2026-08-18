@@ -1,4 +1,5 @@
 import os
+import json
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -20,7 +21,18 @@ STOCKS = [
 
 def get_google_sheet_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    
+    # Direct Secret Fallback using GCP_CREDENTIALS_JSON secret
+    creds_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
+    
+    if creds_json_str:
+        creds_dict = json.loads(creds_json_str)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    elif os.path.exists(SERVICE_ACCOUNT_FILE):
+        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    else:
+        raise FileNotFoundError("Google Credentials file or environment secret not found!")
+        
     return gspread.authorize(creds)
 
 def fetch_stock_data(ticker):
@@ -125,10 +137,7 @@ def run_ce_scanner():
             ]
             stock_data_list.append(row)
             
-    # Combine Benchmark on top followed by stocks
     final_data = [nifty_row] + stock_data_list if nifty_row else stock_data_list
-    
-    # Update Google Sheet starting from cell A2
     worksheet.update(f"A2:O{len(final_data)+1}", final_data)
     print("CE Screener Updated Successfully!")
 
