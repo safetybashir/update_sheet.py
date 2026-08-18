@@ -13,23 +13,24 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SERVICE_ACCOUNT_FILE = "credentials.json"
 INDEX_TICKER = "^NSEI"
 
-# Target PE Stocks List
+# Expanded PE / Bearish Stocks List (High Beta & Breakdown Probable Stocks)
 STOCKS = [
-    INDEX_TICKER, "TATASTEEL.NS", "ZEEL.NS", "HDFCBANK.NS", "RELIANCE.NS",
-    "AXISBANK.NS", "DLF.NS", "NMDC.NS", "VEDL.NS", "JISLJALEQS.NS"
+    INDEX_TICKER, "TATASTEEL.NS", "HINDALCO.NS", "JSWSTEEL.NS", "SAIL.NS",
+    "NMDC.NS", "VEDL.NS", "DLF.NS", "GODREJPROP.NS", "OBEROIRTY.NS",
+    "AXISBANK.NS", "INDUSINDBK.NS", "FEDERALBNK.NS", "BANDHANBNK.NS", "ZEEL.NS",
+    "TECHM.NS", "LTIM.NS", "COFORGE.NS", "JUBLFOOD.NS", "VOLTAS.NS",
+    "HAVELLS.NS", "BPCL.NS", "IOC.NS", "HPCL.NS", "BIOCON.NS",
+    "TATACHEM.NS", "UPL.NS", "AARTIIND.NS", "BALKRISIND.NS", "ESCORT.NS"
 ]
 
 def get_google_sheet_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # 1. Direct Secret Fallback (Safe & Multi-Layered)
     creds_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
     
     if creds_json_str:
         creds_dict = json.loads(creds_json_str)
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     elif os.path.exists(SERVICE_ACCOUNT_FILE):
-        # 2. File-based auth if credentials.json is created by YAML
         creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
     else:
         raise FileNotFoundError("Google Credentials file or environment secret not found!")
@@ -49,7 +50,6 @@ def fetch_stock_data(ticker):
         prev_close = df["Close"].iloc[0]
         pct_change = round(((c_price - prev_close) / prev_close) * 100, 2)
         
-        # Volume Spike & Indicators
         avg_vol = df["Volume"].rolling(10).mean().iloc[-1]
         curr_vol = df["Volume"].iloc[-1]
         vol_ratio = round(curr_vol / avg_vol, 1) if avg_vol > 0 else 1.0
@@ -57,11 +57,9 @@ def fetch_stock_data(ticker):
         vol_status = f"{vol_ratio}x SPIKE ⚡" if vol_ratio >= 2.0 else "DRY-UP 💧"
         vcp_str = "YES 🩸" if vol_ratio >= 1.8 and pct_change < -0.5 else "NO 💤"
         
-        # VWAP Trend
         vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
         intraday_trend = "STRONG BEARISH (-ve) 🩸" if c_price < vwap else "ABOVE VWAP (+ve) 🟢"
         
-        # Option Buildup & Breakdown
         option_buildup = "PE LONG BUILDUP 🩸" if pct_change < 0 else "CE LONG BUILDUP 🔥"
         bo_status = "ALPHA PE B/D 🩸⚡" if pct_change < -1.5 else "CONSOLIDATING 💤"
         action_entry = "🔥 BUY PE (15M CONFIRMED) 🩸" if pct_change < -1.0 else "NO ENTRY 🚫"
@@ -97,7 +95,12 @@ def fetch_stock_data(ticker):
 def run_pe_scanner():
     gc = get_google_sheet_client()
     sh = gc.open_by_key(SPREADSHEET_ID)
-    worksheet = sh.worksheet("PE_BEARISH")
+    
+    # Matching exact tab name: PE_BEARISH_BREAKDOWN_LIVE
+    try:
+        worksheet = sh.worksheet("PE_BEARISH_BREAKDOWN_LIVE")
+    except gspread.exceptions.WorksheetNotFound:
+        worksheet = sh.add_worksheet(title="PE_BEARISH_BREAKDOWN_LIVE", rows="150", cols="20")
     
     stock_data_list = []
     nifty_row = []
@@ -108,22 +111,21 @@ def run_pe_scanner():
             continue
             
         if symbol == INDEX_TICKER:
-                # Simple NIFTY Action for PE
-                pct_val = pdata.get("pct_change", 0)
-                intra_tr = pdata.get("intraday_trend", "")
-                
-                if pct_val < -0.3 or "BELOW VWAP" in intra_tr:
-                    nifty_rr = "ENTRY......BEARISH 🔴"
-                else:
-                    nifty_rr = "NO ENTRY.........BULLISH 🟢"
+            pct_val = pdata.get("pct_change", 0)
+            intra_tr = pdata.get("intraday_trend", "")
+            
+            if pct_val < -0.3 or "BELOW VWAP" in intra_tr:
+                nifty_rr = "ENTRY......BEARISH 🔴"
+            else:
+                nifty_rr = "NO ENTRY.........BULLISH 🟢"
 
-                nifty_row = [
-                    "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
-                    pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
-                    pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                    "BENCHMARK 🏛️", pdata["resistance_level"], pdata["time_only_ist"],
-                    pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
-                ]
+            nifty_row = [
+                "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
+                pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
+                pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
+                "BENCHMARK 🏛️", pdata["resistance_level"], pdata["time_only_ist"],
+                pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
+            ]
         else:
             rr_str = f"GOOD RISK-REWARD (SL: ₹{pdata['sl']} | TGT: ₹{pdata['target']}) 👍"
             row = [
@@ -135,10 +137,7 @@ def run_pe_scanner():
             ]
             stock_data_list.append(row)
             
-    # Combine Benchmark on top followed by stocks
     final_data = [nifty_row] + stock_data_list if nifty_row else stock_data_list
-    
-    # Update Google Sheet starting from cell A2
     worksheet.update(f"A2:O{len(final_data)+1}", final_data)
     print("PE Screener Updated Successfully!")
 
