@@ -195,13 +195,24 @@ def run_scanner_once():
             if not pdata:
                 continue
 
-            if symbol == INDEX_TICKER:
+           if symbol == INDEX_TICKER:
+                # NIFTY Dynamic Market Regime Logic for CE
+                pct_val = pdata.get("pct_change", 0)
+                intra_tr = pdata.get("intraday_trend", "")
+                
+                if pct_val < -0.3 or "BELOW VWAP" in intra_tr:
+                    nifty_rr = "NO CE ENTRY: MARKET IS BEARISH 🚫"
+                elif pct_val > 0.3 or "ABOVE VWAP" in intra_tr:
+                    nifty_rr = "MARKET FAVORS CE (BULLISH REGIME) 🚀"
+                else:
+                    nifty_rr = "CAUTION: RANGEBOUND MARKET ⚠️"
+
                 nifty_row = [
                     "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
                     pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                     pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
                     "BENCHMARK 🏛️", pdata["support_level"], pdata["time_only_ist"],
-                    pdata["intraday_trend"], "MARKET REGIME 🏛️", "N/A"
+                    pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
                 ]
             else:
                 stock_data_list.append(pdata)
