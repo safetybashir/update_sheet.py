@@ -8,7 +8,6 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 
-# --- CONFIGURATION & CONSTANTS ---
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SERVICE_ACCOUNT_FILE = "credentials.json"
 INDEX_TICKER = "^NSEI"
@@ -53,10 +52,10 @@ def get_google_sheet_client():
     elif os.path.exists(SERVICE_ACCOUNT_FILE):
         creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
     else:
-        raise FileNotFoundError("Google Credentials file or environment secret not found!")
+        raise FileNotFoundError("Credentials file or secret not found!")
     return gspread.authorize(creds)
 
-def fetch_stock_data(ticker):
+def fetch_pe_stock_data(ticker):
     try:
         df = yf.download(ticker, period="5d", interval="15m", progress=False)
         if df.empty or len(df) < 10:
@@ -72,15 +71,32 @@ def fetch_stock_data(ticker):
         curr_vol = df["Volume"].iloc[-1]
         vol_ratio = round(curr_vol / avg_vol, 1) if avg_vol > 0 else 1.0
         
-        vol_status = f"{vol_ratio}x SPIKE ⚡" if vol_ratio >= 2.0 else "DRY-UP 💧"
-        vcp_str = "YES 🩸" if vol_ratio >= 1.8 and pct_change < -0.5 else "NO 💤"
-        
         vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
+        
+        # PE Filter Rule: Only bearish stocks (price < prev_close and price < vwap)
+        if ticker != INDEX_TICKER and (pct_change >= 0 or c_price > vwap):
+            return None
+
+        vol_status = f"{vol_ratio}x SPIKE ⚡" if vol_ratio >= 2.0 else "DRY-UP 💧"
+        vcp_str = "YES 🔥" if vol_ratio >= 1.8 and pct_change < -0.5 else "NO 💤"
         intraday_trend = "BELOW VWAP (-ve) 🔴" if c_price < vwap else "ABOVE VWAP (+ve) 🟢"
         
         option_buildup = "PE LONG BUILDUP 🩸" if pct_change < 0 else "CE LONG BUILDUP 🔥"
-        bo_status = "ALPHA PE B/D 🩸⚡" if pct_change < -1.5 else "CONSOLIDATING 💤"
-        action_entry = "🔥 BUY PE (15M CONFIRMED) 🩸" if pct_change < -1.0 else "NO ENTRY 🚫"
+        bo_status = "ALPHA PE B/O 📉🩸" if pct_change <= -1.5 else "CONSOLIDATING 💤"
+        
+        action_entry = "🔥 BUY PE (15M CONFIRMED) 🔴" if pct_change < -1.0 else "NO ENTRY 🚫"
+        
+        if pct_change <= -1.5 and vol_ratio >= 2.0 and c_price < vwap:
+            priority_rank = "🔥 TOP PRIORITY #1 ⚡"
+            priority_val = 1
+        elif pct_change < 0 and c_price < vwap:
+            priority_rank = "PRIORITY #2 📉"
+            priority_val = 2
+        else:
+            priority_rank = "PRIORITY #3 💤"
+            priority_val = 3
+
+        inst_activity = "SMART DISTRIBUTION 📉" if pct_change < 0 and c_price < vwap else "NO DISTRIBUTION 💤"
         
         ema20 = round(df["Close"].ewm(span=20).mean().iloc[-1], 2)
         resistance_level = f"EMA20: ₹{ema20}"
@@ -89,22 +105,25 @@ def fetch_stock_data(ticker):
         time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
         
         return {
+            "symbol": ticker.replace(".NS", ""),
             "c_price": f"₹{c_price}",
             "pct_change": pct_change,
             "pct_change_str": f"{pct_change}%",
-            "oi_change_str": "18.20%",
+            "oi_change_str": "13.50%",
             "vcp_str": vcp_str,
             "vol_status": vol_status,
             "option_buildup": option_buildup,
             "bo_status": bo_status,
             "action_entry": action_entry,
-            "priority": "🩸 TOP PRIORITY #1 ⚡" if pct_change < -1.5 else "PRIORITY #2 📉",
-            "resistance_level": resistance_level,
-            "time_only_ist": time_only_ist,
+            "is_buy": 1 if "BUY PE" in action_entry else 0,
+            "priority": priority_rank,
+            "priority_val": priority_val,
+            "support_level": resistance_level,
             "intraday_trend": intraday_trend,
-            "inst_activity": "HEAVY DISTRIBUTION 📉",
+            "inst_activity": inst_activity,
             "sl": round(c_price * 1.01, 1),
-            "target": round(c_price * 0.97, 1)
+            "target": round(c_price * 0.97, 1),
+            "time_only_ist": time_only_ist
         }
     except Exception as e:
         print(f"Error fetching {ticker}: {e}")
@@ -115,15 +134,15 @@ def run_pe_scanner():
     sh = gc.open_by_key(SPREADSHEET_ID)
     
     try:
-        worksheet = sh.worksheet("PE_BEARISH_BREAKDOWN_LIVE")
+        worksheet = sh.worksheet("LIVE_PE_DASHBOARD")
     except gspread.exceptions.WorksheetNotFound:
-        worksheet = sh.add_worksheet(title="PE_BEARISH_BREAKDOWN_LIVE", rows="300", cols="20")
+        worksheet = sh.add_worksheet(title="LIVE_PE_DASHBOARD", rows="300", cols="20")
     
-    stock_data_list = []
+    stock_items = []
     nifty_row = []
     
     for symbol in STOCKS:
-        pdata = fetch_stock_data(symbol)
+        pdata = fetch_pe_stock_data(symbol)
         if not pdata:
             continue
             
@@ -136,27 +155,48 @@ def run_pe_scanner():
             else:
                 nifty_rr = "NO ENTRY.........BULLISH 🟢"
 
+            # Column O (Index 14) -> Time Only IST
             nifty_row = [
                 "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
                 pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                 pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                "BENCHMARK 🏛️", pdata["resistance_level"], pdata["time_only_ist"],
-                pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
+                "BENCHMARK 🏛️", pdata["support_level"], pdata["intraday_trend"],
+                "MARKET REGIME 🏛️", nifty_rr, pdata["time_only_ist"]
             ]
         else:
-            rr_str = f"GOOD RISK-REWARD (SL: ₹{pdata['sl']} | TGT: ₹{pdata['target']}) 👍"
-            row = [
-                symbol.replace(".NS", ""), pdata["c_price"], pdata["pct_change_str"],
-                pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
-                pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                pdata["priority"], pdata["resistance_level"], pdata["time_only_ist"],
-                pdata["intraday_trend"], pdata["inst_activity"], rr_str
-            ]
-            stock_data_list.append(row)
-            
+            stock_items.append(pdata)
+
+    stock_items.sort(key=lambda x: (-x["is_buy"], x["priority_val"], x["pct_change"]))
+
+    stock_data_list = []
+    for item in stock_items:
+        rr_str = f"GOOD RISK-REWARD (SL: ₹{item['sl']} | TGT: ₹{item['target']}) 👍"
+        # Column O (Index 14) -> Time Only IST
+        row = [
+            item["symbol"], item["c_price"], item["pct_change_str"],
+            item["oi_change_str"], item["vcp_str"], item["vol_status"], 
+            item["option_buildup"], item["bo_status"], item["action_entry"], 
+            item["priority"], item["support_level"], item["intraday_trend"],
+            item["inst_activity"], rr_str, item["time_only_ist"]
+        ]
+        stock_data_list.append(row)
+
     final_data = [nifty_row] + stock_data_list if nifty_row else stock_data_list
-    worksheet.update(f"A2:O{len(final_data)+1}", final_data)
-    print("PE_BEARISH_BREAKDOWN_LIVE Updated Successfully!")
+    
+    worksheet.clear()
+    
+    # Headers (Column O -> Last Updated)
+    headers = [
+        "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", "VCP Contraction",
+        "Volume Status", "CE/PE Option Buildup", "Breakout Status", "Action / Entry Trigger",
+        "Priority Rank 🎯", "Reversal Support Level", "Intraday Trend (VWAP / 15M)",
+        "Institutional Activity 🐋", "Risk-Reward & Target 🎯", "Last Updated"
+    ]
+    
+    worksheet.update("A1:O1", [headers])
+    if final_data:
+        worksheet.update(f"A2:O{len(final_data)+1}", final_data)
+    print("LIVE_PE_DASHBOARD Time Column Last Position Alignment Complete!")
 
 if __name__ == "__main__":
     run_pe_scanner()
