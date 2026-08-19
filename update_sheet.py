@@ -8,7 +8,6 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
 
-# --- CONFIGURATION & CONSTANTS ---
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 SERVICE_ACCOUNT_FILE = "credentials.json"
 INDEX_TICKER = "^NSEI"
@@ -72,15 +71,29 @@ def fetch_stock_data(ticker):
         curr_vol = df["Volume"].iloc[-1]
         vol_ratio = round(curr_vol / avg_vol, 1) if avg_vol > 0 else 1.0
         
+        vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
+        
+        # CE Filter Rule: Skip non-bullish stocks
+        if ticker != INDEX_TICKER and (pct_change <= 0 or c_price < vwap):
+            return None
+
         vol_status = f"{vol_ratio}x SPIKE ⚡" if vol_ratio >= 2.0 else "DRY-UP 💧"
         vcp_str = "YES 🔥" if vol_ratio >= 1.8 and pct_change > 0.5 else "NO 💤"
-        
-        vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
         intraday_trend = "ABOVE VWAP (+ve) 🟢" if c_price > vwap else "BELOW VWAP (-ve) 🔴"
         
         option_buildup = "CE LONG BUILDUP 🔥" if pct_change > 0 else "PE LONG BUILDUP 🩸"
         bo_status = "ALPHA CE B/O 🚀🔥" if pct_change > 1.5 else "CONSOLIDATING 💤"
         action_entry = "🔥 BUY CE (15M CONFIRMED) 🟢" if pct_change > 1.0 else "NO ENTRY 🚫"
+        
+        # Dynamic Priority Rank Logic
+        if pct_change >= 1.5 and vol_ratio >= 2.0 and c_price > vwap:
+            priority_rank = "🔥 TOP PRIORITY #1 ⚡"
+        elif pct_change > 0 and c_price > vwap:
+            priority_rank = "PRIORITY #2 📈"
+        else:
+            priority_rank = "PRIORITY #3 💤"
+
+        inst_activity = "SMART ACCUMULATION 📈" if pct_change > 0 and c_price > vwap else "NO ACCUMULATION 💤"
         
         ema20 = round(df["Close"].ewm(span=20).mean().iloc[-1], 2)
         support_level = f"EMA20: ₹{ema20}"
@@ -98,13 +111,13 @@ def fetch_stock_data(ticker):
             "option_buildup": option_buildup,
             "bo_status": bo_status,
             "action_entry": action_entry,
-            "priority": "🔥 TOP PRIORITY #1 ⚡" if pct_change > 1.5 else "PRIORITY #2 📈",
+            "priority": priority_rank,
             "support_level": support_level,
-            "time_only_ist": time_only_ist,
             "intraday_trend": intraday_trend,
-            "inst_activity": "SMART ACCUMULATION 📈",
+            "inst_activity": inst_activity,
             "sl": round(c_price * 0.99, 1),
-            "target": round(c_price * 1.03, 1)
+            "target": round(c_price * 1.03, 1),
+            "time_only_ist": time_only_ist  # Shifted to last
         }
     except Exception as e:
         print(f"Error fetching {ticker}: {e}")
@@ -136,27 +149,42 @@ def run_ce_scanner():
             else:
                 nifty_rr = "NO ENTRY.........BEARISH 🔴"
 
+            # Last Updated placed at index 14 (Column O)
             nifty_row = [
                 "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
                 pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                 pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                "BENCHMARK 🏛️", pdata["support_level"], pdata["time_only_ist"],
-                pdata["intraday_trend"], "MARKET REGIME 🏛️", nifty_rr
+                "BENCHMARK 🏛️", pdata["support_level"], pdata["intraday_trend"],
+                "MARKET REGIME 🏛️", nifty_rr, pdata["time_only_ist"]
             ]
         else:
             rr_str = f"GOOD RISK-REWARD (SL: ₹{pdata['sl']} | TGT: ₹{pdata['target']}) 👍"
+            # Last Updated placed at index 14 (Column O)
             row = [
                 symbol.replace(".NS", ""), pdata["c_price"], pdata["pct_change_str"],
                 pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
                 pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                pdata["priority"], pdata["support_level"], pdata["time_only_ist"],
-                pdata["intraday_trend"], pdata["inst_activity"], rr_str
+                pdata["priority"], pdata["support_level"], pdata["intraday_trend"],
+                pdata["inst_activity"], rr_str, pdata["time_only_ist"]
             ]
             stock_data_list.append(row)
             
     final_data = [nifty_row] + stock_data_list if nifty_row else stock_data_list
-    worksheet.update(f"A2:O{len(final_data)+1}", final_data)
-    print("LIVE_DASHBOARD Updated Successfully!")
+    
+    worksheet.clear()
+    
+    # Updated Headers Layout (Last Updated in Column O)
+    headers = [
+        "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", "VCP Contraction",
+        "Volume Status", "CE/PE Option Buildup", "Breakout Status", "Action / Entry Trigger",
+        "Priority Rank 🎯", "Reversal Support Level", "Intraday Trend (VWAP / 15M)",
+        "Institutional Activity 🐋", "Risk-Reward & Target 🎯", "Last Updated"
+    ]
+    
+    worksheet.update("A1:O1", [headers])
+    if final_data:
+        worksheet.update(f"A2:O{len(final_data)+1}", final_data)
+    print("LIVE_DASHBOARD CE Screener Audit & Column Alignment Complete!")
 
 if __name__ == "__main__":
     run_ce_scanner()
