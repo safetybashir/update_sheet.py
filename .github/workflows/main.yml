@@ -1,40 +1,47 @@
-name: Run CE Stock Screener
+name: Run Stock Screener CE & Update Google Sheet
 
 on:
+  # 1. Runs every 15 minutes during Indian Market Hours (Monday to Friday)
+  # UTC 03:45 to 10:00 corresponds to 09:15 AM to 03:30 PM IST
   schedule:
-    - cron: '*/15 3-10 * * 1-5'
+    - cron: '*/15 3-9 * * 1-5'
+
+  # 2. Allows manual execution from the GitHub Actions tab anytime
   workflow_dispatch:
 
 jobs:
-  run-ce-screener:
+  update-sheet:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository Code
+      # Step 1: Repository code checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      # Step 2: Set up Python Environment
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      # Step 3: Cache Pip packages to speed up builds
+      - name: Cache Pip Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Step 4: Install Dependencies
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas numpy gspread google-auth pytz
+          pip install pandas yfinance gspread google-auth pytz
 
-      - name: Create credentials.json from Secret
-        run: |
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > credentials.json
-
-      - name: Run CE Stock Screener Script
+      # Step 5: Execute Python Script with Environment Secrets
+      - name: Execute Screener Script
         env:
-          SPREADSHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-        run: |
-          python update_sheet.py
-
-      - name: Clean up Credentials
-        if: always()
-        run: |
-          rm -f credentials.json
+        run: python update_sheet.py
