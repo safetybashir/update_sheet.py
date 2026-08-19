@@ -145,14 +145,13 @@ def update_google_sheet(df):
 
     sheet_id = os.environ.get("SHEET_ID")
     if not sheet_id:
-        print("❌ Error: SHEET_ID Secret is missing!")
+        print("❌ Error: SHEET_ID Secret is missing from environment variables!")
         return
 
     try:
         gc = get_gspread_client()
-        sh = gc.open_by_key(1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg)
+        sh = gc.open_by_key(sheet_id)
 
-        # Specifically Target "LIVE_DASHBOARD" Tab
         target_tab_name = "LIVE_DASHBOARD"
         try:
             worksheet = sh.worksheet(target_tab_name)
@@ -160,7 +159,6 @@ def update_google_sheet(df):
             print(f"⚠️ Tab '{target_tab_name}' not found. Creating it now...")
             worksheet = sh.add_worksheet(title=target_tab_name, rows="200", cols="20")
 
-        # Sorting: Priority signals on top
         df_confirmed = df[df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
         df_others = df[~df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
         final_df = pd.concat([df_confirmed, df_others]).reset_index(drop=True)
