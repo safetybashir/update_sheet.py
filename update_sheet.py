@@ -5,10 +5,11 @@ import pandas as pd
 import yfinance as yf
 import gspread
 from datetime import datetime
+import pytz
 from google.oauth2.service_account import Credentials
 
 # ==============================================================================
-# 1. SETUP GOOGLE SHEETS AUTHENTICATION (GitHub Actions & Local Compatible)
+# 1. SETUP GOOGLE SHEETS AUTHENTICATION
 # ==============================================================================
 SCOPE = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -16,15 +17,12 @@ SCOPE = [
 ]
 
 def get_gspread_client():
-    """Authenticates using GCP_CREDENTIALS_JSON environment variable or local file."""
     gcp_creds_json = os.environ.get("GCP_CREDENTIALS_JSON")
     
     if gcp_creds_json:
-        # Running inside GitHub Actions
         creds_dict = json.loads(gcp_creds_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
     else:
-        # Running locally
         creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPE)
         
     return gspread.authorize(creds)
@@ -66,19 +64,23 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# 3. SAFE YFINANCE FETCHING ENGINE
+# 3. FETCH DATA & FORCE IST TIME STAMP
 # ==============================================================================
 def fetch_stock_data():
-    print(f"⏳ Downloading market data for {len(STOCKS)} stocks...")
+    ist = pytz.timezone('Asia/Kolkata')
+    current_time_ist = datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')
+    
+    print(f"⏳ Downloading market data for {len(STOCKS)} stocks at {current_time_ist} IST...")
     
     try:
+        # Fetch data withperiod 5d to ensure active candle availability
         raw_data = yf.download(
             tickers=STOCKS,
-            period="1d",
+            period="5d",
             interval="15m",
             group_by='ticker',
             threads=True,
-            timeout=12,
+            timeout=15,
             progress=False
         )
 
@@ -105,7 +107,6 @@ def fetch_stock_data():
                 vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
                 price_chg = round(((ltp - prev_close) / prev_close) * 100, 2)
 
-                # Signals Logic
                 vcp_signal = "YES" if (vol_mult >= 1.5 and ltp > vwap) else "NO"
                 
                 if symbol == INDEX_TICKER:
@@ -124,7 +125,7 @@ def fetch_stock_data():
                     'Volume Status': f"{vol_mult}x SPIKE ⚡" if vol_mult >= 1.5 else "DRY-UP 💧",
                     'VWAP': round(vwap, 2),
                     'Action / Entry Trigger': action,
-                    'Last Updated': datetime.now().strftime('%H:%M:%S')
+                    'Execution Time (IST)': current_time_ist  # Guaranteed IST update time
                 })
             except Exception:
                 continue
@@ -151,28 +152,22 @@ def update_google_sheet(df):
     try:
         gc = get_gspread_client()
         sh = gc.open_by_key(sheet_id)
-        worksheet = sh.get_worksheet(0)  # Updates the First Sheet
+        worksheet = sh.get_worksheet(0)
 
-        # Sorting: Actions with "CONFIRMED" first
         df_confirmed = df[df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
         df_others = df[~df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
         final_df = pd.concat([df_confirmed, df_others]).reset_index(drop=True)
 
-        # Prepare matrix for Google Sheets
         headers = final_df.columns.tolist()
         values = [headers] + final_df.astype(str).values.tolist()
 
-        # Clear and Batch Update in a Single Request
         worksheet.clear()
         worksheet.update('A1', values)
-        print(f"✅ Google Sheet Updated Successfully! Total Rows: {len(final_df)}")
+        print(f"✅ Google Sheet Updated Successfully! Columns: {len(headers)} | Rows: {len(final_df)}")
 
     except Exception as e:
         print(f"❌ Google Sheets API Error: {e}")
 
-# ==============================================================================
-# 5. ENTRY POINT
-# ==============================================================================
 if __name__ == "__main__":
     df_result = fetch_stock_data()
     update_google_sheet(df_result)
