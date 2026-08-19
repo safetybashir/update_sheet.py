@@ -150,7 +150,7 @@ def update_google_sheet(df):
 
     try:
         gc = get_gspread_client()
-        sh = gc.open_by_key(sheet_id)
+        sh = gc.open_by_key(1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg)
 
         # Specifically Target "LIVE_DASHBOARD" Tab
         target_tab_name = "LIVE_DASHBOARD"
