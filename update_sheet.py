@@ -64,13 +64,14 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# 3. FETCH MARKET DATA WITH REAL-TIME IST TIMESTAMP
+# 3. FETCH MARKET DATA WITH STRATEGY SCORING & TIME ONLY
 # ==============================================================================
 def fetch_stock_data():
     ist = pytz.timezone('Asia/Kolkata')
-    current_time_ist = datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')
+    # Execution Time ONLY (No Date) -> e.g. "09:45:12"
+    current_time_only = datetime.now(ist).strftime('%H:%M:%S')
     
-    print(f"⏳ Fetching market data for {len(STOCKS)} stocks at {current_time_ist} IST...")
+    print(f"⏳ Fetching market data for {len(STOCKS)} stocks at {current_time_only} IST...")
     
     try:
         raw_data = yf.download(
@@ -107,29 +108,60 @@ def fetch_stock_data():
                 price_chg = round(((ltp - prev_close) / prev_close) * 100, 2)
 
                 vcp_signal = "YES" if (vol_mult >= 1.5 and ltp > vwap) else "NO"
-                
+                vwap_status = "ABOVE 📈" if ltp >= vwap else "BELOW 📉"
+
+                # Calculate Strategy Strength Score (0 to 10)
+                strategy_score = round(min((vol_mult * 2) + abs(price_chg), 10.0), 1)
+
+                # Signal Logic & Priority Sorting
                 if symbol == INDEX_TICKER:
                     action = "BENCHMARK 🏛️"
+                    priority = 0
                 elif ltp > vwap and vol_mult >= 1.5 and vcp_signal == "YES":
                     action = "BUY CE (15M CONFIRMED) 🟢"
+                    priority = 1
                 elif ltp < vwap and vol_mult >= 1.5 and vcp_signal == "YES":
                     action = "BUY PE (15M CONFIRMED) 🔴"
+                    priority = 1
                 else:
                     action = "NO ENTRY 🚫"
+                    priority = 2
 
                 records.append({
                     'Clean Symbol': symbol.replace('.NS', ''),
-                    'LTP': round(ltp, 2),
-                    'Price % Change': price_chg,
-                    'Volume Status': f"{vol_mult}x SPIKE ⚡" if vol_mult >= 1.5 else "DRY-UP 💧",
-                    'VWAP': round(vwap, 2),
                     'Action / Entry Trigger': action,
-                    'Execution Time (IST)': current_time_ist
+                    'Priority': priority,
+                    'Strategy Score': strategy_score,
+                    'Volume Spike': f"{vol_mult}x ⚡" if vol_mult >= 1.5 else f"{vol_mult}x 💧",
+                    'VWAP Status': vwap_status,
+                    'Vol_Raw': vol_mult,
+                    'Execution Time': current_time_only
                 })
             except Exception:
                 continue
 
-        return pd.DataFrame(records)
+        df_all = pd.DataFrame(records)
+        if df_all.empty:
+            return pd.DataFrame()
+
+        # SORTING: Confirmed Signals Top Par -> Score ke hisab se highest Top Par
+        df_all = df_all.sort_values(by=['Priority', 'Vol_Raw'], ascending=[True, False]).reset_index(drop=True)
+
+        # Rank Assignment (#1, #2, #3...)
+        df_all['Rank'] = [f"#{i+1}" for i in range(len(df_all))]
+
+        # Selected Clean Columns
+        final_df = df_all[[
+            'Rank', 
+            'Clean Symbol', 
+            'Action / Entry Trigger', 
+            'Volume Spike', 
+            'VWAP Status', 
+            'Strategy Score', 
+            'Execution Time'
+        ]]
+        
+        return final_df
 
     except Exception as e:
         print(f"❌ YFinance Fetch Error: {e}")
@@ -145,7 +177,7 @@ def update_google_sheet(df):
 
     sheet_id = os.environ.get("SHEET_ID")
     if not sheet_id:
-        print("❌ Error: SHEET_ID Secret is missing from environment variables!")
+        print("❌ Error: SHEET_ID Secret is missing!")
         return
 
     try:
@@ -156,19 +188,14 @@ def update_google_sheet(df):
         try:
             worksheet = sh.worksheet(target_tab_name)
         except gspread.exceptions.WorksheetNotFound:
-            print(f"⚠️ Tab '{target_tab_name}' not found. Creating it now...")
-            worksheet = sh.add_worksheet(title=target_tab_name, rows="200", cols="20")
+            worksheet = sh.add_worksheet(title=target_tab_name, rows="200", cols="10")
 
-        df_confirmed = df[df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
-        df_others = df[~df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
-        final_df = pd.concat([df_confirmed, df_others]).reset_index(drop=True)
-
-        headers = final_df.columns.tolist()
-        values = [headers] + final_df.astype(str).values.tolist()
+        headers = df.columns.tolist()
+        values = [headers] + df.astype(str).values.tolist()
 
         worksheet.clear()
         worksheet.update('A1', values)
-        print(f"✅ Successfully updated tab '{target_tab_name}'! Total Rows: {len(final_df)}")
+        print(f"✅ Successfully updated tab '{target_tab_name}'! Total Ranked Stocks: {len(df)}")
 
     except Exception as e:
         print(f"❌ Google Sheets Update Failed: {e}")
