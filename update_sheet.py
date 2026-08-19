@@ -64,16 +64,15 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# 3. FETCH DATA & FORCE IST TIME STAMP
+# 3. FETCH MARKET DATA WITH REAL-TIME IST TIMESTAMP
 # ==============================================================================
 def fetch_stock_data():
     ist = pytz.timezone('Asia/Kolkata')
     current_time_ist = datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')
     
-    print(f"⏳ Downloading market data for {len(STOCKS)} stocks at {current_time_ist} IST...")
+    print(f"⏳ Fetching market data for {len(STOCKS)} stocks at {current_time_ist} IST...")
     
     try:
-        # Fetch data withperiod 5d to ensure active candle availability
         raw_data = yf.download(
             tickers=STOCKS,
             period="5d",
@@ -125,7 +124,7 @@ def fetch_stock_data():
                     'Volume Status': f"{vol_mult}x SPIKE ⚡" if vol_mult >= 1.5 else "DRY-UP 💧",
                     'VWAP': round(vwap, 2),
                     'Action / Entry Trigger': action,
-                    'Execution Time (IST)': current_time_ist  # Guaranteed IST update time
+                    'Execution Time (IST)': current_time_ist
                 })
             except Exception:
                 continue
@@ -133,27 +132,35 @@ def fetch_stock_data():
         return pd.DataFrame(records)
 
     except Exception as e:
-        print(f"❌ YFinance Fetch Failed: {e}")
+        print(f"❌ YFinance Fetch Error: {e}")
         return pd.DataFrame()
 
 # ==============================================================================
-# 4. BATCH UPDATE TO GOOGLE SHEETS
+# 4. DIRECT UPDATE TO "LIVE_DASHBOARD" TAB
 # ==============================================================================
 def update_google_sheet(df):
     if df.empty:
-        print("⚠️ No data processed. Skipping Google Sheet update.")
+        print("⚠️ DataFrame empty. Skipping Google Sheets update.")
         return
 
     sheet_id = os.environ.get("SHEET_ID")
     if not sheet_id:
-        print("❌ Error: SHEET_ID environment variable is missing!")
+        print("❌ Error: SHEET_ID Secret is missing!")
         return
 
     try:
         gc = get_gspread_client()
         sh = gc.open_by_key(sheet_id)
-        worksheet = sh.get_worksheet(0)
 
+        # Specifically Target "LIVE_DASHBOARD" Tab
+        target_tab_name = "LIVE_DASHBOARD"
+        try:
+            worksheet = sh.worksheet(target_tab_name)
+        except gspread.exceptions.WorksheetNotFound:
+            print(f"⚠️ Tab '{target_tab_name}' not found. Creating it now...")
+            worksheet = sh.add_worksheet(title=target_tab_name, rows="200", cols="20")
+
+        # Sorting: Priority signals on top
         df_confirmed = df[df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
         df_others = df[~df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)]
         final_df = pd.concat([df_confirmed, df_others]).reset_index(drop=True)
@@ -163,10 +170,10 @@ def update_google_sheet(df):
 
         worksheet.clear()
         worksheet.update('A1', values)
-        print(f"✅ Google Sheet Updated Successfully! Columns: {len(headers)} | Rows: {len(final_df)}")
+        print(f"✅ Successfully updated tab '{target_tab_name}'! Total Rows: {len(final_df)}")
 
     except Exception as e:
-        print(f"❌ Google Sheets API Error: {e}")
+        print(f"❌ Google Sheets Update Failed: {e}")
 
 if __name__ == "__main__":
     df_result = fetch_stock_data()
