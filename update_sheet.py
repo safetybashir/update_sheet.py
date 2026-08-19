@@ -1,205 +1,174 @@
-import os
-import json
-import yfinance as yf
+import time
 import pandas as pd
-import numpy as np
-import gspread
-from google.oauth2.service_account import Credentials
 from datetime import datetime
-import pytz
 
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
-SERVICE_ACCOUNT_FILE = "credentials.json"
-INDEX_TICKER = "^NSEI"
-
-STOCKS = [
-    INDEX_TICKER, "TCS.NS", "HINDPETRO.NS", "IREDA.NS", "SUNPHARMA.NS", "ITC.NS",
-    "TITAN.NS", "LAURUSLABS.NS", "JSWENERGY.NS", "VEDL.NS", "COALINDIA.NS",
-    "HINDZINC.NS", "ZYDUSLIFE.NS", "GODREJPROP.NS", "PERSISTENT.NS", "DMART.NS",
-    "WIPRO.NS", "PAGEIND.NS", "PAYTM.NS", "MPHASIS.NS", "SBIN.NS", "MARUTI.NS",
-    "ULTRACEMCO.NS", "HINDUNILVR.NS", "CIPLA.NS", "BPCL.NS", "RVNL.NS",
-    "BRITANNIA.NS", "OFSS.NS", "MARICO.NS", "BIOCON.NS", "ABB.NS",
-    "TATACONSUM.NS", "CUMMINSIND.NS", "RECLTD.NS", "COCHINSHIP.NS", "MANKIND.NS",
-    "INFY.NS", "HCLTECH.NS", "NBCC.NS", "ALKYLAMINE.NS", "DELHIVERY.NS",
-    "KPITTECH.NS", "NATIONALUM.NS", "TATAELXSI.NS", "AMBUJACEM.NS", "JSWSTEEL.NS",
-    "BALKRISIND.NS", "ASIANPAINT.NS", "ABBOTINDIA.NS", "HINDALCO.NS", "NYKAA.NS",
-    "BLUESTARCO.NS", "IOC.NS", "NESTLEIND.NS", "PREMIERENE.NS", "INDIGO.NS",
-    "BAJAJ-AUTO.NS", "KAYNES.NS", "DRREDDY.NS", "TVSMOTOR.NS", "UPL.NS",
-    "SWIGGY.NS", "COFORGE.NS", "VOLTAS.NS", "BHARTIARTL.NS", "EICHERMOT.NS",
-    "NTPC.NS", "LODHA.NS", "ETERNAL.NS", "POLYCAB.NS", "DLF.NS", "SUZLON.NS",
-    "CONCOR.NS", "JINDALSTEL.NS", "ICICIPRULI.NS", "DALBHARAT.NS", "INDUSTOWER.NS",
-    "ASHOKLEY.NS", "CDSL.NS", "GLENMARK.NS", "PNB.NS", "INOXWIND.NS",
-    "ASTRAL.NS", "KALYANKJIL.NS", "BSE.NS", "TECHM.NS", "SHREECEM.NS",
-    "PIIND.NS", "CAMSTI.NS", "IIDA.NS", "TATASTEEL.NS", "M&M.NS", "LUPIN.NS",
-    "GAIL.NS", "PFC.NS", "SUPREMEIND.NS", "WAAREEENER.NS", "KEI.NS",
-    "FORTIS.NS", "TORNTPHARM.NS", "ICICIBANK.NS", "SRF.NS", "DIXON.NS",
-    "GRASIM.NS", "HEROMOTOCO.NS", "CROMPTON.NS", "MRF.NS", "SIEMENS.NS",
-    "PHOENIXLTD.NS", "PIDILITIND.NS", "UNOMINDA.NS", "NMDC.NS", "SAIL.NS",
-    "POWERGRID.NS", "MOTHERSON.NS", "NHPC.NS", "RELIANCE.NS", "JUBLFOOD.NS",
-    "MAXHEALTH.NS", "MOTILALOFS.NS", "SOLARINDS.NS", "AMBER.NS", "AUROPHARMA.NS",
-    "CGPOWER.NS", "PETRONET.NS", "DIVISLAB.NS", "HAVELLS.NS", "LT.NS",
-    "BEL.NS", "LTF.NS", "TATAPOWER.NS", "BHARATFORG.NS", "SONACOMS.NS",
-    "APOLLOHOSP.NS", "HAL.NS", "BOSCHLTD.NS", "APOLLOTYRE.NS", "BHEL.NS",
-    "KFINTECH.NS", "ANGELONE.NS", "GODREJCP.NS", "BDL.NS", "NAUKRI.NS"
+# ==============================================================================
+# 1. AAPKE SELECTED STOCKS LIST (Nifty 200 / FnO Watchlist)
+# ==============================================================================
+# Aap is list mein apne saare puraane selected stocks ke symbols rakh sakte hain
+SELECTED_STOCKS = [
+    'MOTILALOFS', 'BOSCHLTD', 'DALBHARAT', 'ASHOKLEY', 'DIXON',
+    'TATASTEEL', 'RELIANCE', 'HDFCBANK', 'INFY', 'ICICIBANK',
+    'TORNTPHARM', 'SBIN', 'BHARTIARTL', 'LT', 'AXISBANK',
+    'TATAMOTORS', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA', 'TITAN'
 ]
 
-def get_google_sheet_client():
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds_json_str = os.environ.get("GCP_CREDENTIALS_JSON")
-    if creds_json_str:
-        creds_dict = json.loads(creds_json_str)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    elif os.path.exists(SERVICE_ACCOUNT_FILE):
-        creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+# ==============================================================================
+# 2. GLOBAL MEMORY LOCK (First Come First Served - FIFO Queue)
+# ==============================================================================
+# Ye memory list screen par breakout hone wale stocks ki jagah ko FIX/LOCK rakhegi
+CONFIRMED_STOCKS_QUEUE = []
+
+# ==============================================================================
+# 3. METRICS & 15M BREAKOUT CONFIRMATION LOGIC
+# ==============================================================================
+def process_stock_metrics(stock_data_list):
+    """
+    Aapke selected stocks ka live calculation aur 15M Breakout Trigger set karta hai.
+    """
+    df = pd.DataFrame(stock_data_list)
+
+    # Price % Change & VWAP Difference
+    df['Price % Change'] = ((df['LTP'] - df['Prev_Close']) / df['Prev_Close']) * 100
+    df['LTP - VWAP'] = df['LTP'] - df['VWAP']
+
+    # Intraday Trend Status
+    df['Intraday Trend (VWAP / 15M)'] = df['LTP - VWAP'].apply(
+        lambda x: "ABOVE VWAP (+ve) 🟢" if x > 0 else "BELOW VWAP (-ve) 🔴"
+    )
+
+    # Volume Spike Status
+    df['Volume Status'] = df['Volume_Multiplier'].apply(
+        lambda x: f"{round(x, 1)}x SPIKE ⚡" if x >= 1.5 else "DRY-UP 💧"
+    )
+
+    # CE / PE Option OI Buildup Status
+    def calculate_oi_buildup(row):
+        if row['Price % Change'] > 0 and row['OI % Change'] > 0:
+            return "CE LONG BUILDUP 🔥"
+        elif row['Price % Change'] < 0 and row['OI % Change'] > 0:
+            return "PE LONG BUILDUP 🩸"
+        elif row['Price % Change'] > 0 and row['OI % Change'] < 0:
+            return "SHORT COVERING 🛡️"
+        else:
+            return "SHORT BUILDUP 📉"
+
+    df['CE/PE Option Buildup'] = df.apply(calculate_oi_buildup, axis=1)
+
+    # 15-Minute Breakout Entry Trigger Logic
+    def determine_action(row):
+        # Filter: LTP > VWAP + Volume >= 1.5x + VCP Pattern YES
+        if (row['LTP'] > row['VWAP']) and (row['Volume_Multiplier'] >= 1.5) and (row['VCP_Pattern'] == "YES"):
+            return "🔥🔥 BUY CE (15M CONFIRMED) 🟢"
+        elif (row['LTP'] < row['VWAP']) and (row['Volume_Multiplier'] >= 1.5) and (row['VCP_Pattern'] == "YES"):
+            return "🚨🚨 BUY PE (15M CONFIRMED) 🔴"
+        else:
+            return "NO ENTRY 🚫"
+
+    df['Action / Entry Trigger'] = df.apply(determine_action, axis=1)
+
+    return df
+
+# ==============================================================================
+# 4. SEQUENTIAL LOCKING LOGIC (Stock Position Freeze Mechanism)
+# ==============================================================================
+def apply_sequential_fifo_locking(df):
+    """
+    Breakout hone par pehla stock TOP #1 par Freeze hoga.
+    Agla stock uske theek niche (#2, #3) add hoga. Shuffling nahi hogi.
+    """
+    global CONFIRMED_STOCKS_QUEUE
+
+    # Step A: Identify 15M Confirmed Breakouts
+    confirmed_mask = df['Action / Entry Trigger'].str.contains('CONFIRMED', na=False)
+    newly_confirmed_symbols = df[confirmed_mask]['Stock Symbol'].tolist()
+
+    # Step B: Add new breakout stocks to FIFO Queue
+    for symbol in newly_confirmed_symbols:
+        if symbol not in CONFIRMED_STOCKS_QUEUE:
+            CONFIRMED_STOCKS_QUEUE.append(symbol)
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            print(f"🔒 [{timestamp}] LOCK TRIGGERED: {symbol} Locked at Priority #{len(CONFIRMED_STOCKS_QUEUE)}")
+
+    # Step C: Re-order DataFrame without changing locked sequence
+    confirmed_rows = []
+    for symbol in CONFIRMED_STOCKS_QUEUE:
+        matched_row = df[df['Stock Symbol'] == symbol]
+        if not matched_row.empty:
+            confirmed_rows.append(matched_row)
+
+    if confirmed_rows:
+        # Top Confirmed Section
+        df_confirmed = pd.concat(confirmed_rows).reset_index(drop=True)
+        df_confirmed['Priority Rank 🎯'] = [f"🔥 TOP PRIORITY #{i+1} ⚡" for i in range(len(df_confirmed))]
+
+        # Bottom Watchlist Section (Rest of Selected Stocks)
+        df_unconfirmed = df[~df['Stock Symbol'].isin(CONFIRMED_STOCKS_QUEUE)].copy()
+        df_unconfirmed['Priority Rank 🎯'] = "WATCHLIST 👁️"
+        df_unconfirmed = df_unconfirmed.sort_values(by=['Volume_Multiplier', 'Stock Symbol'], ascending=[False, True])
+
+        # Final Dashboard Assembly
+        final_df = pd.concat([df_confirmed, df_unconfirmed]).reset_index(drop=True)
     else:
-        raise FileNotFoundError("Credentials secret not found!")
-    return gspread.authorize(creds)
+        df['Priority Rank 🎯'] = "SCANNING 🔍"
+        df = df.sort_values(by=['Volume_Multiplier', 'Stock Symbol'], ascending=[False, True]).reset_index(drop=True)
+        final_df = df
 
-def fetch_stock_data(ticker):
-    try:
-        df = yf.download(ticker, period="5d", interval="15m", progress=False)
-        if df.empty or len(df) < 10:
-            return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-            
-        c_price = round(df["Close"].iloc[-1], 2)
-        prev_close = df["Close"].iloc[0]
-        pct_change = round(((c_price - prev_close) / prev_close) * 100, 2)
-        
-        avg_vol = df["Volume"].rolling(10).mean().iloc[-1]
-        curr_vol = df["Volume"].iloc[-1]
-        vol_ratio = round(curr_vol / avg_vol, 1) if avg_vol > 0 else 1.0
-        
-        vwap = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).sum() / df["Volume"].sum()
-        
-        # Filter non-bullish stocks
-        if ticker != INDEX_TICKER and (pct_change <= 0 or c_price < vwap):
-            return None
+    final_df['Last Updated'] = datetime.now().strftime('%H:%M:%S')
+    return final_df
 
-        vol_status = f"{vol_ratio}x SPIKE ⚡" if vol_ratio >= 2.0 else "DRY-UP 💧"
-        vcp_str = "YES 🔥" if vol_ratio >= 1.8 and pct_change > 0.5 else "NO 💤"
-        intraday_trend = "ABOVE VWAP (+ve) 🟢" if c_price > vwap else "BELOW VWAP (-ve) 🔴"
-        
-        option_buildup = "CE LONG BUILDUP 🔥" if pct_change > 0 else "PE LONG BUILDUP 🩸"
-        bo_status = "ALPHA CE B/O 🚀🔥" if pct_change > 1.5 else "CONSOLIDATING 💤"
-        
-        # Action Entry Logic
-        action_entry = "🔥 BUY CE (15M CONFIRMED) 🟢" if pct_change > 1.0 else "NO ENTRY 🚫"
-        
-        # Dynamic Priority Rank Logic
-        if pct_change >= 1.5 and vol_ratio >= 2.0 and c_price > vwap:
-            priority_rank = "🔥 TOP PRIORITY #1 ⚡"
-            priority_val = 1
-        elif pct_change > 0 and c_price > vwap:
-            priority_rank = "PRIORITY #2 📈"
-            priority_val = 2
-        else:
-            priority_rank = "PRIORITY #3 💤"
-            priority_val = 3
-
-        inst_activity = "SMART ACCUMULATION 📈" if pct_change > 0 and c_price > vwap else "NO ACCUMULATION 💤"
-        
-        ema20 = round(df["Close"].ewm(span=20).mean().iloc[-1], 2)
-        support_level = f"EMA20: ₹{ema20}"
-        
-        ist = pytz.timezone("Asia/Kolkata")
-        time_only_ist = datetime.now(ist).strftime("%H:%M:%S")
-        
-        return {
-            "symbol": ticker.replace(".NS", ""),
-            "c_price": f"₹{c_price}",
-            "pct_change": pct_change,
-            "pct_change_str": f"{pct_change}%",
-            "oi_change_str": "13.50%",
-            "vcp_str": vcp_str,
-            "vol_status": vol_status,
-            "option_buildup": option_buildup,
-            "bo_status": bo_status,
-            "action_entry": action_entry,
-            "is_buy": 1 if "BUY CE" in action_entry else 0,
-            "priority": priority_rank,
-            "priority_val": priority_val,
-            "support_level": support_level,
-            "intraday_trend": intraday_trend,
-            "inst_activity": inst_activity,
-            "sl": round(c_price * 0.99, 1),
-            "target": round(c_price * 1.03, 1),
-            "time_only_ist": time_only_ist
-        }
-    except Exception as e:
-        print(f"Error fetching {ticker}: {e}")
-        return None
-
-def run_ce_scanner():
-    gc = get_google_sheet_client()
-    sh = gc.open_by_key(SPREADSHEET_ID)
-    
-    try:
-        worksheet = sh.worksheet("LIVE_DASHBOARD")
-    except gspread.exceptions.WorksheetNotFound:
-        worksheet = sh.add_worksheet(title="LIVE_DASHBOARD", rows="300", cols="20")
-    
-    stock_items = []
-    nifty_row = []
-    
-    for symbol in STOCKS:
-        pdata = fetch_stock_data(symbol)
-        if not pdata:
-            continue
-            
-        if symbol == INDEX_TICKER:
-            pct_val = pdata.get("pct_change", 0)
-            intra_tr = pdata.get("intraday_trend", "")
-            
-            if pct_val > 0.3 or "ABOVE VWAP" in intra_tr:
-                nifty_rr = "ENTRY......BULLISH 🟢"
-            else:
-                nifty_rr = "NO ENTRY.........BEARISH 🔴"
-
-            nifty_row = [
-                "NIFTY 50", pdata["c_price"], pdata["pct_change_str"],
-                pdata["oi_change_str"], pdata["vcp_str"], pdata["vol_status"], 
-                pdata["option_buildup"], pdata["bo_status"], pdata["action_entry"], 
-                "BENCHMARK 🏛️", pdata["support_level"], pdata["intraday_trend"],
-                "MARKET REGIME 🏛️", nifty_rr, pdata["time_only_ist"]
-            ]
-        else:
-            stock_items.append(pdata)
-
-    # SORTING LOGIC: 
-    # 1. Action Trigger (BUY CE on Top -> is_buy = 1)
-    # 2. Priority Rank (Priority #1 -> Priority #2)
-    # 3. Price Change % (Highest gains first)
-    stock_items.sort(key=lambda x: (-x["is_buy"], x["priority_val"], -x["pct_change"]))
-
-    stock_data_list = []
-    for item in stock_items:
-        rr_str = f"GOOD RISK-REWARD (SL: ₹{item['sl']} | TGT: ₹{item['target']}) 👍"
-        row = [
-            item["symbol"], item["c_price"], item["pct_change_str"],
-            item["oi_change_str"], item["vcp_str"], item["vol_status"], 
-            item["option_buildup"], item["bo_status"], item["action_entry"], 
-            item["priority"], item["support_level"], item["intraday_trend"],
-            item["inst_activity"], rr_str, item["time_only_ist"]
-        ]
-        stock_data_list.append(row)
-
-    final_data = [nifty_row] + stock_data_list if nifty_row else stock_data_list
-    
-    worksheet.clear()
-    
-    headers = [
-        "Stock Symbol", "LTP", "Price % Change", "OI % Change 📊", "VCP Contraction",
-        "Volume Status", "CE/PE Option Buildup", "Breakout Status", "Action / Entry Trigger",
-        "Priority Rank 🎯", "Reversal Support Level", "Intraday Trend (VWAP / 15M)",
-        "Institutional Activity 🐋", "Risk-Reward & Target 🎯", "Last Updated"
+# ==============================================================================
+# 5. LIVE MARKET BROKER / API DUMMY FETCHING
+# ==============================================================================
+def fetch_live_data_for_selected_stocks():
+    """
+    Aapka Zerodha/Fyers API function har 5 second mein aapke SELECTED_STOCKS 
+    ka live data lekar aayega.
+    """
+    # DEMO REAL-TIME TICK DATA (API ke live data ko simulate karne ke liye)
+    return [
+        {'Stock Symbol': 'MOTILALOFS', 'LTP': 942.1, 'Prev_Close': 899.1, 'VWAP': 930.0, 'OI % Change': 13.5, 'Volume_Multiplier': 2.5, 'VCP_Pattern': 'YES'},
+        {'Stock Symbol': 'BOSCHLTD', 'LTP': 48460.0, 'Prev_Close': 47100.0, 'VWAP': 48000.0, 'OI % Change': 12.0, 'Volume_Multiplier': 4.3, 'VCP_Pattern': 'YES'},
+        {'Stock Symbol': 'DALBHARAT', 'LTP': 1980.0, 'Prev_Close': 2000.0, 'VWAP': 1990.0, 'OI % Change': 5.0, 'Volume_Multiplier': 0.8, 'VCP_Pattern': 'NO'},
+        {'Stock Symbol': 'ASHOKLEY', 'LTP': 173.5, 'Prev_Close': 177.0, 'VWAP': 174.0, 'OI % Change': -2.0, 'Volume_Multiplier': 0.5, 'VCP_Pattern': 'NO'},
+        {'Stock Symbol': 'TATASTEEL', 'LTP': 155.0, 'Prev_Close': 150.0, 'VWAP': 152.0, 'OI % Change': 8.5, 'Volume_Multiplier': 2.1, 'VCP_Pattern': 'YES'},
     ]
-    
-    worksheet.update("A1:O1", [headers])
-    if final_data:
-        worksheet.update(f"A2:O{len(final_data)+1}", final_data)
-    print("LIVE_DASHBOARD Action-based Sorting Complete!")
 
+# ==============================================================================
+# 6. MAIN ENGINE LOOP
+# ==============================================================================
+def run_screener_engine():
+    print("🚀 SMART OI-VCP SCREENER STARTED FOR SELECTED STOCKS...")
+    global CONFIRMED_STOCKS_QUEUE
+    CONFIRMED_STOCKS_QUEUE = []  # Daily Reset at start
+
+    try:
+        while True:
+            # Step 1: Fetch Live Feed of Selected Stocks
+            raw_data = fetch_live_data_for_selected_stocks()
+
+            # Step 2: Calculate VWAP, OI & Breakout Status
+            processed_df = process_stock_metrics(raw_data)
+
+            # Step 3: Apply Sequential Lock (Positions Freeze)
+            final_dashboard = apply_sequential_fifo_locking(processed_df)
+
+            # Step 4: Display Output
+            print("\n" + "="*85)
+            print(f"📊 LIVE DASHBOARD ({datetime.now().strftime('%H:%M:%S')}) | TOTAL WATCHED: {len(SELECTED_STOCKS)}")
+            print("="*85)
+            print(final_dashboard[[
+                'Priority Rank 🎯', 'Stock Symbol', 'LTP', 'Price % Change',
+                'Volume Status', 'CE/PE Option Buildup', 'Action / Entry Trigger', 'Last Updated'
+            ]].to_string(index=False))
+
+            time.sleep(5)  # Refresh every 5 seconds
+
+    except KeyboardInterrupt:
+        print("\n🛑 Screener Stopped Safely.")
+
+# ==============================================================================
+# EXECUTION START
+# ==============================================================================
 if __name__ == "__main__":
-    run_ce_scanner()
+    run_screener_engine()
