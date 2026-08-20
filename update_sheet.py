@@ -64,11 +64,10 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# 3. FETCH MARKET DATA WITH STRATEGY SCORING & TIME ONLY
+# 3. FETCH & PROCESS DATA FOR CE AND PE DASHBOARDS
 # ==============================================================================
-def fetch_stock_data():
+def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
-    # Execution Time ONLY (No Date) -> e.g. "09:45:12"
     current_time_only = datetime.now(ist).strftime('%H:%M:%S')
     
     print(f"⏳ Fetching market data for {len(STOCKS)} stocks at {current_time_only} IST...")
@@ -84,7 +83,9 @@ def fetch_stock_data():
             progress=False
         )
 
-        records = []
+        ce_records = []
+        pe_records = []
+
         for symbol in STOCKS:
             try:
                 if symbol in raw_data:
@@ -92,11 +93,11 @@ def fetch_stock_data():
                 else:
                     df = raw_data.dropna()
 
-                if df.empty:
+                if df.empty or len(df) < 10:
                     continue
 
                 ltp = float(df['Close'].iloc[-1])
-                prev_close = float(df['Open'].iloc[0])
+                open_p = float(df['Open'].iloc[-1])
                 volume = float(df['Volume'].iloc[-1])
                 avg_vol = float(df['Volume'].mean())
 
@@ -104,90 +105,122 @@ def fetch_stock_data():
                 low = float(df['Low'].iloc[-1])
                 vwap = (high + low + ltp) / 3
 
+                # Trend Calculation using 20 EMA
+                ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
+                trend = "BULLISH 🟢" if ltp >= ema20 else "BEARISH 🔴"
+
                 vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
-                price_chg = round(((ltp - prev_close) / prev_close) * 100, 2)
+                price_chg = round(((ltp - open_p) / open_p) * 100, 2)
 
-                vcp_signal = "YES" if (vol_mult >= 1.5 and ltp > vwap) else "NO"
-                vwap_status = "ABOVE 📈" if ltp >= vwap else "BELOW 📉"
+                vol_display = f"{vol_mult}x ⚡" if vol_mult >= 1.0 else f"{vol_mult}x 💧"
+                clean_sym = symbol.replace('.NS', '')
 
-                # Calculate Strategy Strength Score (0 to 10)
-                strategy_score = round(min((vol_mult * 2) + abs(price_chg), 10.0), 1)
+                # --------------------------------------------------------------
+                # CE DASHBOARD LOGIC (Bullish Only)
+                # --------------------------------------------------------------
+                ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 2.0), 10.0), 1)
 
-                # Signal Logic & Priority Sorting
                 if symbol == INDEX_TICKER:
-                    action = "BENCHMARK 🏛️"
-                    priority = 0
-                elif ltp > vwap and vol_mult >= 1.5 and vcp_signal == "YES":
-                    action = "BUY CE (15M CONFIRMED) 🟢"
-                    priority = 1
-                elif ltp < vwap and vol_mult >= 1.5 and vcp_signal == "YES":
-                    action = "BUY PE (15M CONFIRMED) 🔴"
-                    priority = 1
+                    ce_action = "BENCHMARK 🏛️"
+                    ce_plan = "NIFTY INDEX"
+                    ce_priority = 99
+                elif ltp > vwap and vol_mult >= 1.2 and price_chg > 0.2 and trend == "BULLISH 🟢":
+                    ce_action = "BUY CE NOW 🟢"
+                    ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                    ce_priority = 1
+                elif ltp > vwap and vol_mult >= 0.8:
+                    ce_action = "WATCH CE 👀"
+                    ce_plan = "WAIT FOR VOL SPIKE (>1.2x)"
+                    ce_priority = 2
                 else:
-                    action = "NO ENTRY 🚫"
-                    priority = 2
+                    ce_action = "NO CE SETUP 🚫"
+                    ce_plan = "WAIT FOR BREAKOUT"
+                    ce_priority = 3
 
-                records.append({
-                    'Clean Symbol': symbol.replace('.NS', ''),
-                    'Action / Entry Trigger': action,
-                    'Priority': priority,
-                    'Strategy Score': strategy_score,
-                    'Volume Spike': f"{vol_mult}x ⚡" if vol_mult >= 1.5 else f"{vol_mult}x 💧",
-                    'VWAP Status': vwap_status,
+                ce_records.append({
+                    'Clean Symbol': clean_sym,
+                    'Trend': trend,
+                    'LTP': round(ltp, 2),
+                    'Action / Entry Trigger': ce_action,
+                    'CE Entry Plan': ce_plan,
+                    'Volume Spike': vol_display,
+                    'CE Strength Score': ce_score,
+                    'Priority': ce_priority,
                     'Vol_Raw': vol_mult,
                     'Execution Time': current_time_only
                 })
+
+                # --------------------------------------------------------------
+                # PE DASHBOARD LOGIC (Bearish Only)
+                # --------------------------------------------------------------
+                pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 2.0), 10.0), 1)
+
+                if symbol == INDEX_TICKER:
+                    pe_action = "BENCHMARK 🏛️"
+                    pe_plan = "NIFTY INDEX"
+                    pe_priority = 99
+                elif ltp < vwap and vol_mult >= 1.2 and price_chg < -0.2 and trend == "BEARISH 🔴":
+                    pe_action = "BUY PE NOW 🔴"
+                    pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                    pe_priority = 1
+                elif ltp < vwap and vol_mult >= 0.8:
+                    pe_action = "WATCH PE 👀"
+                    pe_plan = "WAIT FOR VOL BREAKDOWN (>1.2x)"
+                    pe_priority = 2
+                else:
+                    pe_action = "NO PE SETUP 🚫"
+                    pe_plan = "WAIT FOR BREAKDOWN"
+                    pe_priority = 3
+
+                pe_records.append({
+                    'Clean Symbol': clean_sym,
+                    'Trend': trend,
+                    'LTP': round(ltp, 2),
+                    'Action / Entry Trigger': pe_action,
+                    'PE Entry Plan': pe_plan,
+                    'Volume Spike': vol_display,
+                    'PE Strength Score': pe_score,
+                    'Priority': pe_priority,
+                    'Vol_Raw': vol_mult,
+                    'Execution Time': current_time_only
+                })
+
             except Exception:
                 continue
 
-        df_all = pd.DataFrame(records)
-        if df_all.empty:
-            return pd.DataFrame()
+        # Processing CE DataFrame
+        df_ce = pd.DataFrame(ce_records)
+        if not df_ce.empty:
+            df_ce = df_ce.sort_values(by=['Priority', 'CE Strength Score', 'Vol_Raw'], ascending=[True, False, False]).reset_index(drop=True)
+            df_ce['Rank'] = [f"#{i+1}" for i in range(len(df_ce))]
+            df_ce = df_ce[['Rank', 'Trend', 'Clean Symbol', 'LTP', 'Action / Entry Trigger', 'CE Entry Plan', 'Volume Spike', 'CE Strength Score', 'Execution Time']]
 
-        # SORTING: Confirmed Signals Top Par -> Score ke hisab se highest Top Par
-        df_all = df_all.sort_values(by=['Priority', 'Vol_Raw'], ascending=[True, False]).reset_index(drop=True)
+        # Processing PE DataFrame
+        df_pe = pd.DataFrame(pe_records)
+        if not df_pe.empty:
+            df_pe = df_pe.sort_values(by=['Priority', 'PE Strength Score', 'Vol_Raw'], ascending=[True, False, False]).reset_index(drop=True)
+            df_pe['Rank'] = [f"#{i+1}" for i in range(len(df_pe))]
+            df_pe = df_pe[['Rank', 'Trend', 'Clean Symbol', 'LTP', 'Action / Entry Trigger', 'PE Entry Plan', 'Volume Spike', 'PE Strength Score', 'Execution Time']]
 
-        # Rank Assignment (#1, #2, #3...)
-        df_all['Rank'] = [f"#{i+1}" for i in range(len(df_all))]
-
-        # Selected Clean Columns
-        final_df = df_all[[
-            'Rank', 
-            'Clean Symbol', 
-            'Action / Entry Trigger', 
-            'Volume Spike', 
-            'VWAP Status', 
-            'Strategy Score', 
-            'Execution Time'
-        ]]
-        
-        return final_df
+        return df_ce, df_pe
 
     except Exception as e:
         print(f"❌ YFinance Fetch Error: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
-# 4. DIRECT UPDATE TO "LIVE_DASHBOARD" TAB
+# 4. UPDATE GOOGLE SHEETS FOR A SPECIFIC TAB
 # ==============================================================================
-def update_google_sheet(df):
+def update_tab(sh, df, target_tab_name):
     if df.empty:
-        print("⚠️ DataFrame empty. Skipping Google Sheets update.")
-        return
-
-    sheet_id = os.environ.get("SHEET_ID")
-    if not sheet_id:
-        print("❌ Error: SHEET_ID Secret is missing!")
+        print(f"⚠️ DataFrame empty for {target_tab_name}. Skipping update.")
         return
 
     try:
-        gc = get_gspread_client()
-        sh = gc.open_by_key(sheet_id)
-
-        target_tab_name = "LIVE_DASHBOARD"
         try:
             worksheet = sh.worksheet(target_tab_name)
         except gspread.exceptions.WorksheetNotFound:
+            print(f"⚠️ Tab '{target_tab_name}' not found. Creating it now...")
             worksheet = sh.add_worksheet(title=target_tab_name, rows="200", cols="10")
 
         headers = df.columns.tolist()
@@ -195,11 +228,30 @@ def update_google_sheet(df):
 
         worksheet.clear()
         worksheet.update('A1', values)
-        print(f"✅ Successfully updated tab '{target_tab_name}'! Total Ranked Stocks: {len(df)}")
+        print(f"✅ Successfully updated tab '{target_tab_name}'! Total Rows: {len(df)}")
 
     except Exception as e:
-        print(f"❌ Google Sheets Update Failed: {e}")
+        print(f"❌ Google Sheets Update Failed for '{target_tab_name}': {e}")
 
+# ==============================================================================
+# 5. MAIN EXECUTION
+# ==============================================================================
 if __name__ == "__main__":
-    df_result = fetch_stock_data()
-    update_google_sheet(df_result)
+    df_ce, df_pe = fetch_and_process_data()
+
+    sheet_id = os.environ.get("SHEET_ID")
+    if not sheet_id:
+        print("❌ Error: SHEET_ID Secret is missing!")
+    else:
+        try:
+            gc = get_gspread_client()
+            sh = gc.open_by_key(sheet_id)
+
+            # 1. Update LIVE_CE_DASHBOARD
+            update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
+
+            # 2. Update LIVE_PE_DASHBOARD
+            update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
+
+        except Exception as e:
+            print(f"❌ Failed to connect to Google Sheets: {e}")
