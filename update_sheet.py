@@ -9,7 +9,7 @@ import pytz
 from google.oauth2.service_account import Credentials
 
 # ==============================================================================
-# 1. SETUP GOOGLE SHEETS AUTHENTICATION
+# SECTION 1: GOOGLE SHEETS AUTHENTICATION
 # ==============================================================================
 SCOPE = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -28,7 +28,7 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 # ==============================================================================
-# 2. WATCHLIST (140+ STOCKS)
+# SECTION 2: WATCHLIST (140+ STOCKS & INDEX)
 # ==============================================================================
 INDEX_TICKER = "^NSEI"
 
@@ -64,7 +64,7 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# 3. FETCH & PROCESS DATA FOR CE AND PE DASHBOARDS
+# SECTION 3: DATA FETCHING & DUAL DASHBOARD LOGIC (CE & PE)
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -93,19 +93,25 @@ def fetch_and_process_data():
                 else:
                     df = raw_data.dropna()
 
-                if df.empty or len(df) < 10:
+                if df.empty or len(df) < 5:
                     continue
 
                 ltp = float(df['Close'].iloc[-1])
                 open_p = float(df['Open'].iloc[-1])
-                volume = float(df['Volume'].iloc[-1])
-                avg_vol = float(df['Volume'].mean())
+                
+                # FIXED VOLUME CALCULATION (Prevents 0.0x issue)
+                vol_series = df['Volume'].replace(0, pd.NA).dropna()
+                if not vol_series.empty:
+                    volume = float(vol_series.iloc[-1])
+                    avg_vol = float(vol_series.mean())
+                else:
+                    volume = 1.0
+                    avg_vol = 1.0
 
                 high = float(df['High'].iloc[-1])
                 low = float(df['Low'].iloc[-1])
                 vwap = (high + low + ltp) / 3
 
-                # Trend Calculation using 20 EMA
                 ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
                 trend = "BULLISH 🟢" if ltp >= ema20 else "BEARISH 🔴"
 
@@ -118,24 +124,29 @@ def fetch_and_process_data():
                 # --------------------------------------------------------------
                 # CE DASHBOARD LOGIC (Bullish Only)
                 # --------------------------------------------------------------
-                ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 2.0), 10.0), 1)
+                ce_score = round(min((vol_mult * 2.0) + (max(0, price_chg) * 2.5), 10.0), 1)
 
                 if symbol == INDEX_TICKER:
                     ce_action = "BENCHMARK 🏛️"
                     ce_plan = "NIFTY INDEX"
                     ce_priority = 99
-                elif ltp > vwap and vol_mult >= 1.2 and price_chg > 0.2 and trend == "BULLISH 🟢":
-                    ce_action = "BUY CE NOW 🟢"
-                    ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
-                    ce_priority = 1
-                elif ltp > vwap and vol_mult >= 0.8:
+                elif ltp > vwap and price_chg > 0.15 and trend == "BULLISH 🟢":
+                    if vol_mult >= 1.0:
+                        ce_action = "BUY CE NOW 🟢"
+                        ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                        ce_priority = 1
+                    else:
+                        ce_action = "WATCH CE 👀"
+                        ce_plan = "WAIT FOR VOL SPIKE"
+                        ce_priority = 2
+                elif ltp > vwap:
                     ce_action = "WATCH CE 👀"
-                    ce_plan = "WAIT FOR VOL SPIKE (>1.2x)"
-                    ce_priority = 2
-                else:
-                    ce_action = "NO CE SETUP 🚫"
                     ce_plan = "WAIT FOR BREAKOUT"
                     ce_priority = 3
+                else:
+                    ce_action = "NO CE SETUP 🚫"
+                    ce_plan = "BELOW VWAP"
+                    ce_priority = 4
 
                 ce_records.append({
                     'Clean Symbol': clean_sym,
@@ -153,24 +164,29 @@ def fetch_and_process_data():
                 # --------------------------------------------------------------
                 # PE DASHBOARD LOGIC (Bearish Only)
                 # --------------------------------------------------------------
-                pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 2.0), 10.0), 1)
+                pe_score = round(min((vol_mult * 2.0) + (abs(min(0, price_chg)) * 2.5), 10.0), 1)
 
                 if symbol == INDEX_TICKER:
                     pe_action = "BENCHMARK 🏛️"
                     pe_plan = "NIFTY INDEX"
                     pe_priority = 99
-                elif ltp < vwap and vol_mult >= 1.2 and price_chg < -0.2 and trend == "BEARISH 🔴":
-                    pe_action = "BUY PE NOW 🔴"
-                    pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
-                    pe_priority = 1
-                elif ltp < vwap and vol_mult >= 0.8:
+                elif ltp < vwap and price_chg < -0.15 and trend == "BEARISH 🔴":
+                    if vol_mult >= 1.0:
+                        pe_action = "BUY PE NOW 🔴"
+                        pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                        pe_priority = 1
+                    else:
+                        pe_action = "WATCH PE 👀"
+                        pe_plan = "WAIT FOR VOL SPIKE"
+                        pe_priority = 2
+                elif ltp < vwap:
                     pe_action = "WATCH PE 👀"
-                    pe_plan = "WAIT FOR VOL BREAKDOWN (>1.2x)"
-                    pe_priority = 2
-                else:
-                    pe_action = "NO PE SETUP 🚫"
                     pe_plan = "WAIT FOR BREAKDOWN"
                     pe_priority = 3
+                else:
+                    pe_action = "NO PE SETUP 🚫"
+                    pe_plan = "ABOVE VWAP"
+                    pe_priority = 4
 
                 pe_records.append({
                     'Clean Symbol': clean_sym,
@@ -209,7 +225,7 @@ def fetch_and_process_data():
         return pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
-# 4. UPDATE GOOGLE SHEETS FOR A SPECIFIC TAB
+# SECTION 4: GOOGLE SHEET UPDATER
 # ==============================================================================
 def update_tab(sh, df, target_tab_name):
     if df.empty:
@@ -234,7 +250,7 @@ def update_tab(sh, df, target_tab_name):
         print(f"❌ Google Sheets Update Failed for '{target_tab_name}': {e}")
 
 # ==============================================================================
-# 5. MAIN EXECUTION
+# SECTION 5: MAIN EXECUTION ENTRY POINT
 # ==============================================================================
 if __name__ == "__main__":
     df_ce, df_pe = fetch_and_process_data()
@@ -247,10 +263,10 @@ if __name__ == "__main__":
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
 
-            # 1. Update LIVE_CE_DASHBOARD
+            # 1. Update LIVE_CE_DASHBOARD Tab
             update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
 
-            # 2. Update LIVE_PE_DASHBOARD
+            # 2. Update LIVE_PE_DASHBOARD Tab
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
 
         except Exception as e:
