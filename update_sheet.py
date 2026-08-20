@@ -64,7 +64,7 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# SECTION 3: DATA FETCHING & DUAL DASHBOARD LOGIC (CE & PE)
+# SECTION 3: DATA FETCHING & DUAL DASHBOARD LOGIC (STRICT TREND ALIGNMENT)
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -99,7 +99,7 @@ def fetch_and_process_data():
                 ltp = float(df['Close'].iloc[-1])
                 open_p = float(df['Open'].iloc[-1])
                 
-                # FIXED VOLUME CALCULATION (Prevents 0.0x issue)
+                # FIXED VOLUME CALCULATION
                 vol_series = df['Volume'].replace(0, pd.NA).dropna()
                 if not vol_series.empty:
                     volume = float(vol_series.iloc[-1])
@@ -112,17 +112,24 @@ def fetch_and_process_data():
                 low = float(df['Low'].iloc[-1])
                 vwap = (high + low + ltp) / 3
 
+                # STRICT TREND DEFINITION
                 ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
-                trend = "BULLISH 🟢" if ltp >= ema20 else "BEARISH 🔴"
-
-                vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
+                
                 price_chg = round(((ltp - open_p) / open_p) * 100, 2)
-
+                vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
                 vol_display = f"{vol_mult}x ⚡" if vol_mult >= 1.0 else f"{vol_mult}x 💧"
                 clean_sym = symbol.replace('.NS', '')
 
+                # Trend Alignment
+                if ltp > ema20 and price_chg > 0.05:
+                    trend = "🟢 UPTREND"
+                elif ltp < ema20 and price_chg < -0.05:
+                    trend = "🔴 DOWNTREND"
+                else:
+                    trend = "🟡 SIDEWAYS"
+
                 # --------------------------------------------------------------
-                # CE DASHBOARD LOGIC (Bullish Only)
+                # CE DASHBOARD LOGIC (STRICTLY REQUIRES 🟢 UPTREND)
                 # --------------------------------------------------------------
                 ce_score = round(min((vol_mult * 2.0) + (max(0, price_chg) * 2.5), 10.0), 1)
 
@@ -130,7 +137,8 @@ def fetch_and_process_data():
                     ce_action = "BENCHMARK 🏛️"
                     ce_plan = "NIFTY INDEX"
                     ce_priority = 99
-                elif ltp > vwap and price_chg > 0.15 and trend == "BULLISH 🟢":
+                # RULE: BUY CE ONLY IF TREND IS UPTREND!
+                elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15:
                     if vol_mult >= 1.0:
                         ce_action = "BUY CE NOW 🟢"
                         ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
@@ -139,13 +147,14 @@ def fetch_and_process_data():
                         ce_action = "WATCH CE 👀"
                         ce_plan = "WAIT FOR VOL SPIKE"
                         ce_priority = 2
-                elif ltp > vwap:
+                elif trend == "🟢 UPTREND":
                     ce_action = "WATCH CE 👀"
                     ce_plan = "WAIT FOR BREAKOUT"
                     ce_priority = 3
                 else:
+                    # Downtrend / Sideways stocks automatically rejected for CE
                     ce_action = "NO CE SETUP 🚫"
-                    ce_plan = "BELOW VWAP"
+                    ce_plan = "NO UPTREND"
                     ce_priority = 4
 
                 ce_records.append({
@@ -162,7 +171,7 @@ def fetch_and_process_data():
                 })
 
                 # --------------------------------------------------------------
-                # PE DASHBOARD LOGIC (Bearish Only)
+                # PE DASHBOARD LOGIC (STRICTLY REQUIRES 🔴 DOWNTREND)
                 # --------------------------------------------------------------
                 pe_score = round(min((vol_mult * 2.0) + (abs(min(0, price_chg)) * 2.5), 10.0), 1)
 
@@ -170,7 +179,8 @@ def fetch_and_process_data():
                     pe_action = "BENCHMARK 🏛️"
                     pe_plan = "NIFTY INDEX"
                     pe_priority = 99
-                elif ltp < vwap and price_chg < -0.15 and trend == "BEARISH 🔴":
+                # RULE: BUY PE ONLY IF TREND IS DOWNTREND!
+                elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15:
                     if vol_mult >= 1.0:
                         pe_action = "BUY PE NOW 🔴"
                         pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
@@ -179,13 +189,14 @@ def fetch_and_process_data():
                         pe_action = "WATCH PE 👀"
                         pe_plan = "WAIT FOR VOL SPIKE"
                         pe_priority = 2
-                elif ltp < vwap:
+                elif trend == "🔴 DOWNTREND":
                     pe_action = "WATCH PE 👀"
                     pe_plan = "WAIT FOR BREAKDOWN"
                     pe_priority = 3
                 else:
+                    # Uptrend / Sideways stocks automatically rejected for PE
                     pe_action = "NO PE SETUP 🚫"
-                    pe_plan = "ABOVE VWAP"
+                    pe_plan = "NO DOWNTREND"
                     pe_priority = 4
 
                 pe_records.append({
