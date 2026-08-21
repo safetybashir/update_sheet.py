@@ -28,7 +28,7 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 # ==============================================================================
-# 1. AAPKI EXACT SELECTED STOCKS WATCHLIST (YFinance / NSE Tickers)
+# SECTION 2: AAPKI EXACT SELECTED STOCKS WATCHLIST
 # ==============================================================================
 INDEX_TICKER = "^NSEI"  # Nifty 50 Index Ticker
 
@@ -118,7 +118,7 @@ def fetch_and_process_data():
                 price_chg = round(((ltp - open_p) / open_p) * 100, 2)
                 vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
                 vol_display = f"{vol_mult}x ⚡" if vol_mult >= 1.0 else f"{vol_mult}x 💧"
-                clean_sym = symbol.replace('.NS', '')
+                clean_sym = symbol.replace('.NS', '').replace('^NSEI', 'NIFTY 50')
 
                 # Trend Alignment
                 if ltp > ema20 and price_chg > 0.05:
@@ -136,8 +136,7 @@ def fetch_and_process_data():
                 if symbol == INDEX_TICKER:
                     ce_action = "BENCHMARK 🏛️"
                     ce_plan = "NIFTY INDEX"
-                    ce_priority = 99
-                # RULE: BUY CE ONLY IF TREND IS UPTREND!
+                    ce_priority = 0  # <--- FIXED: BENCHMARK IS ALWAYS TOP ROW
                 elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15:
                     if vol_mult >= 1.0:
                         ce_action = "BUY CE NOW 🟢"
@@ -152,7 +151,6 @@ def fetch_and_process_data():
                     ce_plan = "WAIT FOR BREAKOUT"
                     ce_priority = 3
                 else:
-                    # Downtrend / Sideways stocks automatically rejected for CE
                     ce_action = "NO CE SETUP 🚫"
                     ce_plan = "NO UPTREND"
                     ce_priority = 4
@@ -178,8 +176,7 @@ def fetch_and_process_data():
                 if symbol == INDEX_TICKER:
                     pe_action = "BENCHMARK 🏛️"
                     pe_plan = "NIFTY INDEX"
-                    pe_priority = 99
-                # RULE: BUY PE ONLY IF TREND IS DOWNTREND!
+                    pe_priority = 0  # <--- FIXED: BENCHMARK IS ALWAYS TOP ROW
                 elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15:
                     if vol_mult >= 1.0:
                         pe_action = "BUY PE NOW 🔴"
@@ -194,7 +191,6 @@ def fetch_and_process_data():
                     pe_plan = "WAIT FOR BREAKDOWN"
                     pe_priority = 3
                 else:
-                    # Uptrend / Sideways stocks automatically rejected for PE
                     pe_action = "NO PE SETUP 🚫"
                     pe_plan = "NO DOWNTREND"
                     pe_priority = 4
