@@ -133,7 +133,7 @@ def fetch_and_process_data():
                 # Trend Alignment
                 if ltp > ema21 and price_chg > 0.05:
                     trend = "🟢 UPTREND"
-                elif ltp < ema21` and price_chg < -0.05:
+                elif ltp < ema21 and price_chg < -0.05:
                     trend = "🔴 DOWNTREND"
                 else:
                     trend = "🟡 SIDEWAYS"
