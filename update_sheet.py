@@ -62,7 +62,7 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# SECTION 3: SMART SELECTION DATA PROCESSOR (GRASIM QUALITY FIT)
+# SECTION 3: SMART SELECTION DATA PROCESSOR
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -120,8 +120,8 @@ def fetch_and_process_data():
                 dist_ema20_pct = round(((ltp - ema20) / ema20) * 100, 2)
                 dist_vwap_pct = round(((ltp - vwap) / vwap) * 100, 2)
 
-                # Check Micro SL / Flat Range (Avoid tight fakeouts)
-                has_valid_ce_buffer = dist_vwap_pct >= 0.12  # At least 0.12% space between LTP and VWAP
+                # Check Micro SL / Flat Range
+                has_valid_ce_buffer = dist_vwap_pct >= 0.12
                 has_valid_pe_buffer = dist_vwap_pct <= -0.12
 
                 is_extended_ce = dist_ema20_pct > 1.8 or price_chg > 2.8
@@ -139,7 +139,7 @@ def fetch_and_process_data():
                     trend = "🟡 SIDEWAYS"
 
                 # --------------------------------------------------------------
-                # CE DASHBOARD LOGIC (TRADABLE QUALITY FILTER)
+                # CE DASHBOARD LOGIC
                 # --------------------------------------------------------------
                 ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 1.5), 10.0), 1)
                 if is_sweet_ce:
@@ -147,7 +147,7 @@ def fetch_and_process_data():
                 elif is_extended_ce or not has_valid_ce_buffer:
                     ce_score = max(0.0, ce_score - 3.0)
 
-                risk_ce = max(ltp * 0.0015, ltp - vwap)  # Min 0.15% risk buffer
+                risk_ce = max(ltp * 0.0015, ltp - vwap)
                 target1_ce = round(ltp + (risk_ce * 1.5), 1)
                 sl_ce = round(ltp - risk_ce, 1)
 
@@ -195,14 +195,14 @@ def fetch_and_process_data():
                     'Action / Entry Trigger': ce_action,
                     'CE Entry Plan': ce_plan,
                     'Volume Spike': vol_display,
-                    'CE Strength Score': ce_score,
+                    'CE Strength Score': round(float(ce_score), 1),
                     'Priority': ce_priority,
                     'Vol_Raw': vol_mult,
                     'Execution Time': current_time_only
                 })
 
                 # --------------------------------------------------------------
-                # PE DASHBOARD LOGIC (TRADABLE QUALITY FILTER)
+                # PE DASHBOARD LOGIC
                 # --------------------------------------------------------------
                 pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 1.5), 10.0), 1)
                 if is_sweet_pe:
@@ -258,7 +258,7 @@ def fetch_and_process_data():
                     'Action / Entry Trigger': pe_action,
                     'PE Entry Plan': pe_plan,
                     'Volume Spike': vol_display,
-                    'PE Strength Score': pe_score,
+                    'PE Strength Score': round(float(pe_score), 1),
                     'Priority': pe_priority,
                     'Vol_Raw': vol_mult,
                     'Execution Time': current_time_only
@@ -267,16 +267,18 @@ def fetch_and_process_data():
             except Exception:
                 continue
 
-        # Sorting CE
+        # Sorting CE & Rounding Score Fix
         df_ce = pd.DataFrame(ce_records)
         if not df_ce.empty:
+            df_ce['CE Strength Score'] = df_ce['CE Strength Score'].apply(lambda x: round(float(x), 1))
             df_ce = df_ce.sort_values(by=['Priority', 'CE Strength Score', 'Vol_Raw'], ascending=[True, False, False]).reset_index(drop=True)
             df_ce['Rank'] = [f"#{i+1}" for i in range(len(df_ce))]
             df_ce = df_ce[['Rank', 'Trend', 'Clean Symbol', 'LTP', 'Action / Entry Trigger', 'CE Entry Plan', 'Volume Spike', 'CE Strength Score', 'Execution Time']]
 
-        # Sorting PE
+        # Sorting PE & Rounding Score Fix
         df_pe = pd.DataFrame(pe_records)
         if not df_pe.empty:
+            df_pe['PE Strength Score'] = df_pe['PE Strength Score'].apply(lambda x: round(float(x), 1))
             df_pe = df_pe.sort_values(by=['Priority', 'PE Strength Score', 'Vol_Raw'], ascending=[True, False, False]).reset_index(drop=True)
             df_pe['Rank'] = [f"#{i+1}" for i in range(len(df_pe))]
             df_pe = df_pe[['Rank', 'Trend', 'Clean Symbol', 'LTP', 'Action / Entry Trigger', 'PE Entry Plan', 'Volume Spike', 'PE Strength Score', 'Execution Time']]
