@@ -18,19 +18,17 @@ SCOPE = [
 
 def get_gspread_client():
     gcp_creds_json = os.environ.get("GCP_CREDENTIALS_JSON")
-    
     if gcp_creds_json:
         creds_dict = json.loads(gcp_creds_json)
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
     else:
         creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPE)
-        
     return gspread.authorize(creds)
 
 # ==============================================================================
-# SECTION 2: AAPKI EXACT SELECTED STOCKS WATCHLIST
+# SECTION 2: WATCHLIST
 # ==============================================================================
-INDEX_TICKER = "^NSEI"  # Nifty 50 Index Ticker
+INDEX_TICKER = "^NSEI"
 
 STOCKS = [
     INDEX_TICKER, "TCS.NS", "HINDPETRO.NS", "IREDA.NS", "SUNPHARMA.NS", "ITC.NS",
@@ -64,7 +62,7 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# SECTION 3: DATA FETCHING & DUAL DASHBOARD LOGIC (STRICT TREND ALIGNMENT)
+# SECTION 3: SMART SELECTION DATA PROCESSOR
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -99,7 +97,6 @@ def fetch_and_process_data():
                 ltp = float(df['Close'].iloc[-1])
                 open_p = float(df['Open'].iloc[-1])
                 
-                # FIXED VOLUME CALCULATION
                 vol_series = df['Volume'].replace(0, pd.NA).dropna()
                 if not vol_series.empty:
                     volume = float(vol_series.iloc[-1])
@@ -112,13 +109,22 @@ def fetch_and_process_data():
                 low = float(df['Low'].iloc[-1])
                 vwap = (high + low + ltp) / 3
 
-                # STRICT TREND DEFINITION
                 ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
                 
                 price_chg = round(((ltp - open_p) / open_p) * 100, 2)
                 vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
                 vol_display = f"{vol_mult}x ⚡" if vol_mult >= 1.0 else f"{vol_mult}x 💧"
                 clean_sym = symbol.replace('.NS', '').replace('^NSEI', 'NIFTY 50')
+
+                # DISTANCE FILTERS (SMART SELECTION ENGINE)
+                dist_ema20_pct = round(((ltp - ema20) / ema20) * 100, 2)
+                dist_vwap_pct = round(((ltp - vwap) / vwap) * 100, 2)
+
+                is_extended_ce = dist_ema20_pct > 1.8 or price_chg > 2.8
+                is_sweet_ce = (0.05 <= dist_ema20_pct <= 1.2) and (ltp > vwap)
+
+                is_extended_pe = dist_ema20_pct < -1.8 or price_chg < -2.8
+                is_sweet_pe = (-1.2 <= dist_ema20_pct <= -0.05) and (ltp < vwap)
 
                 # Trend Alignment
                 if ltp > ema20 and price_chg > 0.05:
@@ -129,38 +135,41 @@ def fetch_and_process_data():
                     trend = "🟡 SIDEWAYS"
 
                 # --------------------------------------------------------------
-                # CE DASHBOARD LOGIC (STRICTLY REQUIRES 🟢 UPTREND)
+                # CE DASHBOARD LOGIC
                 # --------------------------------------------------------------
-                ce_score = round(min((vol_mult * 2.0) + (max(0, price_chg) * 2.5), 10.0), 1)
+                ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 1.5), 10.0), 1)
+                if is_sweet_ce:
+                    ce_score = min(10.0, ce_score + 2.0)
+                elif is_extended_ce:
+                    ce_score = max(0.0, ce_score - 3.0)
 
                 if symbol == INDEX_TICKER:
-                    ce_priority = 0  # Benchmark always stays at Top Row
+                    ce_priority = 0
                     if trend == "🟢 UPTREND":
                         ce_action = "BUY CE NOW 🟢"
-                        ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                        ce_plan = f"BUY > {round(ltp, 1)} (SL: {round(vwap, 1)})"
                     elif trend == "🔴 DOWNTREND":
                         ce_action = "🔴 DOWNTREND"
                         ce_plan = "NO CE SETUP 🚫"
                     else:
                         ce_action = "🟡 SIDEWAYS"
                         ce_plan = "NO TRADE 🚫"
-                elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15:
-                    if vol_mult >= 1.0:
-                        ce_action = "BUY CE NOW 🟢"
-                        ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
-                        ce_priority = 1
-                    else:
-                        ce_action = "WATCH CE 👀"
-                        ce_plan = "WAIT FOR VOL SPIKE"
-                        ce_priority = 2
-                elif trend == "🟢 UPTREND":
-                    ce_action = "WATCH CE 👀"
-                    ce_plan = "WAIT FOR BREAKOUT"
-                    ce_priority = 3
+                elif trend == "🟢 UPTREND" and is_sweet_ce and vol_mult >= 1.2:
+                    ce_action = "BUY CE (SWEET SPOT) 🟢"
+                    ce_plan = f"BUY > {round(ltp, 1)} | T1: {round(ltp + (ltp-vwap)*1.5, 1)} (SL: {round(vwap, 1)})"
+                    ce_priority = 1
+                elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15 and not is_extended_ce:
+                    ce_action = "BUY CE NOW 🟢" if vol_mult >= 1.0 else "WATCH CE 👀"
+                    ce_plan = f"BUY > {round(ltp, 1)} (SL: {round(vwap, 1)})" if vol_mult >= 1.0 else "WAIT FOR VOL SPIKE"
+                    ce_priority = 2 if vol_mult >= 1.0 else 3
+                elif is_extended_ce:
+                    ce_action = "EXTENDED TOP ⚠️"
+                    ce_plan = "FOMO HIGH / WAIT PULLBACK"
+                    ce_priority = 4
                 else:
                     ce_action = "NO CE SETUP 🚫"
                     ce_plan = "NO UPTREND"
-                    ce_priority = 4
+                    ce_priority = 5
 
                 ce_records.append({
                     'Clean Symbol': clean_sym,
@@ -176,38 +185,41 @@ def fetch_and_process_data():
                 })
 
                 # --------------------------------------------------------------
-                # PE DASHBOARD LOGIC (STRICTLY REQUIRES 🔴 DOWNTREND)
+                # PE DASHBOARD LOGIC
                 # --------------------------------------------------------------
-                pe_score = round(min((vol_mult * 2.0) + (abs(min(0, price_chg)) * 2.5), 10.0), 1)
+                pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 1.5), 10.0), 1)
+                if is_sweet_pe:
+                    pe_score = min(10.0, pe_score + 2.0)
+                elif is_extended_pe:
+                    pe_score = max(0.0, pe_score - 3.0)
 
                 if symbol == INDEX_TICKER:
-                    pe_priority = 0  # Benchmark always stays at Top Row
+                    pe_priority = 0
                     if trend == "🔴 DOWNTREND":
                         pe_action = "BUY PE NOW 🔴"
-                        pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                        pe_plan = f"BUY < {round(ltp, 1)} (SL: {round(vwap, 1)})"
                     elif trend == "🟢 UPTREND":
                         pe_action = "🟢 UPTREND"
                         pe_plan = "NO PE SETUP 🚫"
                     else:
                         pe_action = "🟡 SIDEWAYS"
                         pe_plan = "NO TRADE 🚫"
-                elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15:
-                    if vol_mult >= 1.0:
-                        pe_action = "BUY PE NOW 🔴"
-                        pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
-                        pe_priority = 1
-                    else:
-                        pe_action = "WATCH PE 👀"
-                        pe_plan = "WAIT FOR VOL SPIKE"
-                        pe_priority = 2
-                elif trend == "🔴 DOWNTREND":
-                    pe_action = "WATCH PE 👀"
-                    pe_plan = "WAIT FOR BREAKDOWN"
-                    pe_priority = 3
+                elif trend == "🔴 DOWNTREND" and is_sweet_pe and vol_mult >= 1.2:
+                    pe_action = "BUY PE (SWEET SPOT) 🔴"
+                    pe_plan = f"BUY < {round(ltp, 1)} | T1: {round(ltp - (vwap-ltp)*1.5, 1)} (SL: {round(vwap, 1)})"
+                    pe_priority = 1
+                elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15 and not is_extended_pe:
+                    pe_action = "BUY PE NOW 🔴" if vol_mult >= 1.0 else "WATCH PE 👀"
+                    pe_plan = f"BUY < {round(ltp, 1)} (SL: {round(vwap, 1)})" if vol_mult >= 1.0 else "WAIT FOR VOL SPIKE"
+                    pe_priority = 2 if vol_mult >= 1.0 else 3
+                elif is_extended_pe:
+                    pe_action = "EXTENDED BOTTOM ⚠️"
+                    pe_plan = "OVERBOUGHT / WAIT PULLBACK"
+                    pe_priority = 4
                 else:
                     pe_action = "NO PE SETUP 🚫"
                     pe_plan = "NO DOWNTREND"
-                    pe_priority = 4
+                    pe_priority = 5
 
                 pe_records.append({
                     'Clean Symbol': clean_sym,
@@ -225,14 +237,14 @@ def fetch_and_process_data():
             except Exception:
                 continue
 
-        # Processing CE DataFrame
+        # Sorting CE
         df_ce = pd.DataFrame(ce_records)
         if not df_ce.empty:
             df_ce = df_ce.sort_values(by=['Priority', 'CE Strength Score', 'Vol_Raw'], ascending=[True, False, False]).reset_index(drop=True)
             df_ce['Rank'] = [f"#{i+1}" for i in range(len(df_ce))]
             df_ce = df_ce[['Rank', 'Trend', 'Clean Symbol', 'LTP', 'Action / Entry Trigger', 'CE Entry Plan', 'Volume Spike', 'CE Strength Score', 'Execution Time']]
 
-        # Processing PE DataFrame
+        # Sorting PE
         df_pe = pd.DataFrame(pe_records)
         if not df_pe.empty:
             df_pe = df_pe.sort_values(by=['Priority', 'PE Strength Score', 'Vol_Raw'], ascending=[True, False, False]).reset_index(drop=True)
@@ -244,19 +256,17 @@ def fetch_and_process_data():
     except Exception as e:
         print(f"❌ YFinance Fetch Error: {e}")
         return pd.DataFrame(), pd.DataFrame()
+
 # ==============================================================================
 # SECTION 4: GOOGLE SHEET UPDATER
 # ==============================================================================
 def update_tab(sh, df, target_tab_name):
     if df.empty:
-        print(f"⚠️ DataFrame empty for {target_tab_name}. Skipping update.")
         return
-
     try:
         try:
             worksheet = sh.worksheet(target_tab_name)
         except gspread.exceptions.WorksheetNotFound:
-            print(f"⚠️ Tab '{target_tab_name}' not found. Creating it now...")
             worksheet = sh.add_worksheet(title=target_tab_name, rows="200", cols="10")
 
         headers = df.columns.tolist()
@@ -264,30 +274,22 @@ def update_tab(sh, df, target_tab_name):
 
         worksheet.clear()
         worksheet.update('A1', values)
-        print(f"✅ Successfully updated tab '{target_tab_name}'! Total Rows: {len(df)}")
-
+        print(f"✅ Successfully updated '{target_tab_name}'! Total Rows: {len(df)}")
     except Exception as e:
-        print(f"❌ Google Sheets Update Failed for '{target_tab_name}': {e}")
+        print(f"❌ Update Failed for '{target_tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 5: MAIN EXECUTION ENTRY POINT
+# SECTION 5: MAIN EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
     df_ce, df_pe = fetch_and_process_data()
 
     sheet_id = os.environ.get("SHEET_ID")
-    if not sheet_id:
-        print("❌ Error: SHEET_ID Secret is missing!")
-    else:
+    if sheet_id:
         try:
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
-
-            # 1. Update LIVE_CE_DASHBOARD Tab
             update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
-
-            # 2. Update LIVE_PE_DASHBOARD Tab
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-
         except Exception as e:
-            print(f"❌ Failed to connect to Google Sheets: {e}")
+            print(f"❌ Connection Error: {e}")
