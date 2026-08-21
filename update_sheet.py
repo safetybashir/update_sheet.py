@@ -28,9 +28,9 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 # ==============================================================================
-# SECTION 2: WATCHLIST (140+ STOCKS & INDEX)
+# 1. AAPKI EXACT SELECTED STOCKS WATCHLIST (YFinance / NSE Tickers)
 # ==============================================================================
-INDEX_TICKER = "^NSEI"
+INDEX_TICKER = "^NSEI"  # Nifty 50 Index Ticker
 
 STOCKS = [
     INDEX_TICKER, "TCS.NS", "HINDPETRO.NS", "IREDA.NS", "SUNPHARMA.NS", "ITC.NS",
