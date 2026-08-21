@@ -26,43 +26,45 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 # ==============================================================================
-# SECTION 2: WATCHLIST
+# SECTION 2: UPDATED FnO WATCHLIST
 # ==============================================================================
 INDEX_TICKER = "^NSEI"
 
 STOCKS = [
-    INDEX_TICKER, "TCS.NS", "HINDPETRO.NS", "IREDA.NS", "SUNPHARMA.NS", "ITC.NS",
-    "TITAN.NS", "LAURUSLABS.NS", "JSWENERGY.NS", "VEDL.NS", "COALINDIA.NS",
-    "HINDZINC.NS", "ZYDUSLIFE.NS", "GODREJPROP.NS", "PERSISTENT.NS", "DMART.NS",
-    "WIPRO.NS", "PAGEIND.NS", "PAYTM.NS", "MPHASIS.NS", "SBIN.NS", "MARUTI.NS",
-    "ULTRACEMCO.NS", "HINDUNILVR.NS", "CIPLA.NS", "BPCL.NS", "RVNL.NS",
-    "BRITANNIA.NS", "OFSS.NS", "MARICO.NS", "BIOCON.NS", "ABB.NS",
-    "TATACONSUM.NS", "CUMMINSIND.NS", "RECLTD.NS", "COCHINSHIP.NS", "MANKIND.NS",
-    "INFY.NS", "HCLTECH.NS", "NBCC.NS", "ALKYLAMINE.NS", "DELHIVERY.NS",
-    "KPITTECH.NS", "NATIONALUM.NS", "TATAELXSI.NS", "AMBUJACEM.NS", "JSWSTEEL.NS",
-    "BALKRISIND.NS", "ASIANPAINT.NS", "ABBOTINDIA.NS", "HINDALCO.NS", "NYKAA.NS",
-    "BLUESTARCO.NS", "IOC.NS", "NESTLEIND.NS", "PREMIERENE.NS", "INDIGO.NS",
-    "BAJAJ-AUTO.NS", "KAYNES.NS", "DRREDDY.NS", "TVSMOTOR.NS", "UPL.NS",
-    "SWIGGY.NS", "COFORGE.NS", "VOLTAS.NS", "BHARTIARTL.NS", "EICHERMOT.NS",
-    "NTPC.NS", "LODHA.NS", "ETERNAL.NS", "POLYCAB.NS", "DLF.NS", "SUZLON.NS",
-    "CONCOR.NS", "JINDALSTEL.NS", "ICICIPRULI.NS", "DALBHARAT.NS", "INDUSTOWER.NS",
-    "ASHOKLEY.NS", "CDSL.NS", "GLENMARK.NS", "PNB.NS", "INOXWIND.NS",
-    "ASTRAL.NS", "KALYANKJIL.NS", "BSE.NS", "TECHM.NS", "SHREECEM.NS",
-    "PIIND.NS", "CAMSTI.NS", "IIDA.NS", "TATASTEEL.NS", "M&M.NS", "LUPIN.NS",
-    "GAIL.NS", "PFC.NS", "SUPREMEIND.NS", "WAAREEENER.NS", "KEI.NS",
-    "FORTIS.NS", "TORNTPHARM.NS", "ICICIBANK.NS", "SRF.NS", "DIXON.NS",
-    "GRASIM.NS", "HEROMOTOCO.NS", "CROMPTON.NS", "MRF.NS", "SIEMENS.NS",
-    "PHOENIXLTD.NS", "PIDILITIND.NS", "UNOMINDA.NS", "NMDC.NS", "SAIL.NS",
-    "POWERGRID.NS", "MOTHERSON.NS", "NHPC.NS", "RELIANCE.NS", "JUBLFOOD.NS",
-    "MAXHEALTH.NS", "MOTILALOFS.NS", "SOLARINDS.NS", "AMBER.NS", "AUROPHARMA.NS",
-    "CGPOWER.NS", "PETRONET.NS", "DIVISLAB.NS", "HAVELLS.NS", "LT.NS",
-    "BEL.NS", "LTF.NS", "TATAPOWER.NS", "BHARATFORG.NS", "SONACOMS.NS",
-    "APOLLOHOSP.NS", "HAL.NS", "BOSCHLTD.NS", "APOLLOTYRE.NS", "BHEL.NS",
-    "KFINTECH.NS", "ANGELONE.NS", "GODREJCP.NS", "BDL.NS", "NAUKRI.NS"
+    INDEX_TICKER, "CROMPTON.NS", "HINDZINC.NS", "LODHA.NS", "BLUESTARCO.NS", "BEL.NS",
+    "JUBLFOOD.NS", "PREMIERENE.NS", "GMRAIRPORT.NS", "VEDL.NS", "CONCOR.NS",
+    "PIIND.NS", "EICHERMOT.NS", "TIINDIA.NS", "ETERNAL.NS", "SUNPHARMA.NS",
+    "SWIGGY.NS", "BHEL.NS", "NATIONALUM.NS", "NBCC.NS", "GVT&D.NS",
+    "NAUKRI.NS", "DMART.NS", "CAMS.NS", "MOTHERSON.NS", "TATASTEEL.NS",
+    "NESTLEIND.NS", "INOXWIND.NS", "SOLARINDS.NS", "KEI.NS", "MARICO.NS",
+    "BHARTIARTL.NS", "COFORGE.NS", "PRESTIGE.NS", "TMPV.NS", "DIVISLAB.NS",
+    "TATACONSUM.NS", "VOLTAS.NS", "NMDC.NS", "JINDALSTEL.NS", "INFY.NS",
+    "PAGEIND.NS", "INDUSTOWER.NS", "SUPREMEIND.NS", "HINDPETRO.NS", "POLYCAB.NS",
+    "KFINTECH.NS", "MAXHEALTH.NS", "SUZLON.NS", "NYKAA.NS", "OFSS.NS",
+    "M&M.NS", "PERSISTENT.NS", "RADICO.NS", "KAYNES.NS", "ZYDUSLIFE.NS",
+    "DLF.NS", "PGEL.NS", "TATAELXSI.NS", "IREDA.NS", "RECLTD.NS",
+    "TATAPOWER.NS", "HCLTECH.NS", "DIXON.NS", "LTF.NS", "LUPIN.NS",
+    "MPHASIS.NS", "ONGC.NS", "AUROPHARMA.NS", "GLENMARK.NS", "JSWENERGY.NS",
+    "SRF.NS", "MOTILALOFS.NS", "RELIANCE.NS", "APLAPOLLO.NS", "NAM-INDIA.NS",
+    "UNOMINDA.NS", "POWERINDIA.NS", "COALINDIA.NS", "DABUR.NS", "IRFC.NS",
+    "OBEROIRLTY.NS", "PHOENIXLTD.NS", "TORNTPHARM.NS", "ALKEM.NS", "AMBER.NS",
+    "ANGELONE.NS", "ASTRAL.NS", "BDL.NS", "BIOCON.NS", "BPCL.NS",
+    "CDSL.NS", "CGPOWER.NS", "DALBHARAT.NS", "DELHIVERY.NS", "FORCEMOT.NS",
+    "GODREJPROP.NS", "HINDALCO.NS", "HINDUNILVR.NS", "KALYANKJIL.NS", "KPITTECH.NS",
+    "LAURUSLABS.NS", "LT.NS", "MANKIND.NS", "MARUTI.NS", "MAZDOCK.NS",
+    "RVNL.NS", "SIEMENS.NS", "TECHM.NS", "TITAN.NS", "TRENT.NS",
+    "VMM.NS", "TVSMOTOR.NS", "PAYTM.NS", "SHREECEM.NS", "BAJAJ-AUTO.NS",
+    "ABB.NS", "DRREDDY.NS", "POWERGRID.NS", "WAAREEENER.NS", "APOLLOHOSP.NS",
+    "COLPAL.NS", "JSWSTEEL.NS", "GAIL.NS", "UPL.NS", "FORTIS.NS",
+    "ASIANPAINT.NS", "INDIGO.NS", "HYUNDAI.NS", "ULTRACEMCO.NS", "WIPRO.NS",
+    "HAVELLS.NS", "SONACOMS.NS", "AMBUJACEM.NS", "BOSCHLTD.NS", "HAL.NS",
+    "COCHINSHIP.NS", "GODREJCP.NS", "HEROMOTOCO.NS", "IOC.NS", "CIPLA.NS",
+    "TCS.NS", "ASHOKLEY.NS", "BRITANNIA.NS", "BHARATFORG.NS", "PETRONET.NS",
+    "GRASIM.NS", "PIDILITIND.NS", "LTM.NS", "BSE.NS", "CUMMINSIND.NS"
 ]
 
 # ==============================================================================
-# SECTION 3: SMART SELECTION DATA PROCESSOR (MOMENTUM + REVERSAL)
+# SECTION 3: DATA PROCESSOR (DYNAMIC HIGH-VALUE BUFFERS + REVERSALS)
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -123,11 +125,15 @@ def fetch_and_process_data():
                 has_valid_ce_buffer = dist_vwap_pct >= 0.12
                 has_valid_pe_buffer = dist_vwap_pct <= -0.12
 
-                is_extended_ce = dist_ema21_pct > 1.8 or price_chg > 2.8
-                is_sweet_ce = (0.10 <= dist_ema21_pct <= 1.2) and has_valid_ce_buffer
+                # Dynamic Distance Limit for High Price Stocks (like POWERINDIA, SOLARINDS)
+                max_dist_limit = 2.8 if ltp > 3000 else 1.8
+                max_chg_limit = 3.8 if ltp > 3000 else 2.8
 
-                is_extended_pe = dist_ema21_pct < -1.8 or price_chg < -2.8
-                is_sweet_pe = (-1.2 <= dist_ema21_pct <= -0.10) and has_valid_pe_buffer
+                is_extended_ce = dist_ema21_pct > max_dist_limit or price_chg > max_chg_limit
+                is_sweet_ce = (0.10 <= dist_ema21_pct <= (max_dist_limit - 0.6)) and has_valid_ce_buffer
+
+                is_extended_pe = dist_ema21_pct < -max_dist_limit or price_chg < -max_chg_limit
+                is_sweet_pe = (-(max_dist_limit - 0.6) <= dist_ema21_pct <= -0.10) and has_valid_pe_buffer
 
                 # Dynamic Trend
                 if ltp > ema21 and price_chg > 0.05:
@@ -142,7 +148,7 @@ def fetch_and_process_data():
                 # --------------------------------------------------------------
                 ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 1.5), 10.0), 1)
                 
-                # Check for Breakdown Failure / Reversal CE
+                # Reversal Check (Breakdown Fail)
                 is_reversal_ce = dist_ema21_pct < -1.5 and ltp > vwap and price_chg > 0.0
 
                 if is_sweet_ce:
@@ -215,7 +221,7 @@ def fetch_and_process_data():
                 # --------------------------------------------------------------
                 pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 1.5), 10.0), 1)
 
-                # Check for Breakout Failure / Reversal PE
+                # Reversal Check (Breakout Fail)
                 is_reversal_pe = dist_ema21_pct > 1.5 and ltp < vwap and price_chg < 0.0
 
                 if is_sweet_pe:
