@@ -62,7 +62,7 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# SECTION 3: SMART SELECTION DATA PROCESSOR
+# SECTION 3: SMART SELECTION DATA PROCESSOR (MOMENTUM + REVERSAL)
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -109,7 +109,7 @@ def fetch_and_process_data():
                 low = float(df['Low'].iloc[-1])
                 vwap = (high + low + ltp) / 3
 
-                ema20 = df['Close'].ewm(span=20, adjust=False).mean().iloc[-1]
+                ema21 = df['Close'].ewm(span=21, adjust=False).mean().iloc[-1]
                 
                 price_chg = round(((ltp - open_p) / open_p) * 100, 2)
                 vol_mult = round(volume / avg_vol, 2) if avg_vol > 0 else 1.0
@@ -120,17 +120,16 @@ def fetch_and_process_data():
                 dist_ema21_pct = round(((ltp - ema21) / ema21) * 100, 2)
                 dist_vwap_pct = round(((ltp - vwap) / vwap) * 100, 2)
 
-                # Check Micro SL / Flat Range
                 has_valid_ce_buffer = dist_vwap_pct >= 0.12
                 has_valid_pe_buffer = dist_vwap_pct <= -0.12
 
-                is_extended_ce = dist_ema20_pct > 1.8 or price_chg > 2.8
-                is_sweet_ce = (0.10 <= dist_ema20_pct <= 1.2) and has_valid_ce_buffer
+                is_extended_ce = dist_ema21_pct > 1.8 or price_chg > 2.8
+                is_sweet_ce = (0.10 <= dist_ema21_pct <= 1.2) and has_valid_ce_buffer
 
                 is_extended_pe = dist_ema21_pct < -1.8 or price_chg < -2.8
                 is_sweet_pe = (-1.2 <= dist_ema21_pct <= -0.10) and has_valid_pe_buffer
 
-                # Trend Alignment
+                # Dynamic Trend
                 if ltp > ema21 and price_chg > 0.05:
                     trend = "🟢 UPTREND"
                 elif ltp < ema21 and price_chg < -0.05:
@@ -139,15 +138,21 @@ def fetch_and_process_data():
                     trend = "🟡 SIDEWAYS"
 
                 # --------------------------------------------------------------
-                # CE DASHBOARD LOGIC
+                # CE DASHBOARD LOGIC (Includes Bottom Reversal / Breakdown Fail)
                 # --------------------------------------------------------------
                 ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 1.5), 10.0), 1)
+                
+                # Check for Breakdown Failure / Reversal CE
+                is_reversal_ce = dist_ema21_pct < -1.5 and ltp > vwap and price_chg > 0.0
+
                 if is_sweet_ce:
                     ce_score = min(10.0, ce_score + 2.0)
+                elif is_reversal_ce:
+                    ce_score = min(10.0, ce_score + 1.5)
                 elif is_extended_ce or not has_valid_ce_buffer:
                     ce_score = max(0.0, ce_score - 3.0)
 
-                risk_ce = max(ltp * 0.0015, ltp - vwap)
+                risk_ce = max(ltp * 0.0015, abs(ltp - vwap))
                 target1_ce = round(ltp + (risk_ce * 1.5), 1)
                 sl_ce = round(ltp - risk_ce, 1)
 
@@ -165,6 +170,10 @@ def fetch_and_process_data():
                 elif trend == "🟢 UPTREND" and is_sweet_ce and vol_mult >= 1.2:
                     ce_action = "BUY CE (SWEET SPOT) 🟢"
                     ce_plan = f"BUY > {round(ltp, 1)} | T1: {target1_ce} (SL: {sl_ce})"
+                    ce_priority = 1
+                elif is_reversal_ce and vol_mult >= 1.0:
+                    ce_action = "REVERSAL CE 🟢 (B/D FAIL)"
+                    ce_plan = f"BUY > {round(ltp, 1)} | T1: {round(ema21, 1)} (SL: {sl_ce})"
                     ce_priority = 1
                 elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15 and not is_extended_ce:
                     if not has_valid_ce_buffer:
@@ -202,15 +211,21 @@ def fetch_and_process_data():
                 })
 
                 # --------------------------------------------------------------
-                # PE DASHBOARD LOGIC
+                # PE DASHBOARD LOGIC (Includes Top Reversal / Breakout Fail)
                 # --------------------------------------------------------------
                 pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 1.5), 10.0), 1)
+
+                # Check for Breakout Failure / Reversal PE
+                is_reversal_pe = dist_ema21_pct > 1.5 and ltp < vwap and price_chg < 0.0
+
                 if is_sweet_pe:
                     pe_score = min(10.0, pe_score + 2.0)
+                elif is_reversal_pe:
+                    pe_score = min(10.0, pe_score + 1.5)
                 elif is_extended_pe or not has_valid_pe_buffer:
                     pe_score = max(0.0, pe_score - 3.0)
 
-                risk_pe = max(ltp * 0.0015, vwap - ltp)
+                risk_pe = max(ltp * 0.0015, abs(vwap - ltp))
                 target1_pe = round(ltp - (risk_pe * 1.5), 1)
                 sl_pe = round(ltp + risk_pe, 1)
 
@@ -228,6 +243,10 @@ def fetch_and_process_data():
                 elif trend == "🔴 DOWNTREND" and is_sweet_pe and vol_mult >= 1.2:
                     pe_action = "BUY PE (SWEET SPOT) 🔴"
                     pe_plan = f"BUY < {round(ltp, 1)} | T1: {target1_pe} (SL: {sl_pe})"
+                    pe_priority = 1
+                elif is_reversal_pe and vol_mult >= 1.0:
+                    pe_action = "REVERSAL PE 🔴 (B/O FAIL)"
+                    pe_plan = f"BUY < {round(ltp, 1)} | T1: {round(ema21, 1)} (SL: {sl_pe})"
                     pe_priority = 1
                 elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15 and not is_extended_pe:
                     if not has_valid_pe_buffer:
@@ -267,7 +286,7 @@ def fetch_and_process_data():
             except Exception:
                 continue
 
-        # Sorting CE & Rounding Score Fix
+        # Sorting CE
         df_ce = pd.DataFrame(ce_records)
         if not df_ce.empty:
             df_ce['CE Strength Score'] = df_ce['CE Strength Score'].apply(lambda x: round(float(x), 1))
@@ -275,7 +294,7 @@ def fetch_and_process_data():
             df_ce['Rank'] = [f"#{i+1}" for i in range(len(df_ce))]
             df_ce = df_ce[['Rank', 'Trend', 'Clean Symbol', 'LTP', 'Action / Entry Trigger', 'CE Entry Plan', 'Volume Spike', 'CE Strength Score', 'Execution Time']]
 
-        # Sorting PE & Rounding Score Fix
+        # Sorting PE
         df_pe = pd.DataFrame(pe_records)
         if not df_pe.empty:
             df_pe['PE Strength Score'] = df_pe['PE Strength Score'].apply(lambda x: round(float(x), 1))
