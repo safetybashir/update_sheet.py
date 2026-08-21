@@ -134,9 +134,16 @@ def fetch_and_process_data():
                 ce_score = round(min((vol_mult * 2.0) + (max(0, price_chg) * 2.5), 10.0), 1)
 
                 if symbol == INDEX_TICKER:
-                    ce_action = "BENCHMARK 🏛️"
-                    ce_plan = "NIFTY INDEX"
-                    ce_priority = 0  # <--- FIXED: BENCHMARK IS ALWAYS TOP ROW
+                    ce_priority = 0  # Benchmark always stays at Top Row
+                    if trend == "🟢 UPTREND":
+                        ce_action = "BUY CE NOW 🟢"
+                        ce_plan = f"BUY ABOVE {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                    elif trend == "🔴 DOWNTREND":
+                        ce_action = "🔴 DOWNTREND"
+                        ce_plan = "NO CE SETUP 🚫"
+                    else:
+                        ce_action = "🟡 SIDEWAYS"
+                        ce_plan = "NO TRADE 🚫"
                 elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15:
                     if vol_mult >= 1.0:
                         ce_action = "BUY CE NOW 🟢"
@@ -174,9 +181,16 @@ def fetch_and_process_data():
                 pe_score = round(min((vol_mult * 2.0) + (abs(min(0, price_chg)) * 2.5), 10.0), 1)
 
                 if symbol == INDEX_TICKER:
-                    pe_action = "BENCHMARK 🏛️"
-                    pe_plan = "NIFTY INDEX"
-                    pe_priority = 0  # <--- FIXED: BENCHMARK IS ALWAYS TOP ROW
+                    pe_priority = 0  # Benchmark always stays at Top Row
+                    if trend == "🔴 DOWNTREND":
+                        pe_action = "BUY PE NOW 🔴"
+                        pe_plan = f"BUY BELOW {round(ltp, 1)} (SL: {round(vwap, 1)})"
+                    elif trend == "🟢 UPTREND":
+                        pe_action = "🟢 UPTREND"
+                        pe_plan = "NO PE SETUP 🚫"
+                    else:
+                        pe_action = "🟡 SIDEWAYS"
+                        pe_plan = "NO TRADE 🚫"
                 elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15:
                     if vol_mult >= 1.0:
                         pe_action = "BUY PE NOW 🔴"
@@ -230,7 +244,6 @@ def fetch_and_process_data():
     except Exception as e:
         print(f"❌ YFinance Fetch Error: {e}")
         return pd.DataFrame(), pd.DataFrame()
-
 # ==============================================================================
 # SECTION 4: GOOGLE SHEET UPDATER
 # ==============================================================================
