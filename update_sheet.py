@@ -117,7 +117,7 @@ def fetch_and_process_data():
                 clean_sym = symbol.replace('.NS', '').replace('^NSEI', 'NIFTY 50')
 
                 # DISTANCE & RISK FILTERS
-                dist_ema20_pct = round(((ltp - ema20) / ema20) * 100, 2)
+                dist_ema21_pct = round(((ltp - ema21) / ema21) * 100, 2)
                 dist_vwap_pct = round(((ltp - vwap) / vwap) * 100, 2)
 
                 # Check Micro SL / Flat Range
@@ -127,13 +127,13 @@ def fetch_and_process_data():
                 is_extended_ce = dist_ema20_pct > 1.8 or price_chg > 2.8
                 is_sweet_ce = (0.10 <= dist_ema20_pct <= 1.2) and has_valid_ce_buffer
 
-                is_extended_pe = dist_ema20_pct < -1.8 or price_chg < -2.8
-                is_sweet_pe = (-1.2 <= dist_ema20_pct <= -0.10) and has_valid_pe_buffer
+                is_extended_pe = dist_ema21_pct < -1.8 or price_chg < -2.8
+                is_sweet_pe = (-1.2 <= dist_ema21_pct <= -0.10) and has_valid_pe_buffer
 
                 # Trend Alignment
-                if ltp > ema20 and price_chg > 0.05:
+                if ltp > ema21 and price_chg > 0.05:
                     trend = "🟢 UPTREND"
-                elif ltp < ema20 and price_chg < -0.05:
+                elif ltp < ema21` and price_chg < -0.05:
                     trend = "🔴 DOWNTREND"
                 else:
                     trend = "🟡 SIDEWAYS"
