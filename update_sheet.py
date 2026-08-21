@@ -62,7 +62,7 @@ STOCKS = [
 ]
 
 # ==============================================================================
-# SECTION 3: SMART SELECTION DATA PROCESSOR
+# SECTION 3: SMART SELECTION DATA PROCESSOR (GRASIM QUALITY FIT)
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
@@ -116,15 +116,19 @@ def fetch_and_process_data():
                 vol_display = f"{vol_mult}x ⚡" if vol_mult >= 1.0 else f"{vol_mult}x 💧"
                 clean_sym = symbol.replace('.NS', '').replace('^NSEI', 'NIFTY 50')
 
-                # DISTANCE FILTERS (SMART SELECTION ENGINE)
+                # DISTANCE & RISK FILTERS
                 dist_ema20_pct = round(((ltp - ema20) / ema20) * 100, 2)
                 dist_vwap_pct = round(((ltp - vwap) / vwap) * 100, 2)
 
+                # Check Micro SL / Flat Range (Avoid tight fakeouts)
+                has_valid_ce_buffer = dist_vwap_pct >= 0.12  # At least 0.12% space between LTP and VWAP
+                has_valid_pe_buffer = dist_vwap_pct <= -0.12
+
                 is_extended_ce = dist_ema20_pct > 1.8 or price_chg > 2.8
-                is_sweet_ce = (0.05 <= dist_ema20_pct <= 1.2) and (ltp > vwap)
+                is_sweet_ce = (0.10 <= dist_ema20_pct <= 1.2) and has_valid_ce_buffer
 
                 is_extended_pe = dist_ema20_pct < -1.8 or price_chg < -2.8
-                is_sweet_pe = (-1.2 <= dist_ema20_pct <= -0.05) and (ltp < vwap)
+                is_sweet_pe = (-1.2 <= dist_ema20_pct <= -0.10) and has_valid_pe_buffer
 
                 # Trend Alignment
                 if ltp > ema20 and price_chg > 0.05:
@@ -135,13 +139,17 @@ def fetch_and_process_data():
                     trend = "🟡 SIDEWAYS"
 
                 # --------------------------------------------------------------
-                # CE DASHBOARD LOGIC
+                # CE DASHBOARD LOGIC (TRADABLE QUALITY FILTER)
                 # --------------------------------------------------------------
                 ce_score = round(min((vol_mult * 2.5) + (max(0, price_chg) * 1.5), 10.0), 1)
                 if is_sweet_ce:
                     ce_score = min(10.0, ce_score + 2.0)
-                elif is_extended_ce:
+                elif is_extended_ce or not has_valid_ce_buffer:
                     ce_score = max(0.0, ce_score - 3.0)
+
+                risk_ce = max(ltp * 0.0015, ltp - vwap)  # Min 0.15% risk buffer
+                target1_ce = round(ltp + (risk_ce * 1.5), 1)
+                sl_ce = round(ltp - risk_ce, 1)
 
                 if symbol == INDEX_TICKER:
                     ce_priority = 0
@@ -156,12 +164,21 @@ def fetch_and_process_data():
                         ce_plan = "NO TRADE 🚫"
                 elif trend == "🟢 UPTREND" and is_sweet_ce and vol_mult >= 1.2:
                     ce_action = "BUY CE (SWEET SPOT) 🟢"
-                    ce_plan = f"BUY > {round(ltp, 1)} | T1: {round(ltp + (ltp-vwap)*1.5, 1)} (SL: {round(vwap, 1)})"
+                    ce_plan = f"BUY > {round(ltp, 1)} | T1: {target1_ce} (SL: {sl_ce})"
                     ce_priority = 1
                 elif trend == "🟢 UPTREND" and ltp > vwap and price_chg > 0.15 and not is_extended_ce:
-                    ce_action = "BUY CE NOW 🟢" if vol_mult >= 1.0 else "WATCH CE 👀"
-                    ce_plan = f"BUY > {round(ltp, 1)} (SL: {round(vwap, 1)})" if vol_mult >= 1.0 else "WAIT FOR VOL SPIKE"
-                    ce_priority = 2 if vol_mult >= 1.0 else 3
+                    if not has_valid_ce_buffer:
+                        ce_action = "WATCH CE 👀"
+                        ce_plan = "FLAT RANGE / SL TOO TIGHT"
+                        ce_priority = 3
+                    elif vol_mult >= 1.0:
+                        ce_action = "BUY CE NOW 🟢"
+                        ce_plan = f"BUY > {round(ltp, 1)} | T1: {target1_ce} (SL: {sl_ce})"
+                        ce_priority = 2
+                    else:
+                        ce_action = "WATCH CE 👀"
+                        ce_plan = "WAIT FOR VOL SPIKE"
+                        ce_priority = 3
                 elif is_extended_ce:
                     ce_action = "EXTENDED TOP ⚠️"
                     ce_plan = "FOMO HIGH / WAIT PULLBACK"
@@ -185,13 +202,17 @@ def fetch_and_process_data():
                 })
 
                 # --------------------------------------------------------------
-                # PE DASHBOARD LOGIC
+                # PE DASHBOARD LOGIC (TRADABLE QUALITY FILTER)
                 # --------------------------------------------------------------
                 pe_score = round(min((vol_mult * 2.5) + (abs(min(0, price_chg)) * 1.5), 10.0), 1)
                 if is_sweet_pe:
                     pe_score = min(10.0, pe_score + 2.0)
-                elif is_extended_pe:
+                elif is_extended_pe or not has_valid_pe_buffer:
                     pe_score = max(0.0, pe_score - 3.0)
+
+                risk_pe = max(ltp * 0.0015, vwap - ltp)
+                target1_pe = round(ltp - (risk_pe * 1.5), 1)
+                sl_pe = round(ltp + risk_pe, 1)
 
                 if symbol == INDEX_TICKER:
                     pe_priority = 0
@@ -206,12 +227,21 @@ def fetch_and_process_data():
                         pe_plan = "NO TRADE 🚫"
                 elif trend == "🔴 DOWNTREND" and is_sweet_pe and vol_mult >= 1.2:
                     pe_action = "BUY PE (SWEET SPOT) 🔴"
-                    pe_plan = f"BUY < {round(ltp, 1)} | T1: {round(ltp - (vwap-ltp)*1.5, 1)} (SL: {round(vwap, 1)})"
+                    pe_plan = f"BUY < {round(ltp, 1)} | T1: {target1_pe} (SL: {sl_pe})"
                     pe_priority = 1
                 elif trend == "🔴 DOWNTREND" and ltp < vwap and price_chg < -0.15 and not is_extended_pe:
-                    pe_action = "BUY PE NOW 🔴" if vol_mult >= 1.0 else "WATCH PE 👀"
-                    pe_plan = f"BUY < {round(ltp, 1)} (SL: {round(vwap, 1)})" if vol_mult >= 1.0 else "WAIT FOR VOL SPIKE"
-                    pe_priority = 2 if vol_mult >= 1.0 else 3
+                    if not has_valid_pe_buffer:
+                        pe_action = "WATCH PE 👀"
+                        pe_plan = "FLAT RANGE / SL TOO TIGHT"
+                        pe_priority = 3
+                    elif vol_mult >= 1.0:
+                        pe_action = "BUY PE NOW 🔴"
+                        pe_plan = f"BUY < {round(ltp, 1)} | T1: {target1_pe} (SL: {sl_pe})"
+                        pe_priority = 2
+                    else:
+                        pe_action = "WATCH PE 👀"
+                        pe_plan = "WAIT FOR VOL SPIKE"
+                        pe_priority = 3
                 elif is_extended_pe:
                     pe_action = "EXTENDED BOTTOM ⚠️"
                     pe_plan = "OVERBOUGHT / WAIT PULLBACK"
