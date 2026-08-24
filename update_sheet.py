@@ -346,7 +346,15 @@ if __name__ == "__main__":
         try:
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
+            
+            # 1. Purani CE Sheet
             update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
+            
+            # 2. Purani PE Sheet
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
+            
+            # 3. Nayi Sheet (NEW OI_VCP B/O DASHBOARD)
+            update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
+            
         except Exception as e:
             print(f"❌ Connection Error: {e}")
