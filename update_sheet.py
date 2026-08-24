@@ -347,14 +347,14 @@ if __name__ == "__main__":
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
             
-            # 1. Purani CE Sheet
+            # 1. Update CE Raw Data Tab
             update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
             
-            # 2. Purani PE Sheet
+            # 2. Update PE Raw Data Tab
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
             
-            # 3. Nayi Sheet (NEW OI_VCP B/O DASHBOARD)
-            update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
+            # NOTE: "NEW OI_VCP B/O DASHBOARD" tab is excluded from Python overwrite 
+            # so that custom Google Sheet formulas (=FILTER) remain intact!
             
         except Exception as e:
             print(f"❌ Connection Error: {e}")
