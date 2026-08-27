@@ -170,7 +170,7 @@ def fetch_and_process_data():
     return df_ce, df_ce.copy()
 
 # ==============================================================================
-# SECTION 4 & 5: SINGLE EXECUTION FOR GITHUB ACTIONS / AUTOMATION (NO SLEEP LOOP)
+# SECTION 4 & 5: MAIN EXECUTION LOOP (UPDATES ALL 3 TABS IN SINGLE RUN)
 # ==============================================================================
 if __name__ == "__main__":
     print("🚀 OI_VCP Single Run Triggered via GitHub Actions...")
@@ -178,9 +178,9 @@ if __name__ == "__main__":
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
-        print(f"[⏱️ Execution Time: {now.strftime('%H:%M:%S IST')}] Processing 153 Stocks...")
+        print(f"[⏱️ Execution Time: {now.strftime('%H:%M:%S IST')}] Processing Stocks...")
 
-        # 1. Fetch & Process
+        # 1. Fetch & Process Data
         df_ce, df_pe = fetch_and_process_data()
 
         # 2. Update Google Sheet
@@ -189,9 +189,12 @@ if __name__ == "__main__":
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
 
-            update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
+            # TEENON TABS KO EKSATH UPDATE KAREGA:
+            update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-            print("🎉 SUCCESS! Google Sheet Updated Successfully.")
+            update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
+            
+            print("🎉 SUCCESS! All 3 Google Sheet Tabs Updated Successfully.")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
