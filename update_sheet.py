@@ -155,13 +155,81 @@ def fetch_and_process_data():
     return df_ce, df_pe
 
 # ==============================================================================
-# SECTION 4: MAIN EXECUTION LOOP (15-MIN INTERVAL SETUP)
+# SECTION 4: MAIN DASHBOARD DATA RETRIEVAL & MAPPING
+# ==============================================================================
+def fetch_and_process_data():
+    """
+    Data fetch & processing engine.
+    Nifty Heavyweight Confluence scan karne ke baad final DataFrame banata hai.
+    """
+    ist = pytz.timezone('Asia/Kolkata')
+    curr_time = datetime.now(ist).strftime('%H:%M:%S')
+
+    # Mocking Data Structure (Yahan aapka Live Broker/NSE API Data map hoga)
+    raw_stocks = {
+        'HDFCBANK': {'trend': 'SIDEWAYS', 'vol_spike': 0.9, 'ltp': 1650.0},
+        'RELIANCE': {'trend': 'DOWNTREND', 'vol_spike': 1.1, 'ltp': 2980.0},
+        'ICICIBANK': {'trend': 'UPTREND', 'vol_spike': 1.0, 'ltp': 1120.0},
+        'TCS': {'trend': 'UPTREND', 'vol_spike': 0.8, 'ltp': 4150.0},
+        'MANKIND': {'trend': 'UPTREND', 'vol_spike': 8.09, 'ltp': 2398.0, 'score': 10.0, 'action': 'BUY CE (SWEET SPOT) 🟢', 'trigger': 'BUY > 2398.0 | T1: 2404.7 (SL: 2393.5)'},
+        'UNOMINDA': {'trend': 'UPTREND', 'vol_spike': 0.81, 'ltp': 1279.8, 'score': 4.6, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'},
+        'TIINDIA': {'trend': 'UPTREND', 'vol_spike': 0.68, 'ltp': 2869.1, 'score': 4.5, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'},
+        'APOLLOHOSP': {'trend': 'UPTREND', 'vol_spike': 2.50, 'ltp': 8800.0, 'score': 3.5, 'action': 'WATCH CE 👀', 'trigger': 'FLAT RANGE / SL TOO TIGHT'},
+        'KAYNES': {'trend': 'UPTREND', 'vol_spike': 0.62, 'ltp': 4039.0, 'score': 2.3, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'},
+    }
+
+    # 1. Evaluate Nifty 50 with Background Heavyweight Confluence
+    nifty_raw_score = 6.0  
+    nifty_trend, nifty_action, hw_summary = process_nifty_with_heavyweights(nifty_raw_score, raw_stocks)
+
+    # 2. Build Dashboard DataFrame (CE)
+    data_ce = []
+    
+    # Nifty 50 Entry (#1 Row)
+    data_ce.append({
+        'Rank': '#1',
+        'TrendClean': nifty_trend,
+        'Symbol': 'NIFTY 50',
+        'LTP': 24154.6,
+        'Action / Entry Trigger': nifty_action,
+        'CE Entry Plan': f"HW Status: {hw_summary}",
+        'Volume Spike': '1.0x ⚡',
+        'CE Strength Score': 0.0 if 'NO TRADE' in nifty_action else 6.0,
+        'Execution Time': curr_time
+    })
+
+    # Stocks Entry (#2 onwards)
+    rank_count = 2
+    for symbol, item in raw_stocks.items():
+        if symbol in ['HDFCBANK', 'RELIANCE', 'ICICIBANK', 'TCS']:
+            continue  # Heavyweights processed silently in background
+            
+        data_ce.append({
+            'Rank': f"#{rank_count}",
+            'TrendClean': '🟢 UPTREND' if item['trend'] == 'UPTREND' else '🟡 SIDEWAYS',
+            'Symbol': symbol,
+            'LTP': item['ltp'],
+            'Action / Entry Trigger': item.get('action', 'WATCH CE 👀'),
+            'CE Entry Plan': item.get('trigger', 'WAIT FOR VOL SPIKE'),
+            'Volume Spike': f"{item['vol_spike']}x ⚡" if item['vol_spike'] >= 1.0 else f"{item['vol_spike']}x 💧",
+            'CE Strength Score': item.get('score', 0.0),
+            'Execution Time': curr_time
+        })
+        rank_count += 1
+
+    df_ce = pd.DataFrame(data_ce)
+    df_pe = df_ce.copy() 
+
+    return df_ce, df_pe
+
+# ==============================================================================
+# SECTION 5: MAIN EXECUTION LOOP (15-MINUTE AUTO REFRESH LOOP)
 # ==============================================================================
 if __name__ == "__main__":
-    # 15 Minutes = 900 Seconds Interval (Clean execution, no clutter)
+    # 15 Minutes = 900 Seconds (Run flow clutter free rakhne ke liye)
     SLEEP_INTERVAL = 900  
 
-    print("🚀 OI_VCP Heavyweight-Engine Scanner Active...")
+    print("🚀 OI_VCP Auto-Scanner Engine Active...")
 
     while True:
         try:
@@ -185,7 +253,7 @@ if __name__ == "__main__":
                         gc = get_gspread_client()
                         sh = gc.open_by_key(sheet_id)
                         
-                        # Aapka exact tab name mapping:
+                        # Aapke Exact Tab Name ke saath Update:
                         update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
                         update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
                         
