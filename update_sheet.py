@@ -1,4 +1,5 @@
 import os
+import json
 import time
 from datetime import datetime
 import pytz
@@ -7,15 +8,25 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==============================================================================
-# SECTION 1: AUTHENTICATION & GOOGLE SHEETS SETUP
+# SECTION 1: AUTHENTICATION (READS GCP_CREDENTIALS_JSON FROM GITHUB SECRETS)
 # ==============================================================================
 def get_gspread_client():
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
-    creds = Credentials.from_service_account_file(creds_path, scopes=scope)
+    
+    # Direct GitHub Secret variable read (GCP_CREDENTIALS_JSON)
+    gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    
+    if gcp_json_str:
+        creds_dict = json.loads(gcp_json_str)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    else:
+        # Local fallback if testing on laptop
+        creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
+        creds = Credentials.from_service_account_file(creds_path, scopes=scope)
+        
     return gspread.authorize(creds)
 
 def update_tab(sh, df, tab_name):
@@ -30,7 +41,6 @@ def update_tab(sh, df, tab_name):
         print(f"✅ Tab '{tab_name}' Successfully Updated!")
     except Exception as e:
         print(f"❌ Error updating tab '{tab_name}': {e}")
-
 # ==============================================================================
 # SECTION 2: HEAVYWEIGHT CONFLUENCE ENGINE (STRICT CE/PE & DIVERGENCE PROTECTION)
 # ==============================================================================
