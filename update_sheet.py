@@ -160,39 +160,31 @@ def fetch_and_process_data():
     return df_ce, df_ce.copy()
 
 # ==============================================================================
-# SECTION 4 & 5: MAIN EXECUTION LOOP (INSTANT FIRST RUN + 15 MIN AUTO REFRESH)
+# SECTION 4 & 5: SINGLE EXECUTION FOR GITHUB ACTIONS / AUTOMATION (NO SLEEP LOOP)
 # ==============================================================================
 if __name__ == "__main__":
-    SLEEP_INTERVAL = 900  # 15 Minutes (900 Seconds)
+    print("🚀 OI_VCP Single Run Triggered via GitHub Actions...")
+    
+    try:
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
+        print(f"[⏱️ Execution Time: {now.strftime('%H:%M:%S IST')}] Processing 153 Stocks...")
 
-    print("🚀 OI_VCP Engine Active with All 153 Stocks & Heavyweight Protection...")
+        # 1. Fetch & Process
+        df_ce, df_pe = fetch_and_process_data()
 
-    while True:
-        try:
-            ist = pytz.timezone('Asia/Kolkata')
-            now = datetime.now(ist)
+        # 2. Update Google Sheet
+        sheet_id = os.environ.get("SHEET_ID")
+        if sheet_id:
+            gc = get_gspread_client()
+            sh = gc.open_by_key(sheet_id)
 
-            print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Scanning 153 Stocks & Updating Sheet...")
-            
-            df_ce, df_pe = fetch_and_process_data()
-            sheet_id = os.environ.get("SHEET_ID")
+            update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
+            update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
+            print("🎉 SUCCESS! Google Sheet Updated Successfully.")
+        else:
+            print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
-            if sheet_id:
-                gc = get_gspread_client()
-                sh = gc.open_by_key(sheet_id)
-
-                update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
-                update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-                print("🎉 SUCCESS! Sheet Updated Successfully!")
-            else:
-                print("⚠️ SHEET_ID environment variable missing!")
-
-            print(f"💤 Sleeping 15 mins... Next update at {(now + pd.Timedelta(minutes=15)).strftime('%H:%M:%S IST')}")
-            time.sleep(SLEEP_INTERVAL)
-
-        except KeyboardInterrupt:
-            print("\n🛑 Script stopped manually.")
-            break
-        except Exception as global_err:
-            print(f"⚠️ Unexpected Error: {global_err}")
-            time.sleep(15)
+    except Exception as err:
+        print(f"❌ Execution Failed: {err}")
+        exit(1)
