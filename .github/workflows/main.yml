@@ -1,47 +1,31 @@
-name: Run CE Stock Screener
+name: OI_VCP Dashboard Auto Update
 
 on:
-  # 1. Runs every 15 minutes during Indian Market Hours (Monday to Friday)
-  # UTC 03:45 to 10:00 corresponds to 09:15 AM to 03:30 PM IST
   schedule:
-    - cron: '*/15 3-9 * * 1-5'
-
-  # 2. Allows manual execution from the GitHub Actions tab anytime
-  workflow_dispatch:
+    # Har 15 minute mein automatically run hoga (Monday to Friday)
+    - cron: '*/15 3-10 * * 1-5'
+  workflow_dispatch: # Manual Run button ke liye
 
 jobs:
-  update-sheet:
+  build-and-run:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Repository code checkout
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Check out repository
+      uses: actions/checkout@v3
 
-      # Step 2: Set up Python Environment
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      # Step 3: Cache Pip packages to speed up builds
-      - name: Cache Pip Dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas gspread google-auth pytz
 
-      # Step 4: Install Dependencies
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas yfinance gspread google-auth pytz
-
-      # Step 5: Execute Python Script with Environment Secrets
-      - name: Execute Screener Script
-        env:
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-        run: python update_sheet.py
+    - name: Run Python Script
+      env:
+        SHEET_ID: ${{ secrets.SHEET_ID }}
+        GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+      run: python update_sheet.py
