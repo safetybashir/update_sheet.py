@@ -336,25 +336,49 @@ def update_tab(sh, df, target_tab_name):
         print(f"❌ Update Failed for '{target_tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 5: MAIN EXECUTION
+# SECTION 5: MAIN EXECUTION (WITH AUTOMATIC LOOP)
 # ==============================================================================
 if __name__ == "__main__":
-    df_ce, df_pe = fetch_and_process_data()
+    # Continuous Loop: Har 300 Seconds (5 Min) mein update hoga
+    SLEEP_INTERVAL = 300  # Seconds (5 Minutes)
 
-    sheet_id = os.environ.get("SHEET_ID")
-    if sheet_id:
-        try:
-            gc = get_gspread_client()
-            sh = gc.open_by_key(sheet_id)
+    print("🚀 Auto-Scanner Service Started...")
+
+    while True:
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
+
+        # Market Hours Check (Monday-Friday, 09:15 AM to 03:30 PM)
+        is_weekday = now.weekday() < 5
+        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+
+        if is_weekday and (market_open <= now <= market_close):
+            print(f"\n🔄 Running Scan at {now.strftime('%H:%M:%S IST')}...")
             
-            # 1. Update CE Raw Data Tab
-            update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
-            
-            # 2. Update PE Raw Data Tab
-            update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-            
-            # NOTE: "NEW OI_VCP B/O DASHBOARD" tab is excluded from Python overwrite 
-            # so that custom Google Sheet formulas (=FILTER) remain intact!
-            
-        except Exception as e:
-            print(f"❌ Connection Error: {e}")
+            try:
+                df_ce, df_pe = fetch_and_process_data()
+                sheet_id = os.environ.get("SHEET_ID")
+                
+                if sheet_id:
+                    gc = get_gspread_client()
+                    sh = gc.open_by_key(sheet_id)
+                    
+                    update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
+                    update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
+                    print("✅ Sheet Updated Successfully.")
+                else:
+                    print("⚠️ SHEET_ID environment variable not found!")
+
+            except Exception as e:
+                print(f"❌ Execution Error: {e}")
+
+            print(f"💤 Sleeping for {SLEEP_INTERVAL//60} minutes...\n")
+            time.sleep(SLEEP_INTERVAL)
+        
+        elif not is_weekday:
+            print("📅 Weekend detected. Script is waiting for Monday...")
+            time.sleep(3600)  # Check every hour
+        else:
+            print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for next market session...")
+            time.sleep(300)   # Check every 5 mins till market opens
