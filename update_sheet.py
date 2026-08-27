@@ -336,15 +336,15 @@ def update_tab(sh, df, target_tab_name):
         print(f"❌ Update Failed for '{target_tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 5: MAIN EXECUTION (FAST AUTO-REFRESH & TIMEOUT FIX)
+# SECTION 5: MAIN EXECUTION (15-MINUTE AUTO REFRESH LOOP)
 # ==============================================================================
 if __name__ == "__main__":
     import time
     import pytz
     from datetime import datetime
 
-    # Har 5 Min (300 sec) ka refresh interval
-    SLEEP_INTERVAL = 300  
+    # 15 Minutes = 900 Seconds (Agar 10 Min karna ho toh 600 karein)
+    SLEEP_INTERVAL = 900  
 
     print("🚀 OI_VCP Auto-Scanner Engine Active...")
 
@@ -357,11 +357,11 @@ if __name__ == "__main__":
             market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
             market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
 
+            # Market Hours Check (09:15 AM to 03:30 PM)
             if is_weekday and (market_open <= now <= market_close):
                 start_time = time.time()
-                print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Fetching Market Data & Updating Sheets...")
+                print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Fetching Market Data & Refreshing Sheets...")
                 
-                # Fetching and Updating with Exception Safety
                 try:
                     df_ce, df_pe = fetch_and_process_data()
                     sheet_id = os.environ.get("SHEET_ID")
@@ -370,32 +370,31 @@ if __name__ == "__main__":
                         gc = get_gspread_client()
                         sh = gc.open_by_key(sheet_id)
                         
-                        # Direct Update
-                        update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
+                        # Aapke Exact Tab Names ke sath update logic:
+                        update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
                         update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
                         
                         elapsed = round(time.time() - start_time, 2)
-                        print(f"✅ Success! Sheet Updated in {elapsed} seconds.")
+                        print(f"✅ 'NEW OI_VCP B/O DASHBOARD' Updated Successfully in {elapsed} sec!")
                     else:
-                        print("⚠️ SHEET_ID Variable Missed!")
+                        print("⚠️ SHEET_ID variable missing in environment!")
 
                 except Exception as fetch_err:
-                    print(f"❌ Error during Data Fetch/Update: {fetch_err}")
+                    print(f"❌ Scan/Update Error: {fetch_err}")
 
-                # Next 5-Minute Timer Calculation
-                print(f"💤 Waiting 5 minutes for next scan cycle...")
+                print(f"💤 Sleeping for 15 minutes... Next update in 15 mins.")
                 time.sleep(SLEEP_INTERVAL)
 
             elif not is_weekday:
-                print("📅 Weekend - Market Closed. Waiting...")
-                time.sleep(3600)
+                print("📅 Weekend detected - Market Closed. Waiting...")
+                time.sleep(3600)  # Check every hour
             else:
-                print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for market opening...")
-                time.sleep(300)
+                print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for next market session...")
+                time.sleep(900)
 
         except KeyboardInterrupt:
-            print("\n🛑 Script stopped manually by user.")
+            print("\n🛑 Script stopped manually.")
             break
         except Exception as global_err:
-            print(f"⚠️ Unexpected System Error: {global_err}")
+            print(f"⚠️ Unexpected Error: {global_err}")
             time.sleep(10)
