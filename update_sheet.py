@@ -184,10 +184,10 @@ def fetch_and_process_data():
     return df_ce, df_pe
 
 # ==============================================================================
-# SECTION 4 & 5: MAIN EXECUTION LOOP (15-MINUTE AUTO REFRESH LOOP)
+# SECTION 4 & 5: MAIN EXECUTION LOOP (15-MIN REFRESH WITH INSTANT FIRST RUN)
 # ==============================================================================
 if __name__ == "__main__":
-    SLEEP_INTERVAL = 900  # 15 Minutes (900 seconds)
+    SLEEP_INTERVAL = 900  # 15 Minutes (900 Seconds)
 
     print("🚀 OI_VCP Engine Active with All 153 Stocks & Heavyweight Protection...")
 
@@ -196,48 +196,32 @@ if __name__ == "__main__":
             ist = pytz.timezone('Asia/Kolkata')
             now = datetime.now(ist)
 
-            is_weekday = now.weekday() < 5
-            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            # Direct Instant Run without waiting for time checks on 1st loop
+            start_time = time.time()
+            print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Scanning 153 Stocks & Refreshing Sheet...")
 
-            # Live Market Hours (09:15 AM to 03:30 PM IST)
-            if is_weekday and (market_open <= now <= market_close):
-                start_time = time.time()
-                print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Scanning 153 Stocks & Refreshing Sheet...")
-                
-                try:
-                    df_ce, df_pe = fetch_and_process_data()
-                    sheet_id = os.environ.get("SHEET_ID")
-                    
-                    if sheet_id:
-                        gc = get_gspread_client()
-                        sh = gc.open_by_key(sheet_id)
-                        
-                        # Exact Tab Name & Original Format Preserved
-                        update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
-                        update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-                        
-                        elapsed = round(time.time() - start_time, 2)
-                        print(f"✅ 'NEW OI_VCP B/O DASHBOARD' Updated Successfully in {elapsed} sec!")
-                    else:
-                        print("⚠️ SHEET_ID environment variable missing!")
+            df_ce, df_pe = fetch_and_process_data()
+            sheet_id = os.environ.get("SHEET_ID")
 
-                except Exception as fetch_err:
-                    print(f"❌ Scan/Update Error: {fetch_err}")
+            if sheet_id:
+                gc = get_gspread_client()
+                sh = gc.open_by_key(sheet_id)
 
-                print("💤 Sleeping for 15 minutes... Next update in 15 mins.")
-                time.sleep(SLEEP_INTERVAL)
+                # Tab updates
+                update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
+                update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
 
-            elif not is_weekday:
-                print("📅 Weekend detected - Market Closed. Waiting...")
-                time.sleep(3600)
+                elapsed = round(time.time() - start_time, 2)
+                print(f"✅ 'NEW OI_VCP B/O DASHBOARD' Updated Successfully in {elapsed} sec!")
             else:
-                print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for next market session...")
-                time.sleep(900)
+                print("⚠️ SHEET_ID environment variable missing!")
+
+            print(f"💤 Sleeping for 15 minutes... Next auto-update at {(now.replace(second=0, microsecond=0) + pd.Timedelta(minutes=15)).strftime('%H:%M:%S IST')}")
+            time.sleep(SLEEP_INTERVAL)
 
         except KeyboardInterrupt:
             print("\n🛑 Script stopped manually.")
             break
         except Exception as global_err:
             print(f"⚠️ Unexpected Error: {global_err}")
-            time.sleep(10)
+            time.sleep(15)
