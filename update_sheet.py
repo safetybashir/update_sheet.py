@@ -336,56 +336,66 @@ def update_tab(sh, df, target_tab_name):
         print(f"❌ Update Failed for '{target_tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 5: MAIN EXECUTION (5-MIN AUTO REFRESH LOOP)
+# SECTION 5: MAIN EXECUTION (FAST AUTO-REFRESH & TIMEOUT FIX)
 # ==============================================================================
 if __name__ == "__main__":
     import time
     import pytz
     from datetime import datetime
 
-    # Har 5 minute (300 seconds) par update hoga
+    # Har 5 Min (300 sec) ka refresh interval
     SLEEP_INTERVAL = 300  
 
-    print("🚀 OI_VCP Auto-Scanner Live Service Started...")
+    print("🚀 OI_VCP Auto-Scanner Engine Active...")
 
     while True:
-        ist = pytz.timezone('Asia/Kolkata')
-        now = datetime.now(ist)
+        try:
+            ist = pytz.timezone('Asia/Kolkata')
+            now = datetime.now(ist)
 
-        # Market Hours Check (Monday-Friday, 09:15 AM to 03:30 PM)
-        is_weekday = now.weekday() < 5
-        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            is_weekday = now.weekday() < 5
+            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
 
-        if is_weekday and (market_open <= now <= market_close):
-            print(f"\n🔄 Running Scan at {now.strftime('%H:%M:%S IST')}...")
-            
-            try:
-                # Aapka existing fetch data function
-                df_ce, df_pe = fetch_and_process_data()
-                sheet_id = os.environ.get("SHEET_ID")
+            if is_weekday and (market_open <= now <= market_close):
+                start_time = time.time()
+                print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Fetching Market Data & Updating Sheets...")
                 
-                if sheet_id:
-                    gc = get_gspread_client()
-                    sh = gc.open_by_key(sheet_id)
+                # Fetching and Updating with Exception Safety
+                try:
+                    df_ce, df_pe = fetch_and_process_data()
+                    sheet_id = os.environ.get("SHEET_ID")
                     
-                    # Saare Dashboard Tabs ko Update karega
-                    update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
-                    update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-                    # Agar aapne OI_VCP Tab ka name alag rakha hai toh yahan wo naam dalein
-                    print("✅ OI_VCP & Live Sheets Updated Successfully.")
-                else:
-                    print("⚠️ SHEET_ID variable missing in environment!")
+                    if sheet_id:
+                        gc = get_gspread_client()
+                        sh = gc.open_by_key(sheet_id)
+                        
+                        # Direct Update
+                        update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
+                        update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
+                        
+                        elapsed = round(time.time() - start_time, 2)
+                        print(f"✅ Success! Sheet Updated in {elapsed} seconds.")
+                    else:
+                        print("⚠️ SHEET_ID Variable Missed!")
 
-            except Exception as e:
-                print(f"❌ Scan Error: {e}")
+                except Exception as fetch_err:
+                    print(f"❌ Error during Data Fetch/Update: {fetch_err}")
 
-            print(f"💤 Sleeping for 5 minutes... (Next update at { (now.minute + 5)%60 } mins mark)")
-            time.sleep(SLEEP_INTERVAL)
-        
-        elif not is_weekday:
-            print("📅 Weekend: Market Closed. Waiting for Monday...")
-            time.sleep(3600)  # Check every hour
-        else:
-            print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for next market session...")
-            time.sleep(300)
+                # Next 5-Minute Timer Calculation
+                print(f"💤 Waiting 5 minutes for next scan cycle...")
+                time.sleep(SLEEP_INTERVAL)
+
+            elif not is_weekday:
+                print("📅 Weekend - Market Closed. Waiting...")
+                time.sleep(3600)
+            else:
+                print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for market opening...")
+                time.sleep(300)
+
+        except KeyboardInterrupt:
+            print("\n🛑 Script stopped manually by user.")
+            break
+        except Exception as global_err:
+            print(f"⚠️ Unexpected System Error: {global_err}")
+            time.sleep(10)
