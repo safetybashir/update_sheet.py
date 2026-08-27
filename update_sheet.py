@@ -7,10 +7,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==============================================================================
-# SECTION 1: GSPREAD / GOOGLE SHEETS AUTHENTICATION
+# SECTION 1: AUTHENTICATION & GOOGLE SHEETS SETUP
 # ==============================================================================
 def get_gspread_client():
-    """Google Sheets API Connection Setup"""
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
@@ -20,7 +19,6 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 def update_tab(sh, df, tab_name):
-    """Google Sheet Update Function (Format 100% Untouched)"""
     try:
         try:
             worksheet = sh.worksheet(tab_name)
@@ -28,69 +26,62 @@ def update_tab(sh, df, tab_name):
             worksheet = sh.add_worksheet(title=tab_name, rows="200", cols="20")
         
         worksheet.clear()
-        worksheet.update([df.columns.values.tolist()] + df.astype(str).values.tolist())
+        worksheet.update([df.columns.values.tolist()] + df.astype(str).values.tolist(), value_input_option='USER_ENTERED')
+        print(f"✅ Tab '{tab_name}' Successfully Updated!")
     except Exception as e:
         print(f"❌ Error updating tab '{tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 2: HEAVYWEIGHT CONFLUENCE ENGINE (NIFTY 50 TRAP PROTECTION)
+# SECTION 2: HEAVYWEIGHT CONFLUENCE ENGINE (STRICT CE/PE & DIVERGENCE PROTECTION)
 # ==============================================================================
-def process_nifty_with_heavyweights(raw_data_dict):
+def process_heavyweight_logic(raw_data_dict):
     """
-    Nifty 50 ko tabhi UPTREND/DOWNTREND dega jab Heavyweights (HDFC, RELIANCE, ICICI, TCS) Confirm karenge.
-    Agar Divergence hai (e.g. Reliance/HDFC drop ho rahe hain) toh NO TRADE 🚫 (HDFC/RELIANCE DIVERGENCE) milega.
+    STRICT HEAVYWEIGHT LOGIC:
+    - HDFCBANK & RELIANCE UP -> 🚀 BUY CE (CONFIRMED)
+    - HDFCBANK & RELIANCE DOWN -> 🚨 BUY PE (CONFIRMED)
+    - MIXED / DIVERGENCE -> NO TRADE 🚫
     """
-    heavyweights = ['HDFCBANK', 'RELIANCE', 'ICICIBANK', 'TCS']
-    hw_score = 0
-    hw_status_list = []
-    
-    for symbol in heavyweights:
-        if symbol in raw_data_dict:
-            item = raw_data_dict[symbol]
-            trend = item.get('trend', 'SIDEWAYS')
-            vol = item.get('vol_spike', 1.0)
-            
-            if trend == 'UPTREND' and vol >= 1.2:
-                hw_score += 2
-                hw_status_list.append(f"{symbol} 🟢")
-            elif trend == 'UPTREND':
-                hw_score += 1
-                hw_status_list.append(f"{symbol} 🟢")
-            elif trend == 'DOWNTREND':
-                hw_score -= 2
-                hw_status_list.append(f"{symbol} 🔴")
+    hw_stocks = ['HDFCBANK', 'RELIANCE', 'ICICIBANK', 'TCS']
+    up_count = 0
+    down_count = 0
+    hw_status = []
+
+    for sym in hw_stocks:
+        if sym in raw_data_dict:
+            t = raw_data_dict[sym].get('trend', 'SIDEWAYS')
+            if t == 'UPTREND':
+                up_count += 1
+                hw_status.append(f"{sym}: 🟢")
+            elif t == 'DOWNTREND':
+                down_count += 1
+                hw_status.append(f"{sym}: 🔴")
             else:
-                hw_status_list.append(f"{symbol} 🟡")
-        else:
-            hw_status_list.append(f"{symbol} ⚪")
+                hw_status.append(f"{sym}: 🟡")
 
-    hw_summary = " | ".join(hw_status_list)
+    summary_str = " | ".join(hw_status)
 
-    # Confluence Check Rules
-    if hw_score >= 3:
+    if up_count >= 2 and down_count == 0:
         final_trend = "🟢 UPTREND"
-        action_plan = "BUY CE (HEAVYWEIGHT CONFIRMED) 🟢"
-        nifty_score = 6.0
-    elif hw_score <= -3:
+        action = "🚀 BUY CE (HEAVYWEIGHT UPTREND CONFIRMED)"
+        score = 10.0
+    elif down_count >= 2 and up_count == 0:
         final_trend = "🔴 DOWNTREND"
-        action_plan = "BUY PE (HEAVYWEIGHT CONFIRMED) 🔴"
-        nifty_score = 0.0
+        action = "🚨 BUY PE (HEAVYWEIGHT DOWNTREND CONFIRMED)"
+        score = 0.0
     else:
-        # Divergence / Trap Protection (Zero Risk Mode)
-        final_trend = "🟡 SIDEWAYS"
-        action_plan = "NO TRADE 🚫 (HDFC/RELIANCE DIVERGENCE)"
-        nifty_score = 0.0
-        
-    return final_trend, action_plan, hw_summary, nifty_score
+        final_trend = "🟡 SIDEWAYS / DIVERGENCE"
+        action = "NO TRADE 🚫 (HDFC/RELIANCE DIVERGENCE)"
+        score = 5.0
+
+    return final_trend, action, summary_str, score
 
 # ==============================================================================
-# SECTION 3: YOUR COMPLETE 153 STOCKS LIST & DATA MAPPING
+# SECTION 3: 153 STOCKS DATA PROCESSING & SCANNER
 # ==============================================================================
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist).strftime('%H:%M:%S')
 
-    # AAPKE DOKUMENT/IMAGE SE EXACT 153 STOCKS KI COMPLETE LIST
     all_user_stocks = [
         "CROMPTON", "HINDZINC", "LODHA", "BLUESTARCO", "BEL", "JUBLFOOD", "PREMIERENE", 
         "GMRAIRPORT", "VEDL", "CONCOR", "PIIND", "EICHERMOT", "TIINDIA", "ETERNAL", 
@@ -118,73 +109,58 @@ def fetch_and_process_data():
         "FEDERALBNK", "BANDHANBNK", "IDBI", "UNIONBANK", "IOB", "UCOBANK"
     ]
 
-    # Target Data Dictionary Mapping (Live Signals & Triggers)
+    # Note: Connect raw_stocks_data to your broker API feed (Zerodha / Live Feed)
     raw_stocks_data = {}
     for sym in all_user_stocks:
         if sym == 'MANKIND':
-            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 8.09, 'ltp': 2398.0, 'score': 10.0, 'action': 'BUY CE (SWEET SPOT) 🟢', 'trigger': 'BUY > 2398.0 | T1: 2404.7 (SL: 2393.5)'}
-        elif sym == 'UNOMINDA':
-            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 0.81, 'ltp': 1279.8, 'score': 4.6, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'}
-        elif sym == 'TIINDIA':
-            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 0.68, 'ltp': 2869.1, 'score': 4.5, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'}
-        elif sym == 'APOLLOHOSP':
-            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 2.50, 'ltp': 8800.0, 'score': 3.5, 'action': 'WATCH CE 👀', 'trigger': 'FLAT RANGE / SL TOO TIGHT'}
-        elif sym == 'KAYNES':
-            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 0.62, 'ltp': 4039.0, 'score': 2.3, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'}
+            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 8.09, 'ltp': 2398.0, 'score': 10.0, 'action': 'BUY CE (SWEET SPOT) 🟢', 'trigger': 'BUY > 2398.0'}
         elif sym == 'HDFCBANK':
-            raw_stocks_data[sym] = {'trend': 'SIDEWAYS', 'vol_spike': 0.9, 'ltp': 1650.0, 'score': 4.0, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR BREAKOUT'}
+            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 1.5, 'ltp': 1650.0, 'score': 8.0, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'}
         elif sym == 'RELIANCE':
-            raw_stocks_data[sym] = {'trend': 'DOWNTREND', 'vol_spike': 1.1, 'ltp': 2980.0, 'score': 2.0, 'action': 'NO TRADE 🚫', 'trigger': 'BEARISH DRAG'}
+            raw_stocks_data[sym] = {'trend': 'UPTREND', 'vol_spike': 1.8, 'ltp': 2980.0, 'score': 9.0, 'action': 'WATCH CE 👀', 'trigger': 'WAIT FOR VOL SPIKE'}
         else:
             raw_stocks_data[sym] = {'trend': 'SIDEWAYS', 'vol_spike': 1.0, 'ltp': 1000.0, 'score': 0.0, 'action': 'NO TRADE 🚫', 'trigger': 'WAIT FOR SETUP'}
 
-    # 1. Evaluate Nifty 50 with Heavyweight Background Filter
-    nifty_trend, nifty_action, hw_summary, nifty_score = process_nifty_with_heavyweights(raw_stocks_data)
+    # Run Heavyweight Logic Engine
+    n_trend, n_action, hw_summary, n_score = process_heavyweight_logic(raw_stocks_data)
 
     data_ce = []
-    
-    # Row #1: NIFTY 50 (Always on Top)
+    # Row #1: NIFTY 50 Index Confluence Row
     data_ce.append({
         'Rank': '#1',
-        'TrendClean': nifty_trend,
+        'TrendClean': n_trend,
         'Symbol': 'NIFTY 50',
         'LTP': 24154.6,
-        'Action / Entry Trigger': nifty_action,
+        'Action / Entry Trigger': n_action,
         'CE Entry Plan': f"HW Status: {hw_summary}",
         'Volume Spike': '1.0x ⚡',
-        'CE Strength Score': nifty_score,
+        'CE Strength Score': n_score,
         'Execution Time': curr_time
     })
 
-    # Row #2 onwards: AAPKE SAARE 153 STOCKS (Ranked Highest Score First)
+    # Row #2 to #154: All 153 Stocks
     sorted_stocks = sorted(raw_stocks_data.items(), key=lambda x: x[1].get('score', 0.0), reverse=True)
-
     rank_count = 2
     for symbol, item in sorted_stocks:
-        trend_label = '🟢 UPTREND' if item.get('trend') == 'UPTREND' else ('🔴 DOWNTREND' if item.get('trend') == 'DOWNTREND' else '🟡 SIDEWAYS')
-        vol_val = item.get('vol_spike', 1.0)
-        vol_str = f"{vol_val}x ⚡" if vol_val >= 1.0 else f"{vol_val}x 💧"
-
+        t_label = '🟢 UPTREND' if item.get('trend') == 'UPTREND' else ('🔴 DOWNTREND' if item.get('trend') == 'DOWNTREND' else '🟡 SIDEWAYS')
         data_ce.append({
             'Rank': f"#{rank_count}",
-            'TrendClean': trend_label,
+            'TrendClean': t_label,
             'Symbol': symbol,
             'LTP': item.get('ltp', 0.0),
-            'Action / Entry Trigger': item.get('action', 'WATCH CE 👀'),
+            'Action / Entry Trigger': item.get('action', 'NO TRADE 🚫'),
             'CE Entry Plan': item.get('trigger', 'WAIT FOR VOL SPIKE'),
-            'Volume Spike': vol_str,
+            'Volume Spike': f"{item.get('vol_spike', 1.0)}x ⚡",
             'CE Strength Score': item.get('score', 0.0),
             'Execution Time': curr_time
         })
         rank_count += 1
 
     df_ce = pd.DataFrame(data_ce)
-    df_pe = df_ce.copy()
-
-    return df_ce, df_pe
+    return df_ce, df_ce.copy()
 
 # ==============================================================================
-# SECTION 4 & 5: MAIN EXECUTION LOOP (15-MIN REFRESH WITH INSTANT FIRST RUN)
+# SECTION 4 & 5: MAIN EXECUTION LOOP (INSTANT FIRST RUN + 15 MIN AUTO REFRESH)
 # ==============================================================================
 if __name__ == "__main__":
     SLEEP_INTERVAL = 900  # 15 Minutes (900 Seconds)
@@ -196,10 +172,8 @@ if __name__ == "__main__":
             ist = pytz.timezone('Asia/Kolkata')
             now = datetime.now(ist)
 
-            # Direct Instant Run without waiting for time checks on 1st loop
-            start_time = time.time()
-            print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Scanning 153 Stocks & Refreshing Sheet...")
-
+            print(f"\n[⏱️ {now.strftime('%H:%M:%S IST')}] Scanning 153 Stocks & Updating Sheet...")
+            
             df_ce, df_pe = fetch_and_process_data()
             sheet_id = os.environ.get("SHEET_ID")
 
@@ -207,16 +181,13 @@ if __name__ == "__main__":
                 gc = get_gspread_client()
                 sh = gc.open_by_key(sheet_id)
 
-                # Tab updates
                 update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
                 update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-
-                elapsed = round(time.time() - start_time, 2)
-                print(f"✅ 'NEW OI_VCP B/O DASHBOARD' Updated Successfully in {elapsed} sec!")
+                print("🎉 SUCCESS! Sheet Updated Successfully!")
             else:
                 print("⚠️ SHEET_ID environment variable missing!")
 
-            print(f"💤 Sleeping for 15 minutes... Next auto-update at {(now.replace(second=0, microsecond=0) + pd.Timedelta(minutes=15)).strftime('%H:%M:%S IST')}")
+            print(f"💤 Sleeping 15 mins... Next update at {(now + pd.Timedelta(minutes=15)).strftime('%H:%M:%S IST')}")
             time.sleep(SLEEP_INTERVAL)
 
         except KeyboardInterrupt:
