@@ -336,13 +336,17 @@ def update_tab(sh, df, target_tab_name):
         print(f"❌ Update Failed for '{target_tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 5: MAIN EXECUTION (WITH AUTOMATIC LOOP)
+# SECTION 5: MAIN EXECUTION (5-MIN AUTO REFRESH LOOP)
 # ==============================================================================
 if __name__ == "__main__":
-    # Continuous Loop: Har 300 Seconds (5 Min) mein update hoga
-    SLEEP_INTERVAL = 300  # Seconds (5 Minutes)
+    import time
+    import pytz
+    from datetime import datetime
 
-    print("🚀 Auto-Scanner Service Started...")
+    # Har 5 minute (300 seconds) par update hoga
+    SLEEP_INTERVAL = 300  
+
+    print("🚀 OI_VCP Auto-Scanner Live Service Started...")
 
     while True:
         ist = pytz.timezone('Asia/Kolkata')
@@ -357,6 +361,7 @@ if __name__ == "__main__":
             print(f"\n🔄 Running Scan at {now.strftime('%H:%M:%S IST')}...")
             
             try:
+                # Aapka existing fetch data function
                 df_ce, df_pe = fetch_and_process_data()
                 sheet_id = os.environ.get("SHEET_ID")
                 
@@ -364,21 +369,23 @@ if __name__ == "__main__":
                     gc = get_gspread_client()
                     sh = gc.open_by_key(sheet_id)
                     
+                    # Saare Dashboard Tabs ko Update karega
                     update_tab(sh, df_ce, "LIVE_CE_DASHBOARD")
                     update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
-                    print("✅ Sheet Updated Successfully.")
+                    # Agar aapne OI_VCP Tab ka name alag rakha hai toh yahan wo naam dalein
+                    print("✅ OI_VCP & Live Sheets Updated Successfully.")
                 else:
-                    print("⚠️ SHEET_ID environment variable not found!")
+                    print("⚠️ SHEET_ID variable missing in environment!")
 
             except Exception as e:
-                print(f"❌ Execution Error: {e}")
+                print(f"❌ Scan Error: {e}")
 
-            print(f"💤 Sleeping for {SLEEP_INTERVAL//60} minutes...\n")
+            print(f"💤 Sleeping for 5 minutes... (Next update at { (now.minute + 5)%60 } mins mark)")
             time.sleep(SLEEP_INTERVAL)
         
         elif not is_weekday:
-            print("📅 Weekend detected. Script is waiting for Monday...")
+            print("📅 Weekend: Market Closed. Waiting for Monday...")
             time.sleep(3600)  # Check every hour
         else:
             print(f"⏰ Market Closed ({now.strftime('%H:%M:%S IST')}). Waiting for next market session...")
-            time.sleep(300)   # Check every 5 mins till market opens
+            time.sleep(300)
