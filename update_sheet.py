@@ -79,45 +79,38 @@ def process_heavyweight_logic(raw_data_dict):
     return final_trend, action, summary_str, score
 
 # ==============================================================================
-# SECTION 3: 7-POINT OPTION CHAIN ANALYTICS (CONCISE TEXT)
+# SECTION 3: OPTION CHAIN ENGINE & ENTRY LOGIC (BACKEND RULES)
 # ==============================================================================
-def calculate_7point_option_score(pcr, ltp, max_pain, call_price_up, call_oi_up, put_oi_down, call_ask_vol, put_bid_vol, call_iv, put_iv, atm_iv):
+def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_down, atm_iv):
     score = 0
-    reasons = []
 
+    # Backend Evaluation Rules
     if pcr > 1.0:
-        score += 15
-        reasons.append("PCR>1")
-    if ltp < max_pain:
-        score += 15
-        reasons.append("<MaxPain")
-    if call_price_up and call_oi_up:
-        score += 20
-        reasons.append("LongBU")
-    if put_oi_down:
-        score += 15
-        reasons.append("PE-Unwind")
-    if call_ask_vol and put_bid_vol:
-        score += 15
-        reasons.append("AskBuy")
-    if call_iv > put_iv:
-        score += 10
-        reasons.append("IV-Skew")
+        score += 25
     if atm_iv < 20.0:
-        score += 10
-        reasons.append("CheapIV")
+        score += 25
+    if call_price_up and call_oi_up:
+        score += 25
+    if put_oi_down:
+        score += 25
 
-    tag = "🔥" if score >= 80 else ("🟢" if score >= 50 else "🔴")
+    tag = "🔥" if score >= 75 else ("🟢" if score >= 50 else "🔴")
     score_str = f"{score} {tag}"
-    reasons_str = "|".join(reasons) if reasons else "-"
-    
-    return score_str, reasons_str
+
+    # Single Entry Status Column Decision Engine
+    if score >= 75 and pcr > 1.0 and atm_iv < 20.0:
+        entry_status = "READY ENTRY 🚀"
+    elif score >= 50:
+        entry_status = "WAIT FOR BREAKOUT ⏳"
+    else:
+        entry_status = "NO ENTRY 🚫"
+
+    return score_str, entry_status
 
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist).strftime('%H:%M:%S')
 
-    # Real baseline prices for LTP bug fix
     sample_stock_ltps = {
         "CROMPTON": 385.4, "HINDZINC": 512.1, "LODHA": 1180.0, "BLUESTARCO": 1690.5, 
         "BEL": 288.3, "JUBLFOOD": 560.2, "PREMIERENE": 950.0, "GMRAIRPORT": 92.4, 
@@ -157,30 +150,27 @@ def fetch_and_process_data():
     for sym in all_user_stocks:
         stock_ltp = sample_stock_ltps.get(sym, 450.0)
         
-        # MANKIND and Heavyweights get active bullish setup
         if sym in ['MANKIND', 'HDFCBANK', 'RELIANCE', 'TATASTEEL']:
             raw_stocks_data[sym] = {
                 'trend': 'UPTREND', 'vol_spike': 3.5, 'ltp': stock_ltp, 'score': 10.0,
                 'action': 'BUY CE 🚀', 'trigger': f'BUY>{stock_ltp}',
-                'pcr': 1.25, 'max_pain': stock_ltp + 20, 'call_price_up': True,
-                'call_oi_up': True, 'put_oi_down': True, 'call_ask_vol': True,
-                'put_bid_vol': True, 'call_iv': 18.0, 'put_iv': 14.0, 'atm_iv': 15.0
+                'pcr': 1.25, 'call_price_up': True, 'call_oi_up': True, 
+                'put_oi_down': True, 'atm_iv': 15.0
             }
         else:
             raw_stocks_data[sym] = {
                 'trend': 'SIDEWAYS', 'vol_spike': 1.0, 'ltp': stock_ltp, 'score': 2.0,
                 'action': 'WATCH 👀', 'trigger': 'VOL SPIKE',
-                'pcr': 0.8, 'max_pain': stock_ltp, 'call_price_up': False,
-                'call_oi_up': False, 'put_oi_down': False, 'call_ask_vol': False,
-                'put_bid_vol': False, 'call_iv': 15.0, 'put_iv': 16.0, 'atm_iv': 15.0
+                'pcr': 0.8, 'call_price_up': False, 'call_oi_up': False, 
+                'put_oi_down': False, 'atm_iv': 22.0
             }
 
     n_trend, n_action, hw_summary, n_score = process_heavyweight_logic(raw_stocks_data)
 
     data_ce = []
     
-    # 1. Row #1: NIFTY 50 INDEX (Concise Headers)
-    n_score_str, n_reasons_str = calculate_7point_option_score(1.25, 24154.6, 24300.0, True, True, True, True, True, 16.5, 12.0, 14.0)
+    # 1. NIFTY 50 INDEX
+    n_score_str, n_entry_status = calculate_7point_option_score(1.25, 24154.6, True, True, True, 14.0)
     data_ce.append({
         'Rank': '#1',
         'Trend': n_trend,
@@ -189,20 +179,19 @@ def fetch_and_process_data():
         'Signal': n_action,
         'Trigger Plan': f"HW: {hw_summary}",
         '7-Pt Score': n_score_str,
-        'Reasons': n_reasons_str,
+        'Entry Status': n_entry_status,
         'Time': curr_time
     })
 
-    # 2. Row #2 onwards: 153 STOCKS
+    # 2. 153 STOCKS
     sorted_stocks = sorted(raw_stocks_data.items(), key=lambda x: x[1].get('score', 0.0), reverse=True)
     rank_count = 2
     for symbol, item in sorted_stocks:
         t_label = '🟢 UP' if item.get('trend') == 'UPTREND' else ('🔴 DOWN' if item.get('trend') == 'DOWNTREND' else '🟡 SIDE')
         
-        opt_score_str, opt_reasons_str = calculate_7point_option_score(
-            item['pcr'], item['ltp'], item['max_pain'], item['call_price_up'],
-            item['call_oi_up'], item['put_oi_down'], item['call_ask_vol'],
-            item['put_bid_vol'], item['call_iv'], item['put_iv'], item['atm_iv']
+        opt_score_str, opt_entry_status = calculate_7point_option_score(
+            item['pcr'], item['ltp'], item['call_price_up'],
+            item['call_oi_up'], item['put_oi_down'], item['atm_iv']
         )
 
         data_ce.append({
@@ -213,7 +202,7 @@ def fetch_and_process_data():
             'Signal': item.get('action', 'NO TRADE 🚫'),
             'Trigger Plan': item.get('trigger', 'VOL SPIKE'),
             '7-Pt Score': opt_score_str,
-            'Reasons': opt_reasons_str,
+            'Entry Status': opt_entry_status,
             'Time': curr_time
         })
         rank_count += 1
@@ -225,7 +214,7 @@ def fetch_and_process_data():
 # SECTION 4 & 5: MAIN EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
-    print("🚀 OI_VCP Engine Active with Concise Headers & Stock LTP Fix...")
+    print("🚀 OI_VCP Engine Active with Clean Entry Status Column...")
     
     try:
         ist = pytz.timezone('Asia/Kolkata')
@@ -243,7 +232,7 @@ if __name__ == "__main__":
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
             update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
             
-            print("🎉 SUCCESS! Ultra-Clean Concise Sheet Updated!")
+            print("🎉 SUCCESS! Clean Sheet Updated with Entry Status Column!")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
