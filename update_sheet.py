@@ -79,12 +79,11 @@ def process_heavyweight_logic(raw_data_dict):
     return final_trend, action, summary_str, score
 
 # ==============================================================================
-# SECTION 3: OPTION CHAIN ENGINE & ENTRY LOGIC (BACKEND RULES)
+# SECTION 3: OPTION CHAIN ENGINE & ENTRY LOGIC
 # ==============================================================================
 def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_down, atm_iv):
     score = 0
 
-    # Backend Evaluation Rules
     if pcr > 1.0:
         score += 25
     if atm_iv < 20.0:
@@ -97,7 +96,6 @@ def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_do
     tag = "🔥" if score >= 75 else ("🟢" if score >= 50 else "🔴")
     score_str = f"{score} {tag}"
 
-    # Single Entry Status Column Decision Engine
     if score >= 75 and pcr > 1.0 and atm_iv < 20.0:
         entry_status = "READY ENTRY 🚀"
     elif score >= 50:
@@ -176,8 +174,8 @@ def fetch_and_process_data():
         'Trend': n_trend,
         'Symbol': 'NIFTY 50',
         'LTP': 24154.6,
-        'Signal': n_action,
-        'Trigger Plan': f"HW: {hw_summary}",
+        'Trigger Plan': f"HW: {hw_summary}",   # Col E: Trigger Plan next to LTP
+        'Signal': n_action,                    # Col F: Signal next to Score
         '7-Pt Score': n_score_str,
         'Entry Status': n_entry_status,
         'Time': curr_time
@@ -199,8 +197,8 @@ def fetch_and_process_data():
             'Trend': t_label,
             'Symbol': symbol,
             'LTP': item.get('ltp', 0.0),
-            'Signal': item.get('action', 'NO TRADE 🚫'),
-            'Trigger Plan': item.get('trigger', 'VOL SPIKE'),
+            'Trigger Plan': item.get('trigger', 'VOL SPIKE'), # Col E
+            'Signal': item.get('action', 'NO TRADE 🚫'),       # Col F
             '7-Pt Score': opt_score_str,
             'Entry Status': opt_entry_status,
             'Time': curr_time
@@ -214,7 +212,7 @@ def fetch_and_process_data():
 # SECTION 4 & 5: MAIN EXECUTION
 # ==============================================================================
 if __name__ == "__main__":
-    print("🚀 OI_VCP Engine Active with Clean Entry Status Column...")
+    print("🚀 OI_VCP Engine Active with Exchanged Columns (Trigger Plan & Signal)...")
     
     try:
         ist = pytz.timezone('Asia/Kolkata')
@@ -232,7 +230,7 @@ if __name__ == "__main__":
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
             update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
             
-            print("🎉 SUCCESS! Clean Sheet Updated with Entry Status Column!")
+            print("🎉 SUCCESS! Updated Sheet with Exchanged Columns!")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
