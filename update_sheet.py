@@ -103,12 +103,12 @@ def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_do
         if not put_oi_down: score += 25    # Put writing/buying active
         is_favorable_pcr = pcr < 0.8
 
-    tag = "🔥" if score >= 75 else ("🟢" if score >= 50 else "🔴")
+    tag = "🔥" if score >= 90 else ("🟢" if score >= 75 else "🔴")
     score_str = f"{score} {tag}"
 
-    if score >= 75 and is_favorable_pcr and atm_iv < 20.0:
+    if score >= 90 and is_favorable_pcr and atm_iv < 20.0:
         entry_status = "READY ENTRY 🚀"
-    elif score >= 50:
+    elif score >= 75:
         entry_status = "WAIT FOR BREAKOUT ⏳"
     else:
         entry_status = "NO ENTRY 🚫"
