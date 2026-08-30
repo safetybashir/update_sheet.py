@@ -65,7 +65,7 @@ def process_heavyweight_logic(raw_data_dict):
     summary_str = " ".join(hw_status)
 
     # Bullish Logic for CE
-    if up_count >= 2 and down_count == 0:
+    if up_count >= 3 and down_count == 0:
         ce_trend = "🟢 UPTREND"
         ce_action = "BUY CE 🚀"
     else:
@@ -73,7 +73,7 @@ def process_heavyweight_logic(raw_data_dict):
         ce_action = "NO TRADE 🚫"
 
     # Bearish Logic for PE
-    if down_count >= 2 and up_count == 0:
+    if down_count >= 3 and up_count == 0:
         pe_trend = "🔴 DOWNTREND"
         pe_action = "BUY PE 🚨"
     else:
