@@ -35,14 +35,13 @@ def update_tab(sh, df, tab_name):
             worksheet = sh.add_worksheet(title=tab_name, rows="200", cols="20")
 
         worksheet.clear()
-        # Header + Data update
         worksheet.update([df.columns.values.tolist()] + df.astype(str).values.tolist(), value_input_option="USER_ENTERED")
         print(f"✅ Tab '{tab_name}' Successfully Updated!")
     except Exception as e:
         print(f"❌ Error updating '{tab_name}': {e}")
 
 # ==============================================================================
-# SECTION 2: HEAVYWEIGHT CONFLUENCE ENGINE (NIFTY 50)
+# SECTION 2: HEAVYWEIGHT CONFLUENCE ENGINE (NIFTY 50 - 3 STOCKS RULE)
 # ==============================================================================
 def process_heavyweight_logic(raw_data_dict):
     hw_stocks = ['HDFCBANK', 'RELIANCE', 'ICICIBANK', 'TCS']
@@ -64,28 +63,32 @@ def process_heavyweight_logic(raw_data_dict):
 
     summary_str = " ".join(hw_status)
 
-    # Bullish Logic for CE
-    if up_count >= 3 and down_count == 0:
+    # Bullish Logic: At least 3 Heavyweights MUST be Green
+    if up_count >= 3:
         ce_trend = "🟢 UPTREND"
         ce_action = "BUY CE 🚀"
+        ce_hw_ok = True
     else:
         ce_trend = "🟡 SIDEWAYS"
         ce_action = "NO TRADE 🚫"
+        ce_hw_ok = False
 
-    # Bearish Logic for PE
-    if down_count >= 3 and up_count == 0:
+    # Bearish Logic: At least 3 Heavyweights MUST be Red
+    if down_count >= 3:
         pe_trend = "🔴 DOWNTREND"
         pe_action = "BUY PE 🚨"
+        pe_hw_ok = True
     else:
         pe_trend = "🟡 SIDEWAYS"
         pe_action = "NO TRADE 🚫"
+        pe_hw_ok = False
 
-    return summary_str, ce_trend, ce_action, pe_trend, pe_action
+    return summary_str, ce_trend, ce_action, ce_hw_ok, pe_trend, pe_action, pe_hw_ok
 
 # ==============================================================================
-# SECTION 3: OPTION CHAIN ENGINE & 7-POINT SCORE LOGIC
+# SECTION 3: OPTION CHAIN ENGINE & ENTRY LOGIC (WITH 15-MIN CONFIRMATION)
 # ==============================================================================
-def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_down, atm_iv, is_ce=True):
+def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_down, atm_iv, is_ce=True, hw_ok=True, is_15min_closed=True):
     score = 0
 
     if is_ce:
@@ -99,16 +102,22 @@ def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_do
         # PE Rules (Bearish)
         if pcr < 0.8: score += 25
         if atm_iv < 20.0: score += 25
-        if not call_price_up: score += 25  # Price dropping
-        if not put_oi_down: score += 25    # Put writing/buying active
+        if not call_price_up: score += 25  # Price breakdown
+        if not put_oi_down: score += 25    # Put writing active
         is_favorable_pcr = pcr < 0.8
 
-    tag = "🔥" if score >= 90 else ("🟢" if score >= 75 else "🔴")
+    tag = "🔥" if score >= 75 else ("🟢" if score >= 50 else "🔴")
     score_str = f"{score} {tag}"
 
-    if score >= 90 and is_favorable_pcr and atm_iv < 20.0:
-        entry_status = "READY ENTRY 🚀"
-    elif score >= 75:
+    # Strict Entry Filters
+    if score >= 75 and is_favorable_pcr and atm_iv < 20.0:
+        if not hw_ok:
+            entry_status = "WAIT HW CONFIRM ⏳"  # Heavyweight rule failed (Less than 3 Green/Red)
+        elif not is_ce and not is_15min_closed:
+            entry_status = "WAIT 15M CLOSE ⏳"   # PE Breakdown needs 15M Candle Confirmation
+        else:
+            entry_status = "READY ENTRY 🚀"
+    elif score >= 50:
         entry_status = "WAIT FOR BREAKOUT ⏳"
     else:
         entry_status = "NO ENTRY 🚫"
@@ -161,43 +170,44 @@ def fetch_and_process_data():
     for sym in all_user_stocks:
         stock_ltp = sample_stock_ltps.get(sym, 450.0)
         
-        # Bullish Stocks
+        # Bullish Sample
         if sym in ['MANKIND', 'HDFCBANK', 'RELIANCE', 'TATASTEEL']:
             raw_stocks_data[sym] = {
                 'trend': 'UPTREND', 'vol_spike': 3.5, 'ltp': stock_ltp, 'score': 10.0,
                 'ce_action': 'BUY CE 🚀', 'pe_action': 'NO TRADE 🚫',
                 'trigger_ce': f'BUY>{stock_ltp}', 'trigger_pe': 'VOL SPIKE',
                 'pcr': 1.25, 'call_price_up': True, 'call_oi_up': True, 
-                'put_oi_down': True, 'atm_iv': 15.0
+                'put_oi_down': True, 'atm_iv': 15.0, 'is_15m_close': True
             }
-        # Bearish Stocks
+        # Bearish Sample
         elif sym in ['CROMPTON', 'HINDZINC', 'LODHA']:
             raw_stocks_data[sym] = {
                 'trend': 'DOWNTREND', 'vol_spike': 3.2, 'ltp': stock_ltp, 'score': 9.0,
                 'ce_action': 'NO TRADE 🚫', 'pe_action': 'BUY PE 🚨',
                 'trigger_ce': 'VOL SPIKE', 'trigger_pe': f'SELL<{stock_ltp}',
                 'pcr': 0.65, 'call_price_up': False, 'call_oi_up': False, 
-                'put_oi_down': False, 'atm_iv': 16.0
+                'put_oi_down': False, 'atm_iv': 16.0, 'is_15m_close': True
             }
-        # Sideways Stocks
         else:
             raw_stocks_data[sym] = {
                 'trend': 'SIDEWAYS', 'vol_spike': 1.0, 'ltp': stock_ltp, 'score': 2.0,
                 'ce_action': 'WATCH 👀', 'pe_action': 'WATCH 👀',
                 'trigger_ce': 'VOL SPIKE', 'trigger_pe': 'VOL SPIKE',
                 'pcr': 0.8, 'call_price_up': False, 'call_oi_up': False, 
-                'put_oi_down': False, 'atm_iv': 22.0
+                'put_oi_down': False, 'atm_iv': 22.0, 'is_15m_close': False
             }
 
-    hw_summary, n_ce_trend, n_ce_action, n_pe_trend, n_pe_action = process_heavyweight_logic(raw_stocks_data)
+    hw_summary, n_ce_trend, n_ce_action, ce_hw_ok, n_pe_trend, n_pe_action, pe_hw_ok = process_heavyweight_logic(raw_stocks_data)
 
     data_ce = []
     data_pe = []
     
     # --------------------------------------------------------------------------
-    # 1. CE DASHBOARD DATA PREPARATION
+    # 1. CE DASHBOARD PREPARATION
     # --------------------------------------------------------------------------
-    n_ce_score, n_ce_entry = calculate_7point_option_score(1.25, 24154.6, True, True, True, 14.0, is_ce=True)
+    n_ce_score, n_ce_entry = calculate_7point_option_score(
+        1.25, 24154.6, True, True, True, 14.0, is_ce=True, hw_ok=ce_hw_ok, is_15min_closed=True
+    )
     data_ce.append({
         'Rank': '#1', 'Trend': n_ce_trend, 'Symbol': 'NIFTY 50', 'LTP': 24154.6,
         'Trigger Plan': f"HW: {hw_summary}", 'Signal': n_ce_action,
@@ -209,7 +219,8 @@ def fetch_and_process_data():
     for symbol, item in ce_sorted:
         t_label = '🟢 UP' if item.get('trend') == 'UPTREND' else ('🔴 DOWN' if item.get('trend') == 'DOWNTREND' else '🟡 SIDE')
         opt_score, opt_entry = calculate_7point_option_score(
-            item['pcr'], item['ltp'], item['call_price_up'], item['call_oi_up'], item['put_oi_down'], item['atm_iv'], is_ce=True
+            item['pcr'], item['ltp'], item['call_price_up'], item['call_oi_up'], item['put_oi_down'], item['atm_iv'],
+            is_ce=True, hw_ok=True, is_15min_closed=item.get('is_15m_close', True)
         )
         data_ce.append({
             'Rank': f"#{rank_count}", 'Trend': t_label, 'Symbol': symbol, 'LTP': item.get('ltp', 0.0),
@@ -219,9 +230,11 @@ def fetch_and_process_data():
         rank_count += 1
 
     # --------------------------------------------------------------------------
-    # 2. PE DASHBOARD DATA PREPARATION
+    # 2. PE DASHBOARD PREPARATION
     # --------------------------------------------------------------------------
-    n_pe_score, n_pe_entry = calculate_7point_option_score(0.65, 24154.6, False, False, False, 14.0, is_ce=False)
+    n_pe_score, n_pe_entry = calculate_7point_option_score(
+        0.65, 24154.6, False, False, False, 14.0, is_ce=False, hw_ok=pe_hw_ok, is_15min_closed=True
+    )
     data_pe.append({
         'Rank': '#1', 'Trend': n_pe_trend, 'Symbol': 'NIFTY 50', 'LTP': 24154.6,
         'Trigger Plan': f"HW: {hw_summary}", 'Signal': n_pe_action,
@@ -233,7 +246,8 @@ def fetch_and_process_data():
     for symbol, item in pe_sorted:
         t_label = '🔴 DOWN' if item.get('trend') == 'DOWNTREND' else ('🟢 UP' if item.get('trend') == 'UPTREND' else '🟡 SIDE')
         opt_score, opt_entry = calculate_7point_option_score(
-            item['pcr'], item['ltp'], item['call_price_up'], item['call_oi_up'], item['put_oi_down'], item['atm_iv'], is_ce=False
+            item['pcr'], item['ltp'], item['call_price_up'], item['call_oi_up'], item['put_oi_down'], item['atm_iv'],
+            is_ce=False, hw_ok=True, is_15min_closed=item.get('is_15m_close', True)
         )
         data_pe.append({
             'Rank': f"#{rank_count}", 'Trend': t_label, 'Symbol': symbol, 'LTP': item.get('ltp', 0.0),
@@ -245,7 +259,7 @@ def fetch_and_process_data():
     return pd.DataFrame(data_ce), pd.DataFrame(data_pe)
 
 # ==============================================================================
-# SECTION 5: MAIN EXECUTION BLOCK (2 CLEAN TABS ONLY)
+# SECTION 5: MAIN EXECUTION BLOCK (2 TABS UPDATE)
 # ==============================================================================
 if __name__ == "__main__":
     print("🚀 OI_VCP Engine Active - Updating 2 Clean Tabs...")
@@ -262,13 +276,13 @@ if __name__ == "__main__":
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
 
-            # TAB 1: Bullish / CE Setup Dashboard
+            # Tab 1: CE / Bullish Dashboard
             update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
             
-            # TAB 2: Bearish / PE Setup Dashboard
+            # Tab 2: PE / Bearish Dashboard
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
             
-            print("🎉 ALL SYSTEMS GO! Google Sheet successfully updated with zero errors!")
+            print("🎉 ALL SYSTEMS GO! Sheet successfully updated with strict entry rules!")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
