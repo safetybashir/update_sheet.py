@@ -1,4 +1,4 @@
-name: Run Advanced FNO Master Screener
+fno_master_screener.yml
 
 on:
   push:
