@@ -85,44 +85,34 @@ def process_heavyweight_logic(raw_data_dict):
 
     return summary_str, ce_trend, ce_action, ce_hw_ok, pe_trend, pe_action, pe_hw_ok
 
-# ==============================================================================
-# SECTION 3: OPTION CHAIN ENGINE & ENTRY LOGIC (WITH 15-MIN CONFIRMATION)
-# ==============================================================================
-def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_down, atm_iv, is_ce=True, hw_ok=True, is_15min_closed=True):
-    score = 0
-
-    if is_ce:
-        # CE Rules (Bullish)
-        if pcr > 1.0: score += 25
-        if atm_iv < 20.0: score += 25
-        if call_price_up and call_oi_up: score += 25
-        if put_oi_down: score += 25
-        is_favorable_pcr = pcr > 1.0
-    else:
-        # PE Rules (Bearish)
-        if pcr < 0.8: score += 25
-        if atm_iv < 20.0: score += 25
-        if not call_price_up: score += 25  # Price breakdown
-        if not put_oi_down: score += 25    # Put writing active
-        is_favorable_pcr = pcr < 0.8
-
-    tag = "🔥" if score >= 75 else ("🟢" if score >= 50 else "🔴")
-    score_str = f"{score} {tag}"
-
-    # Strict Entry Filters
-    if score >= 75 and is_favorable_pcr and atm_iv < 20.0:
-        if not hw_ok:
-            entry_status = "WAIT HW CONFIRM ⏳"  # Heavyweight rule failed (Less than 3 Green/Red)
-        elif not is_ce and not is_15min_closed:
-            entry_status = "WAIT 15M CLOSE ⏳"   # PE Breakdown needs 15M Candle Confirmation
-        else:
-            entry_status = "READY ENTRY 🚀"
-    elif score >= 50:
-        entry_status = "WAIT FOR BREAKOUT ⏳"
-    else:
-        entry_status = "NO ENTRY 🚫"
-
-    return score_str, entry_status
+# ==========================================
+# SECTION 3: SYMBOL DEFINITIONS & CONFIG
+# ==========================================
+FNO_SYMBOLS = [
+    "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS",
+    "ALKEM", "AMBUJACEM", "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "ASTRAL",
+    "ATUL", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO", "BAJAJFINSV", "BAJFINANCE",
+    "BALKRISIND", "BALRAMCHIN", "BANDHANBNK", "BANKBARODA", "BATAINDIA", "BEL", "BERGEPAINT",
+    "BHARATFORG", "BHARTIARTL", "BHEL", "BIOCON", "BSOFT", "BPCL", "BRITANNIA", "CANBK",
+    "CANFINHOME", "CHAMBLFERT", "CHOLAFIN", "CIPLA", "COALINDIA", "COFORGE", "COLPAL",
+    "CONCOR", "COROMANDEL", "CROMPTON", "CUB", "CUMMINSIND", "DABUR", "DALBHARAT", "DEEPAKNTR",
+    "DIVISLAB", "DIXON", "DLF", "DRREDDY", "EICHERMOT", "ESCORTS", "EXIDEIND", "FEDERALBNK",
+    "GAIL", "GLENMARK", "GMRINFRA", "GNFC", "GODREJCP", "GODREJPROP", "GRANULES", "GRASIM",
+    "GUJGASLTD", "HAL", "HAVELLS", "HCLTECH", "HDFCAMC", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO",
+    "HINDALCO", "HINDCOPPER", "HINDPETRO", "HINDUNILVR", "ICICIBANK", "ICICIGI", "ICICIPRULI",
+    "IDEA", "IDFC", "IDFCFIRSTB", "IEX", "IGL", "INDHOTEL", "INDIACEM", "INDIAMART",
+    "INDIGO", "INDUSINDBK", "INDUSTOWER", "INFY", "IOC", "IPCALAB", "IRCTC", "ITC",
+    "JINDALSTEL", "JKCEMENT", "JSWSTEEL", "JUBLFOOD", "KOTAKBANK", "LALPATHLAB", "LAURUSLABS",
+    "LICHSGFIN", "LT", "LTIM", "LTF", "LUPIN", "M&M", "M&MFIN", "MANAPPURAM", "MARICO",
+    "MARUTI", "MCDOWELL-N", "MCX", "METROPOLIS", "MFSL", "MGL", "MOTHERSON", "MPHASIS",
+    "MRF", "MUTHOOTFIN", "NATIONALUM", "NAUKRI", "NAVINFLUOR", "NESTLEIND", "NMDC", "NTPC",
+    "OBEROIRLTY", "OFSS", "ONGC", "PAGEIND", "PERSISTENT", "PETRONET", "PFC", "PIDILITIND",
+    "PIIND", "PNB", "POLYCAB", "POWERGRID", "PVRINOX", "RAMCOCEM", "RBLBANK", "RECLTD",
+    "RELIANCE", "SAIL", "SBICARD", "SBILIFE", "SBIN", "SHREECEM", "SHRIRAMFIN", "SIEMENS",
+    "SRF", "SUNPHARMA", "SUNTV", "SYNGENE", "TATACHEMICALS", "TATACONSUM", "TATELXSI",
+    "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TCS", "TECHM", "TITAN", "TORNTPHARM",
+    "TRENT", "TVSMOTOR", "UBL", "ULTRACEMCO", "UPL", "VEDL", "VOLTAS", "WIPRO", "ZEEL"
+]
 
 # ==========================================
 # SECTION 4: HISTORICAL & REAL-TIME ANALYSIS
@@ -137,7 +127,6 @@ for sym in FNO_SYMBOLS:
         if data.empty or len(data) < 2:
             continue
             
-        # Clean multi-index columns if returned by yfinance
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = [col[0] for col in data.columns]
             
@@ -147,12 +136,10 @@ for sym in FNO_SYMBOLS:
         stock_ltp = float(latest_row['Close'])
         prev_price = float(prev_row['Close'])
         
-        # Calculate Volume Spike Ratio
         avg_vol = data['Volume'].tail(10).mean()
         curr_vol = float(latest_row['Volume'])
         vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
         
-        # Determine Trend based on price change
         price_change_pct = ((stock_ltp - prev_price) / prev_price) * 100
         
         if price_change_pct > 0.5 and vol_spike > 1.2:
@@ -162,7 +149,6 @@ for sym in FNO_SYMBOLS:
         else:
             trend = 'SIDEWAYS'
 
-        # REAL DYNAMIC METRICS (NO DUMMY 100/100 FLAGS)
         if trend == 'UPTREND':
             raw_stocks_data[sym] = {
                 'trend': 'UPTREND',
