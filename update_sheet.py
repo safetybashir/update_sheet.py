@@ -38,11 +38,9 @@ def update_tab(spreadsheet, df, tab_name):
         headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
         
         if not df.empty:
-            # Clean NaN / Infinity values for JSON compatibility
-            df_clean = df.fillna("").replace([np.inf, -np.inf], "")
-            # Ensure proper column order
-            df_clean = df_clean[headers]
-            data_to_write = [df_clean.columns.tolist()] + df_clean.values.tolist()
+            # Ensure exact column mapping matching headers
+            df_clean = df[headers].fillna("").replace([np.inf, -np.inf], "")
+            data_to_write = [headers] + df_clean.values.tolist()
             worksheet.update('A1', data_to_write)
             print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
@@ -146,11 +144,11 @@ def fetch_and_process_data():
     if df_all.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    # Filter strict signals
+    # Filter strict breakout signals
     df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by='Score', ascending=False)
     df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by='Score', ascending=False)
 
-    # Fallback if off-hours / no breakout
+    # Fallback to Top Gainers/Losers if no active breakouts
     if df_ce.empty:
         df_ce = df_all.sort_values(by='Change %', ascending=False).head(15)
     if df_pe.empty:
