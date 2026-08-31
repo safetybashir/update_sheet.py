@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import pytz
+import random # Testing ke liye random values generate karne ke liye
 
 SCOPE = ["https://google.com", "https://googleapis.com"]
 
@@ -25,28 +26,6 @@ def connect_google_sheets():
         print(f"❌ Google Sheets Connection Error: {e}")
         return None
 
-def fetch_derivatives_data():
-    print("🔄 Fetching Live Market Data for Master Stock List...")
-    # Real mock data structure testing ke liye (M&M aur RELIANCE pass breakouts)
-    mock_market_feed = {
-        "NIFTY_50": {
-            "high": 24260.0, "low": 24000.0, "close": 24135.0, "ltp": 24211.0, "pivot": 24150.0,
-            "volume_spike": "NORMAL (1.0x)", "oi_chg": 0.5, "pcr": 1.0, "max_pain": 24100.0,
-            "iv_call": 14.5, "iv_put": 14.5, "delta_mom": "Stable"
-        },
-        "M&M": {
-            "high": 3351.7, "low": 3302.0, "close": 3334.0, "ltp": 3354.7, "pivot": 3329.0,
-            "volume_spike": "SPIKE ⚡ (2.0x)", "oi_chg": 6.5, "pcr": 1.3, "max_pain": 3300.0,
-            "iv_call": 18.5, "iv_put": 14.2, "delta_mom": "Increasing"
-        },
-        "RELIANCE": {
-            "high": 1325.2, "low": 1281.2, "close": 1325.0, "ltp": 1315.0, "pivot": 1310.0,
-            "volume_spike": "NORMAL (1.1x)", "oi_chg": 1.2, "pcr": 0.9, "max_pain": 1320.0,
-            "iv_call": 12.1, "iv_put": 13.5, "delta_mom": "Decreasing"
-        }
-    }
-    return mock_market_feed
-
 def update_scanner_dashboard():
     spreadsheet = connect_google_sheets()
     if not spreadsheet:
@@ -56,7 +35,7 @@ def update_scanner_dashboard():
     derivatives_tab = spreadsheet.worksheet("DATA_DERIVATIVES")
     master_dashboard = spreadsheet.worksheet("MASTER_DASHBOARD")
     
-    # 👑 MASTER STOCKS LIST
+    # 👑 MASTER STOCKS LIST (Nifty 50 on top + All your stocks)
     master_stocks = [
         "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", 
         "PREMIERENE", "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", 
@@ -84,52 +63,66 @@ def update_scanner_dashboard():
     ticker_updates = [[ticker] for ticker in master_stocks]
     end_row = len(master_stocks) + 1
     
-    # Step 1: Force column A registration
+    # Step 1: Force column A registration across all tabs
     print("📝 Syncing Master Tickers in Column A...")
     cash_tab.update(values=ticker_updates, range_name=f'A2:A{end_row}')
     derivatives_tab.update(values=ticker_updates, range_name=f'A2:A{end_row}')
     master_dashboard.update(values=ticker_updates, range_name=f'A2:A{end_row}')
     
-    market_data = fetch_derivatives_data()
-    
+    # ⏱️ India Time (IST) Generation
     IST = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
     
-    # Vertical Column Lists separation for direct grid writing
+    # Grid separation matrix
     highs, lows, closes, ltps, price_chgs, pivots, vol_spikes, times = [], [], [], [], [], [], [], []
-    pcrs, max_pains, oi_chgs, iv_calls, iv_puts, deltas = [], [], [], [], [], []
+    der_ltps, pcrs, max_pains, oi_chgs, der_price_chgs, iv_calls, iv_puts, deltas = [], [], [], [], [], [], [], []
     
+    # ⚡ AUTOMATED DATA SIMULATOR FOR ALL 150+ STOCKS
+    # Taaki saare rows bharein aur Google API drop na kare
     for ticker in master_stocks:
-        default = {
-            "high": "", "low": "", "close": "", "ltp": "", "pivot": "",
-            "volume_spike": "NORMAL (0.0x)", "oi_chg": 0, "pcr": 0, "max_pain": "",
-            "iv_call": "", "iv_put": "", "delta_mom": "Stable"
-        }
-        data = market_data[ticker] if ticker in market_data else default
+        # Standard variables calculation
+        mock_close = random.randint(100, 3000)
+        mock_ltp = mock_close + random.randint(-20, 50)
+        p_chg = round(((mock_ltp - mock_close) / mock_close) * 100, 2)
+        mock_pivot = mock_close - 10
         
-        # Calculate price change
-        p_chg = round(((float(data['ltp']) - float(data['close'])) / float(data['close'])) * 100, 2) if data['close'] and data['ltp'] else 0
-        
-        # Storing Cash tab values sequentially
-        highs.append([data['high']])
-        lows.append([data['low']])
-        closes.append([data['close']])
-        ltps.append([data['ltp']])
+        # Testing target breakouts dynamically
+        if ticker in ["M&M", "KAYNES", "CGPOWER"]:
+            mock_ltp = 3354.7 if ticker == "M&M" else mock_pivot + 50
+            mock_pivot = 3329.0 if ticker == "M&M" else mock_close - 20
+            v_spike = "SPIKE ⚡ (2.3x)"
+            oi_val = 6.5
+            pcr_val = 1.3
+            m_pain = mock_ltp - 30
+            d_mom = "Increasing"
+        else:
+            v_spike = "NORMAL (1.0x)"
+            oi_val = random.randint(1, 4)
+            pcr_val = round(random.uniform(0.7, 0.9), 2)
+            m_pain = mock_ltp + 10
+            d_mom = "Stable"
+            
+        # TAB 1: DATA_CASH Dataset Array Matrix 
+        highs.append([mock_ltp + 5])
+        lows.append([mock_ltp - 5])
+        closes.append([mock_close])
+        ltps.append([mock_ltp])
         price_chgs.append([p_chg])
-        pivots.append([data['pivot']])
-        vol_spikes.append([data['volume_spike']])
-        times.append([current_time_str if ticker in market_data else ""])
+        pivots.append([mock_pivot])
+        vol_spikes.append([v_spike])
+        times.append([current_time_str])
         
-        # Storing Derivatives tab values sequentially
-        pcrs.append([data['pcr']])
-        max_pains.append([data['max_pain']])
-        oi_chgs.append([data['oi_chg']])
-        iv_calls.append([data['iv_call']])
-        iv_puts.append([data['iv_put']])
-        deltas.append([data['delta_mom']])
+        # TAB 2: DATA_DERIVATIVES Dataset Array Matrix
+        der_ltps.append([mock_ltp])
+        pcrs.append([pcr_val])
+        max_pains.append([m_pain])
+        oi_chgs.append([oi_val])
+        der_price_chgs.append([p_chg])
+        iv_calls.append([20])
+        iv_puts.append([18])
+        deltas.append([d_mom])
 
-    # 👑 BULLETPROOF VERTICAL GRID CELLS FORCE-WRITE (Never drops data)
-    print("🚀 Forcing discrete column batching into Sheets cells...")
+    print("🚀 Forcing discrete columns matrix into Google Sheets cells...")
     
     # Update TAB 1: DATA_CASH
     cash_tab.update(values=highs, range_name=f'B2:B{end_row}', value_input_option='USER_ENTERED')
@@ -142,11 +135,11 @@ def update_scanner_dashboard():
     cash_tab.update(values=times, range_name=f'P2:P{end_row}', value_input_option='USER_ENTERED')
     
     # Update TAB 2: DATA_DERIVATIVES
-    derivatives_tab.update(values=ltps, range_name=f'B2:B{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=der_ltps, range_name=f'B2:B{end_row}', value_input_option='USER_ENTERED')
     derivatives_tab.update(values=pcrs, range_name=f'C2:C{end_row}', value_input_option='USER_ENTERED')
     derivatives_tab.update(values=max_pains, range_name=f'D2:D{end_row}', value_input_option='USER_ENTERED')
     derivatives_tab.update(values=oi_chgs, range_name=f'F2:F{end_row}', value_input_option='USER_ENTERED')
-    derivatives_tab.update(values=price_chgs, range_name=f'G2:G{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=der_price_chgs, range_name=f'G2:G{end_row}', value_input_option='USER_ENTERED')
     derivatives_tab.update(values=iv_calls, range_name=f'I2:I{end_row}', value_input_option='USER_ENTERED')
     derivatives_tab.update(values=iv_puts, range_name=f'J2:J{end_row}', value_input_option='USER_ENTERED')
     derivatives_tab.update(values=deltas, range_name=f'L2:L{end_row}', value_input_option='USER_ENTERED')
