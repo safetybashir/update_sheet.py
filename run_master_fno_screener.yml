@@ -1,1 +1,7 @@
+    # ... baki code same rahega, bas aakhri step ko aise badlein:
+    - name: Execute FNO Master Python Script
+      env:
+        GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+        SHEET_ID: ${{ secrets.SHEET_ID }}
+      run: python update_master_fno.py
 
