@@ -31,6 +31,6 @@ jobs:
 
       - name: Execute Live Update Script
         env:
-          KITE_API_KEY: ${{ secrets.KITE_API_KEY }}
-          KITE_ACCESS_TOKEN: ${{ secrets.KITE_ACCESS_TOKEN }}
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
