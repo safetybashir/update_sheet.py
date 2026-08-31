@@ -89,6 +89,7 @@ FNO_SYMBOLS = [
 # SECTION 3: SAFE OPTION CHAIN ENGINE
 # ==========================================
 def get_nse_option_data(symbol):
+    """ Safe NSE Option Data Fetcher - Bypasses 404 Errors """
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -98,8 +99,9 @@ def get_nse_option_data(symbol):
         url = f"https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY" if symbol == "NIFTY" else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
         
         session = requests.Session()
-        session.get("https://www.nseindia.com", headers=headers, timeout=2)
-        response = session.get(url, headers=headers, timeout=2)
+        # Session Cookies Initialize
+        session.get("https://www.nseindia.com", headers=headers, timeout=3)
+        response = session.get(url, headers=headers, timeout=3)
         
         if response.status_code == 200:
             data = response.json()
@@ -115,7 +117,9 @@ def get_nse_option_data(symbol):
             
             return {'pcr': pcr, 'avg_iv': avg_iv}
     except Exception:
+        # Prevent process exit on 404/Timeout errors
         pass
+    
     return {'pcr': 1.0, 'avg_iv': 15.0}
 
 def fetch_and_process_data():
@@ -147,6 +151,7 @@ def fetch_and_process_data():
             curr_vol = float(latest['Volume'])
             vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
             
+            # Fetch Options Metrics with Safety Net
             nse_opt = get_nse_option_data(sym)
             pcr = nse_opt['pcr']
             avg_iv = nse_opt['avg_iv']
@@ -174,7 +179,7 @@ def fetch_and_process_data():
             else:
                 trend = 'SIDEWAYS'
 
-            # Strict dictionary layout: Exact 11 values
+            # Strict dictionary layout: Exactly 11 keys
             raw_stocks_data.append({
                 'Symbol': str(sym),
                 'Trend': str(trend),
