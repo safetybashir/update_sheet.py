@@ -1,4 +1,4 @@
-fno_master_screener.yml
+NAME:master_FNO_screener.yml
 
 on:
   push:
