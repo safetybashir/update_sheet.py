@@ -34,13 +34,16 @@ def update_tab(spreadsheet, df, tab_name):
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
             
-        worksheet.clear()
+        # Hard clean cell grid to kill leftover orphan timestamp columns
+        worksheet.batch_clear(["A1:Z100"])
         
         headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
         
         if not df.empty:
-            df_clean = df[headers].fillna("").replace([np.inf, -np.inf], "")
+            # Force strict 11-column order and strip extra metadata
+            df_clean = df[headers].copy().fillna("").replace([np.inf, -np.inf], "")
             data_to_write = [headers] + df_clean.values.tolist()
+            
             worksheet.update(range_name='A1', values=data_to_write, value_input_option='USER_ENTERED')
             print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
@@ -86,7 +89,6 @@ FNO_SYMBOLS = [
 # SECTION 3: NSE OPTION CHAIN & PRICE ENGINE
 # ==========================================
 def get_nse_option_data(symbol):
-    """ Fetch Option Chain data from NSE (OI, IV, Max Pain) """
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -96,8 +98,8 @@ def get_nse_option_data(symbol):
         url = f"https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY" if symbol == "NIFTY" else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
         
         session = requests.Session()
-        session.get("https://www.nseindia.com", headers=headers, timeout=5)
-        response = session.get(url, headers=headers, timeout=5)
+        session.get("https://www.nseindia.com", headers=headers, timeout=4)
+        response = session.get(url, headers=headers, timeout=4)
         
         if response.status_code == 200:
             data = response.json()
@@ -108,17 +110,13 @@ def get_nse_option_data(symbol):
             tot_pe_oi = records.get('totPE', {}).get('totOI', 0)
             pcr = tot_pe_oi / tot_ce_oi if tot_ce_oi > 0 else 1.0
             
-            # Estimate Max Pain & Average IV
-            iv_list = []
-            for item in data_list[-15:]:
-                if 'CE' in item and 'impliedVolatility' in item['CE']:
-                    iv_list.append(item['CE']['impliedVolatility'])
+            iv_list = [item['CE']['impliedVolatility'] for item in data_list[-15:] if 'CE' in item and 'impliedVolatility' in item['CE']]
             avg_iv = np.mean(iv_list) if iv_list else 15.0
             
-            return {'pcr': pcr, 'avg_iv': avg_iv, 'oi_status': 'AVAILABLE'}
+            return {'pcr': pcr, 'avg_iv': avg_iv}
     except Exception:
         pass
-    return {'pcr': 1.0, 'avg_iv': 15.0, 'oi_status': 'SIMULATED'}
+    return {'pcr': 1.0, 'avg_iv': 15.0}
 
 def fetch_and_process_data():
     raw_stocks_data = []
@@ -136,7 +134,6 @@ def fetch_and_process_data():
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = [col[0] for col in data.columns]
                 
-            # Intraday Indicators
             data['VWAP'] = (data['Volume'] * (data['High'] + data['Low'] + data['Close']) / 3).cumsum() / data['Volume'].cumsum()
             
             latest = data.iloc[-1]
@@ -150,41 +147,26 @@ def fetch_and_process_data():
             curr_vol = float(latest['Volume'])
             vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
             
-            # Fetch Option Chain Data (OI, PCR, IV)
             nse_opt = get_nse_option_data(sym)
             pcr = nse_opt['pcr']
             avg_iv = nse_opt['avg_iv']
             
             # --- 7-POINT BREAKOUT LOGIC EVALUATION ---
             score_points = 0
-            
-            # 1. Price Momentum (+15 pts)
             if change_pct > 0.25: score_points += 15
-            
-            # 2. Open Interest & PCR Combo (+20 pts)
-            if pcr > 1.1: score_points += 20  # Strong Bullish OI
+            if pcr > 1.1: score_points += 20
             elif pcr < 0.8: score_points -= 10
-            
-            # 3. Volume Spike Multiplier (+20 pts)
             if vol_spike > 1.2: score_points += 20
-            
-            # 4. VWAP Position (+15 pts)
             if ltp > latest['VWAP']: score_points += 15
-            
-            # 5. Implied Volatility (IV) Expansion (+10 pts)
             if avg_iv > 12.0: score_points += 10
             
-            # 6. Range High/Low Breakout (+10 pts)
             max_20 = data['High'].tail(20).iloc[:-1].max()
             if ltp > max_20: score_points += 10
-            
-            # 7. NIFTY / Heavyweight Priority (+10 pts)
             if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 10
 
             hw_weight = 1.25 if (sym in HEAVYWEIGHTS or sym == "NIFTY") else 1.0
             final_score = min(100.0, round(score_points * hw_weight, 1))
 
-            # Long Buildup vs Short Buildup Decision
             if final_score >= 60 and change_pct > 0:
                 trend = 'UPTREND'
             elif (final_score <= 30 or pcr < 0.7) and change_pct < 0:
