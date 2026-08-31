@@ -2,25 +2,23 @@ import os
 import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+import pytz  # India time zone ke liye
 
-# 1. GitHub Secrets se Credentials aur Sheet ID nikalna
 SCOPE = ["https://google.com", "https://googleapis.com"]
 
 def connect_google_sheets():
     try:
-        # GitHub Secrets se encrypted json key padhna
         creds_json = os.environ.get("GCP_CREDENTIALS_JSON")
         sheet_id = os.environ.get("SHEET_ID")
         
         if not creds_json or not sheet_id:
-            print("❌ Error: GitHub Secrets (GCP_CREDENTIALS_JSON ya SHEET_ID) missing hain!")
+            print("❌ Error: GitHub Secrets missing hain!")
             return None
             
         creds_dict = json.loads(creds_json)
         creds = ServiceAccountCredentials.from_json_dict(creds_dict, SCOPE)
         client = gspread.authorize(creds)
-        
-        # URL ke badle direct SHEET_ID se file open karna (Sabse safe aur fast)
         spreadsheet = client.open_by_key(sheet_id) 
         return spreadsheet
     except Exception as e:
@@ -29,7 +27,6 @@ def connect_google_sheets():
 
 def fetch_derivatives_data():
     print("🔄 Fetching Live Market Data (F&O Chain + Cash Pricing)...")
-    # Mock data testing ke liye (Live market mein yahan aapki main link connect hogi)
     mock_market_feed = {
         "M&M": {
             "high": 3351.7, "low": 3302.0, "close": 3334.0, "ltp": 3354.7, "pivot": 3329.0,
@@ -52,8 +49,12 @@ def update_scanner_dashboard():
     cash_tab = sheet.worksheet("DATA_CASH")
     derivatives_tab = sheet.worksheet("DATA_DERIVATIVES")
     
-    tickers_cash = cash_tab.col_values(1)[1:]  # Skip header row
+    tickers_cash = cash_tab.col_values(1)[1:]  # Skip header
     market_data = fetch_derivatives_data()
+    
+    # ⏱️ India Time (IST) nikalna
+    IST = pytz.timezone('Asia/Kolkata')
+    current_time_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
     
     cash_updates = []
     derivatives_updates = []
@@ -62,7 +63,7 @@ def update_scanner_dashboard():
         if ticker in market_data:
             data = market_data[ticker]
             
-            # TAB 1: DATA_CASH Columns Mapping
+            # TAB 1: DATA_CASH Updates (Time added in Column P)
             cash_updates.append({
                 'range': f'B{idx}:E{idx}',
                 'values': [[data['high'], data['low'], data['close'], data['ltp']]]
@@ -71,8 +72,12 @@ def update_scanner_dashboard():
                 'range': f'I{idx}:J{idx}',
                 'values': [[data['pivot'], data['volume_spike']]]
             })
+            cash_updates.append({
+                'range': f'P{idx}',
+                'values': [[current_time_str]]  # Column P mein timestamp paste hoga
+            })
             
-            # TAB 2: DATA_DERIVATIVES Columns Mapping
+            # TAB 2: DATA_DERIVATIVES Updates
             price_change_pct = ((data['ltp'] - data['close']) / data['close']) * 100
             derivatives_updates.append({
                 'range': f'C{idx}:D{idx}',
@@ -96,8 +101,7 @@ def update_scanner_dashboard():
     if derivatives_updates:
         derivatives_tab.batch_update(derivatives_updates)
         
-    print("✅ System Success: Both back-end tabs updated via Secrets successfully!")
+    print(f"✅ Success: Both tabs updated at {current_time_str} IST!")
 
 if __name__ == "__main__":
     update_scanner_dashboard()
-
