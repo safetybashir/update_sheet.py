@@ -1,92 +1,50 @@
 import os
 import json
 import time
+import sys
 from datetime import datetime
 import pytz
 import pandas as pd
+import numpy as np
+import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ==============================================================================
-# SECTION 1: AUTHENTICATION & GOOGLE SHEETS CONNECTOR
-# ==============================================================================
+# ==========================================
+# SECTION 1: GOOGLE SHEETS AUTH HELPER
+# ==========================================
 def get_gspread_client():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    
-    gcp_json_str = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
-
-    if gcp_json_str:
-        creds_dict = json.loads(gcp_json_str)
+    creds_json = os.environ.get("GOOGLE_CREDS")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(creds)
     else:
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
-        
-    return gspread.authorize(creds)
+        return gspread.service_account(filename="credentials.json")
 
-def update_tab(sh, df, tab_name):
+def update_tab(spreadsheet, df, tab_name):
     try:
         try:
-            worksheet = sh.worksheet(tab_name)
-        except gspread.exceptions.WorksheetNotFound:
-            worksheet = sh.add_worksheet(title=tab_name, rows="200", cols="20")
-
+            worksheet = spreadsheet.worksheet(tab_name)
+        except gspread.WorksheetNotFound:
+            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
+            
         worksheet.clear()
-        worksheet.update([df.columns.values.tolist()] + df.astype(str).values.tolist(), value_input_option="USER_ENTERED")
-        print(f"✅ Tab '{tab_name}' Successfully Updated!")
+        
+        if not df.empty:
+            data_to_write = [df.columns.tolist()] + df.values.tolist()
+            worksheet.update('A1', data_to_write)
+            print(f"✅ Successfully updated tab: {tab_name} ({len(df)} rows)")
+        else:
+            worksheet.update('A1', [["Status"], ["No Active Signals Found"]])
+            print(f"⚠️ Tab {tab_name} updated with empty dataset.")
+            
     except Exception as e:
-        print(f"❌ Error updating '{tab_name}': {e}")
-
-# ==============================================================================
-# SECTION 2: HEAVYWEIGHT CONFLUENCE ENGINE (NIFTY 50 - 3 STOCKS RULE)
-# ==============================================================================
-def process_heavyweight_logic(raw_data_dict):
-    hw_stocks = ['HDFCBANK', 'RELIANCE', 'ICICIBANK', 'TCS']
-    hw_status = []
-    up_count = 0
-    down_count = 0
-
-    for sym in hw_stocks:
-        if sym in raw_data_dict:
-            trend = raw_data_dict[sym].get('trend', 'SIDEWAYS')
-            if trend == 'UPTREND':
-                hw_status.append(f"{sym[:4]}🟢")
-                up_count += 1
-            elif trend == 'DOWNTREND':
-                hw_status.append(f"{sym[:4]}🔴")
-                down_count += 1
-            else:
-                hw_status.append(f"{sym[:4]}🟡")
-
-    summary_str = " ".join(hw_status)
-
-    # Bullish Logic: At least 3 Heavyweights MUST be Green
-    if up_count >= 3:
-        ce_trend = "🟢 UPTREND"
-        ce_action = "BUY CE 🚀"
-        ce_hw_ok = True
-    else:
-        ce_trend = "🟡 SIDEWAYS"
-        ce_action = "NO TRADE 🚫"
-        ce_hw_ok = False
-
-    # Bearish Logic: At least 3 Heavyweights MUST be Red
-    if down_count >= 3:
-        pe_trend = "🔴 DOWNTREND"
-        pe_action = "BUY PE 🚨"
-        pe_hw_ok = True
-    else:
-        pe_trend = "🟡 SIDEWAYS"
-        pe_action = "NO TRADE 🚫"
-        pe_hw_ok = False
-
-    return summary_str, ce_trend, ce_action, ce_hw_ok, pe_trend, pe_action, pe_hw_ok
+        print(f"❌ Failed to update tab {tab_name}: {e}")
 
 # ==========================================
-# SECTION 3: SYMBOL DEFINITIONS & CONFIG
+# SECTION 2: SYMBOL DEFINITIONS & CONFIG
 # ==========================================
 FNO_SYMBOLS = [
     "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS",
@@ -115,98 +73,120 @@ FNO_SYMBOLS = [
 ]
 
 # ==========================================
-# SECTION 4: HISTORICAL & REAL-TIME ANALYSIS
+# SECTION 3: HISTORICAL & REAL-TIME ANALYSIS
 # ==========================================
-raw_stocks_data = {}
+def fetch_and_process_data():
+    raw_stocks_data = {}
 
-for sym in FNO_SYMBOLS:
-    try:
-        yf_ticker = f"{sym}.NS"
-        data = yf.download(yf_ticker, period="2d", interval="5m", progress=False)
-        
-        if data.empty or len(data) < 2:
+    for sym in FNO_SYMBOLS:
+        try:
+            yf_ticker = f"{sym}.NS"
+            data = yf.download(yf_ticker, period="2d", interval="5m", progress=False)
+            
+            if data.empty or len(data) < 2:
+                continue
+                
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = [col[0] for col in data.columns]
+                
+            latest_row = data.iloc[-1]
+            prev_row = data.iloc[-2]
+            
+            stock_ltp = float(latest_row['Close'])
+            prev_price = float(prev_row['Close'])
+            
+            avg_vol = data['Volume'].tail(10).mean()
+            curr_vol = float(latest_row['Volume'])
+            vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
+            
+            price_change_pct = ((stock_ltp - prev_price) / prev_price) * 100
+            
+            if price_change_pct > 0.5 and vol_spike > 1.2:
+                trend = 'UPTREND'
+            elif price_change_pct < -0.5 and vol_spike > 1.2:
+                trend = 'DOWNTREND'
+            else:
+                trend = 'SIDEWAYS'
+
+            if trend == 'UPTREND':
+                raw_stocks_data[sym] = {
+                    'Symbol': sym,
+                    'Trend': 'UPTREND',
+                    'Vol Spike': round(vol_spike, 2),
+                    'LTP': round(stock_ltp, 2),
+                    'Score': 80.0 if vol_spike > 2.0 else 60.0,
+                    'CE Action': 'BUY CE 🚀' if price_change_pct > 0.8 else 'WATCH 👀',
+                    'PE Action': 'NO TRADE 🚫',
+                    'Trigger CE': f'BUY>{round(stock_ltp * 1.002, 2)}',
+                    'Trigger PE': 'VOL SPIKE',
+                    'PCR': 1.15,
+                    'Call Price Up': True,
+                    'Call OI Up': True if vol_spike > 1.5 else False,
+                    'Put OI Down': False,
+                    'ATM IV': 18.0,
+                    '15m Close': True if vol_spike > 1.2 else False
+                }
+            elif trend == 'DOWNTREND':
+                raw_stocks_data[sym] = {
+                    'Symbol': sym,
+                    'Trend': 'DOWNTREND',
+                    'Vol Spike': round(vol_spike, 2),
+                    'LTP': round(stock_ltp, 2),
+                    'Score': 80.0 if vol_spike > 2.0 else 60.0,
+                    'CE Action': 'NO TRADE 🚫',
+                    'PE Action': 'BUY PE 🚨' if price_change_pct < -0.8 else 'WATCH 👀',
+                    'Trigger CE': 'VOL SPIKE',
+                    'Trigger PE': f'SELL<{round(stock_ltp * 0.998, 2)}',
+                    'PCR': 0.65,
+                    'Call Price Up': False,
+                    'Call OI Up': False,
+                    'Put OI Down': True if vol_spike > 1.5 else False,
+                    'ATM IV': 19.5,
+                    '15m Close': True if vol_spike > 1.2 else False
+                }
+            else:
+                raw_stocks_data[sym] = {
+                    'Symbol': sym,
+                    'Trend': 'SIDEWAYS',
+                    'Vol Spike': round(vol_spike, 2),
+                    'LTP': round(stock_ltp, 2),
+                    'Score': 20.0,
+                    'CE Action': 'NO TRADE 🚫',
+                    'PE Action': 'NO TRADE 🚫',
+                    'Trigger CE': 'VOL SPIKE',
+                    'Trigger PE': 'VOL SPIKE',
+                    'PCR': 0.85,
+                    'Call Price Up': False,
+                    'Call OI Up': False,
+                    'Put OI Down': False,
+                    'ATM IV': 22.0,
+                    '15m Close': False
+                }
+
+        except Exception as e:
+            print(f"Error processing {sym}: {e}")
             continue
-            
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = [col[0] for col in data.columns]
-            
-        latest_row = data.iloc[-1]
-        prev_row = data.iloc[-2]
-        
-        stock_ltp = float(latest_row['Close'])
-        prev_price = float(prev_row['Close'])
-        
-        avg_vol = data['Volume'].tail(10).mean()
-        curr_vol = float(latest_row['Volume'])
-        vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
-        
-        price_change_pct = ((stock_ltp - prev_price) / prev_price) * 100
-        
-        if price_change_pct > 0.5 and vol_spike > 1.2:
-            trend = 'UPTREND'
-        elif price_change_pct < -0.5 and vol_spike > 1.2:
-            trend = 'DOWNTREND'
-        else:
-            trend = 'SIDEWAYS'
 
-        if trend == 'UPTREND':
-            raw_stocks_data[sym] = {
-                'trend': 'UPTREND',
-                'vol_spike': round(vol_spike, 2),
-                'ltp': round(stock_ltp, 2),
-                'score': 80.0 if vol_spike > 2.0 else 60.0,
-                'ce_action': 'BUY CE 🚀' if price_change_pct > 0.8 else 'WATCH 👀',
-                'pe_action': 'NO TRADE 🚫',
-                'trigger_ce': f'BUY>{round(stock_ltp * 1.002, 2)}',
-                'trigger_pe': 'VOL SPIKE',
-                'pcr': 1.15,
-                'call_price_up': True,
-                'call_oi_up': True if vol_spike > 1.5 else False,
-                'put_oi_down': False,
-                'atm_iv': 18.0,
-                'is_15m_close': True if vol_spike > 1.2 else False
-            }
-        elif trend == 'DOWNTREND':
-            raw_stocks_data[sym] = {
-                'trend': 'DOWNTREND',
-                'vol_spike': round(vol_spike, 2),
-                'ltp': round(stock_ltp, 2),
-                'score': 80.0 if vol_spike > 2.0 else 60.0,
-                'ce_action': 'NO TRADE 🚫',
-                'pe_action': 'BUY PE 🚨' if price_change_pct < -0.8 else 'WATCH 👀',
-                'trigger_ce': 'VOL SPIKE',
-                'trigger_pe': f'SELL<{round(stock_ltp * 0.998, 2)}',
-                'pcr': 0.65,
-                'call_price_up': False,
-                'call_oi_up': False,
-                'put_oi_down': True if vol_spike > 1.5 else False,
-                'atm_iv': 19.5,
-                'is_15m_close': True if vol_spike > 1.2 else False
-            }
-        else:
-            raw_stocks_data[sym] = {
-                'trend': 'SIDEWAYS',
-                'vol_spike': round(vol_spike, 2),
-                'ltp': round(stock_ltp, 2),
-                'score': 20.0,
-                'ce_action': 'NO TRADE 🚫',
-                'pe_action': 'NO TRADE 🚫',
-                'trigger_ce': 'VOL SPIKE',
-                'trigger_pe': 'VOL SPIKE',
-                'pcr': 0.85,
-                'call_price_up': False,
-                'call_oi_up': False,
-                'put_oi_down': False,
-                'atm_iv': 22.0,
-                'is_15m_close': False
-            }
+    df_all = pd.DataFrame(list(raw_stocks_data.values()))
+    
+    if df_all.empty:
+        return pd.DataFrame(), pd.DataFrame()
 
-    except Exception as e:
-        print(f"Error processing {sym}: {e}")
-        continue
-# ==============================================================================
+    df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by='Score', ascending=False)
+    df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by='Score', ascending=False)
+
+    return df_ce, df_pe
+
+# ==========================================
+# SECTION 4: DATA PREPARATION & PROCESSING
+# ==========================================
+def prepare_dashboard_data():
+    df_ce, df_pe = fetch_and_process_data()
+    return df_ce, df_pe
+
+# ==========================================
 # SECTION 5: MAIN EXECUTION BLOCK (2 TABS UPDATE)
-# ==============================================================================
+# ==========================================
 if __name__ == "__main__":
     print("🚀 OI_VCP Engine Active - Updating 2 Clean Tabs...")
     
@@ -215,7 +195,7 @@ if __name__ == "__main__":
         now = datetime.now(ist)
         print(f"[⏱️ Execution Time: {now.strftime('%H:%M:%S IST')}] Fetching Market Data...")
 
-        df_ce, df_pe = fetch_and_process_data()
+        df_ce, df_pe = prepare_dashboard_data()
 
         sheet_id = os.environ.get("SHEET_ID")
         if sheet_id:
@@ -234,4 +214,4 @@ if __name__ == "__main__":
 
     except Exception as err:
         print(f"❌ Execution Failed: {err}")
-        exit(1)
+        sys.exit(1)
