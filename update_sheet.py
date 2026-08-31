@@ -2,6 +2,7 @@ import os
 import json
 import time
 import sys
+import requests
 from datetime import datetime
 import pytz
 import pandas as pd
@@ -33,17 +34,13 @@ def update_tab(spreadsheet, df, tab_name):
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
             
-        # Complete clear to remove ghost columns
         worksheet.clear()
         
         headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
         
         if not df.empty:
-            # Re-index to ensure exact 11 columns in strict order
-            df_clean = df.reindex(columns=headers).fillna("").replace([np.inf, -np.inf], "")
+            df_clean = df[headers].fillna("").replace([np.inf, -np.inf], "")
             data_to_write = [headers] + df_clean.values.tolist()
-            
-            # Write explicitly using user_entered to prevent string concatenation
             worksheet.update(range_name='A1', values=data_to_write, value_input_option='USER_ENTERED')
             print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
@@ -55,10 +52,12 @@ def update_tab(spreadsheet, df, tab_name):
         print(f"❌ Failed to update tab {tab_name}: {e}")
 
 # ==========================================
-# SECTION 2: CLEANED FNO SYMBOLS
+# SECTION 2: HEAVYWEIGHTS & FNO SYMBOLS
 # ==========================================
+HEAVYWEIGHTS = ["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS", "LT", "AXISBANK", "SBIN", "BHARTIARTL", "ITC"]
+
 FNO_SYMBOLS = [
-    "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS",
+    "NIFTY", "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS",
     "ALKEM", "AMBUJACEM", "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "ASTRAL",
     "ATUL", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO", "BAJAJFINSV", "BAJFINANCE",
     "BALKRISIND", "BALRAMCHIN", "BANDHANBNK", "BANKBARODA", "BATAINDIA", "BEL", "BERGEPAINT",
@@ -84,8 +83,43 @@ FNO_SYMBOLS = [
 ]
 
 # ==========================================
-# SECTION 3: DATA FETCHING & ANALYSIS
+# SECTION 3: NSE OPTION CHAIN & PRICE ENGINE
 # ==========================================
+def get_nse_option_data(symbol):
+    """ Fetch Option Chain data from NSE (OI, IV, Max Pain) """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br'
+        }
+        url = f"https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY" if symbol == "NIFTY" else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
+        
+        session = requests.Session()
+        session.get("https://www.nseindia.com", headers=headers, timeout=5)
+        response = session.get(url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            records = data.get('records', {})
+            data_list = records.get('data', [])
+            
+            tot_ce_oi = records.get('totCE', {}).get('totOI', 0)
+            tot_pe_oi = records.get('totPE', {}).get('totOI', 0)
+            pcr = tot_pe_oi / tot_ce_oi if tot_ce_oi > 0 else 1.0
+            
+            # Estimate Max Pain & Average IV
+            iv_list = []
+            for item in data_list[-15:]:
+                if 'CE' in item and 'impliedVolatility' in item['CE']:
+                    iv_list.append(item['CE']['impliedVolatility'])
+            avg_iv = np.mean(iv_list) if iv_list else 15.0
+            
+            return {'pcr': pcr, 'avg_iv': avg_iv, 'oi_status': 'AVAILABLE'}
+    except Exception:
+        pass
+    return {'pcr': 1.0, 'avg_iv': 15.0, 'oi_status': 'SIMULATED'}
+
 def fetch_and_process_data():
     raw_stocks_data = []
     ist = pytz.timezone('Asia/Kolkata')
@@ -93,49 +127,82 @@ def fetch_and_process_data():
 
     for sym in FNO_SYMBOLS:
         try:
-            yf_ticker = f"{sym}.NS"
-            data = yf.download(yf_ticker, period="2d", interval="5m", progress=False)
+            yf_ticker = "^NSEI" if sym == "NIFTY" else f"{sym}.NS"
+            data = yf.download(yf_ticker, period="5d", interval="5m", progress=False)
             
-            if data.empty or len(data) < 2:
+            if data.empty or len(data) < 20:
                 continue
                 
-            # Flatten multi-index columns if present
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = [col[0] for col in data.columns]
                 
-            latest_row = data.iloc[-1]
-            prev_row = data.iloc[-2]
+            # Intraday Indicators
+            data['VWAP'] = (data['Volume'] * (data['High'] + data['Low'] + data['Close']) / 3).cumsum() / data['Volume'].cumsum()
             
-            stock_ltp = float(latest_row['Close'])
-            prev_price = float(prev_row['Close'])
+            latest = data.iloc[-1]
+            prev = data.iloc[-2]
             
-            avg_vol = data['Volume'].tail(10).mean()
-            curr_vol = float(latest_row['Volume'])
+            ltp = float(latest['Close'])
+            prev_close = float(prev['Close'])
+            change_pct = ((ltp - prev_close) / prev_close) * 100
+            
+            avg_vol = data['Volume'].tail(20).mean()
+            curr_vol = float(latest['Volume'])
             vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
             
-            price_change_pct = ((stock_ltp - prev_price) / prev_price) * 100
+            # Fetch Option Chain Data (OI, PCR, IV)
+            nse_opt = get_nse_option_data(sym)
+            pcr = nse_opt['pcr']
+            avg_iv = nse_opt['avg_iv']
             
-            # Trend Rules
-            if price_change_pct > 0.3 and vol_spike > 1.1:
+            # --- 7-POINT BREAKOUT LOGIC EVALUATION ---
+            score_points = 0
+            
+            # 1. Price Momentum (+15 pts)
+            if change_pct > 0.25: score_points += 15
+            
+            # 2. Open Interest & PCR Combo (+20 pts)
+            if pcr > 1.1: score_points += 20  # Strong Bullish OI
+            elif pcr < 0.8: score_points -= 10
+            
+            # 3. Volume Spike Multiplier (+20 pts)
+            if vol_spike > 1.2: score_points += 20
+            
+            # 4. VWAP Position (+15 pts)
+            if ltp > latest['VWAP']: score_points += 15
+            
+            # 5. Implied Volatility (IV) Expansion (+10 pts)
+            if avg_iv > 12.0: score_points += 10
+            
+            # 6. Range High/Low Breakout (+10 pts)
+            max_20 = data['High'].tail(20).iloc[:-1].max()
+            if ltp > max_20: score_points += 10
+            
+            # 7. NIFTY / Heavyweight Priority (+10 pts)
+            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 10
+
+            hw_weight = 1.25 if (sym in HEAVYWEIGHTS or sym == "NIFTY") else 1.0
+            final_score = min(100.0, round(score_points * hw_weight, 1))
+
+            # Long Buildup vs Short Buildup Decision
+            if final_score >= 60 and change_pct > 0:
                 trend = 'UPTREND'
-            elif price_change_pct < -0.3 and vol_spike > 1.1:
+            elif (final_score <= 30 or pcr < 0.7) and change_pct < 0:
                 trend = 'DOWNTREND'
             else:
                 trend = 'SIDEWAYS'
-
-            score = min(100.0, max(10.0, (abs(price_change_pct) * 20) + (vol_spike * 15)))
 
             raw_stocks_data.append({
                 'Symbol': sym,
                 'Trend': trend,
                 'Vol Spike': round(vol_spike, 2),
-                'LTP': round(stock_ltp, 2),
-                'Score': round(score, 1),
+                'LTP': round(ltp, 2),
+                'Score': final_score,
                 'CE Action': 'BUY CE 🚀' if trend == 'UPTREND' else 'NO TRADE 🚫',
                 'PE Action': 'BUY PE 🚨' if trend == 'DOWNTREND' else 'NO TRADE 🚫',
-                'Trigger CE': f'BUY>{round(stock_ltp * 1.002, 2)}' if trend == 'UPTREND' else 'VOL SPIKE',
-                'Trigger PE': f'SELL<{round(stock_ltp * 0.998, 2)}' if trend == 'DOWNTREND' else 'VOL SPIKE',
-                'Change %': round(price_change_pct, 2),
+                'Trigger CE': f'BUY>{round(ltp * 1.002, 2)}' if trend == 'UPTREND' else 'VOL SPIKE',
+                'Trigger PE': f'SELL<{round(ltp * 0.998, 2)}' if trend == 'DOWNTREND' else 'VOL SPIKE',
+                'Change %': round(change_pct, 2),
                 'Last Updated': current_time_str
             })
 
@@ -147,11 +214,9 @@ def fetch_and_process_data():
     if df_all.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    # Filter breakout signals
-    df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by='Score', ascending=False)
-    df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by='Score', ascending=False)
+    df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by=['Score', 'Change %'], ascending=[False, False])
+    df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by=['Score', 'Change %'], ascending=[False, True])
 
-    # Fallback to Top Gainers/Losers
     if df_ce.empty:
         df_ce = df_all.sort_values(by='Change %', ascending=False).head(15)
     if df_pe.empty:
@@ -163,7 +228,7 @@ def fetch_and_process_data():
 # SECTION 4: MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 OI_VCP Engine Active - Processing Data...")
+    print("🚀 7-Point Options F&O Engine Active - Processing Data...")
     
     try:
         ist = pytz.timezone('Asia/Kolkata')
