@@ -34,20 +34,33 @@ def update_tab(spreadsheet, df, tab_name):
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
             
-        # Clear grid to prevent old timestamp duplication
-        worksheet.batch_clear(["A1:Z100"])
+        # Clear values AND formatting completely to prevent ghost time-formats
+        worksheet.clear()
         
         headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
         
         if not df.empty:
+            # Force strict 11-column order
             df_clean = df[headers].copy().fillna("").replace([np.inf, -np.inf], "")
+            
+            # Format numbers explicitly to strings to prevent Google Sheets auto-converting them into dates/times
+            df_clean["Vol Spike"] = df_clean["Vol Spike"].astype(str)
+            df_clean["LTP"] = df_clean["LTP"].astype(str)
+            df_clean["Score"] = df_clean["Score"].astype(str)
+            df_clean["Change %"] = df_clean["Change %"].astype(str)
+            df_clean["Trigger CE"] = df_clean["Trigger CE"].astype(str)
+            df_clean["Trigger PE"] = df_clean["Trigger PE"].astype(str)
+            df_clean["Last Updated"] = df_clean["Last Updated"].astype(str)
+
             data_to_write = [headers] + df_clean.values.tolist()
             
-            worksheet.update(range_name='A1', values=data_to_write, value_input_option='USER_ENTERED')
+            # Write with RAW option so Google Sheets does not misinterpret strings as Times
+            worksheet.update(range_name='A1', values=data_to_write, value_input_option='RAW')
             print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
-            default_row = [["NONE", "NO_BREAKOUT", 0, 0, 0, "NO TRADE 🚫", "NO TRADE 🚫", "VOL SPIKE", "VOL SPIKE", 0, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')]]
-            worksheet.update(range_name='A1', values=[headers] + default_row, value_input_option='USER_ENTERED')
+            ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
+            default_row = [["NONE", "NO_BREAKOUT", "0.0", "0.0", "0.0", "NO TRADE 🚫", "NO TRADE 🚫", "VOL SPIKE", "VOL SPIKE", "0.0", str(ist_time)]]
+            worksheet.update(range_name='A1', values=[headers] + default_row, value_input_option='RAW')
             print(f"⚠️ Tab {tab_name} updated with default 'No Signals' state.")
             
     except Exception as e:
@@ -116,21 +129,20 @@ def fetch_and_process_data():
             curr_vol = float(latest['Volume'])
             vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
             
-            # Estimate Volume & Price Momentum Indicators (OI Proxy)
             price_up = change_pct > 0.2
             vol_up = vol_spike > 1.2
             
             # --- 7-POINT EVALUATION SCORE ---
             score_points = 0
-            if price_up: score_points += 20                       # Point 1: Price Breakout
-            if vol_up: score_points += 20                         # Point 2: Volume Spike
-            if ltp > latest['VWAP']: score_points += 15           # Point 3: VWAP Support
+            if price_up: score_points += 20
+            if vol_up: score_points += 20
+            if ltp > latest['VWAP']: score_points += 15
             
             max_20 = data['High'].tail(20).iloc[:-1].max()
-            if ltp > max_20: score_points += 15                  # Point 4: 20-bar Range Break
+            if ltp > max_20: score_points += 15
             
-            if price_up and vol_up: score_points += 15           # Point 5: OI Long Buildup Proxy
-            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 15 # Point 6 & 7: Heavyweight/NIFTY Boost
+            if price_up and vol_up: score_points += 15
+            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 15
 
             hw_weight = 1.25 if (sym in HEAVYWEIGHTS or sym == "NIFTY") else 1.0
             final_score = min(100.0, round(score_points * hw_weight, 1))
@@ -142,6 +154,9 @@ def fetch_and_process_data():
             else:
                 trend = 'SIDEWAYS'
 
+            trigger_ce_val = f"BUY>{round(ltp * 1.002, 2)}" if trend == 'UPTREND' else "VOL SPIKE"
+            trigger_pe_val = f"SELL<{round(ltp * 0.998, 2)}" if trend == 'DOWNTREND' else "VOL SPIKE"
+
             raw_stocks_data.append({
                 'Symbol': str(sym),
                 'Trend': str(trend),
@@ -150,8 +165,8 @@ def fetch_and_process_data():
                 'Score': float(final_score),
                 'CE Action': 'BUY CE 🚀' if trend == 'UPTREND' else 'NO TRADE 🚫',
                 'PE Action': 'BUY PE 🚨' if trend == 'DOWNTREND' else 'NO TRADE 🚫',
-                'Trigger CE': f'BUY>{round(ltp * 1.002, 2)}' if trend == 'UPTREND' else 'VOL SPIKE',
-                'Trigger PE': f'SELL<{round(ltp * 0.998, 2)}' if trend == 'DOWNTREND' else 'VOL SPIKE',
+                'Trigger CE': trigger_ce_val,
+                'Trigger PE': trigger_pe_val,
                 'Change %': round(float(change_pct), 2),
                 'Last Updated': current_time_str
             })
@@ -200,4 +215,4 @@ if __name__ == "__main__":
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
     except Exception as err:
-        print(f"❌ Execution Error Suppressed: {err}")
+        print(f"❌ Execution Error: {err}")
