@@ -1,14 +1,16 @@
-NAME:run_master_FNO_screener.yml auto update
+name: Run Advanced FNO Master Screener
 
 on:
   push:
     branches:
       - main
       - master
+    paths:
+      - 'update_master_fno.py' # 🛡️ Safe Shield: Sirf is file ke change par hi chalega, purana system disturb nahi hoga
   schedule:
-    # ⏱️ Cron Schedule: IST ke hisab se Mon-Fri subah 9:15 AM se shaam 3:30 PM tak har 10 minute mein auto-run hoga
+    # ⏱️ Adjusted Cron: IST subah 9:10 AM se shaam 3:30 PM tak, Mon-Fri har 10 minute mein automatic chalega
     - cron: '*/10 3-10 * * 1-5'
-  workflow_dispatch: # Taaki aap manual button daba kar bhi jab chahein chala sakein
+  workflow_dispatch: # Manual run button hamesha active rahega
 
 jobs:
   run-screener:
@@ -33,4 +35,3 @@ jobs:
         GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
         SHEET_ID: ${{ secrets.SHEET_ID }}
       run: python update_master_fno.py
-
