@@ -14,21 +14,17 @@ from google.oauth2.service_account import Credentials
 # SECTION 1: GOOGLE SHEETS AUTH HELPER
 # ==========================================
 def get_gspread_client():
-    creds_json = os.environ.get("GOOGLE_CREDS")
+    creds_json = os.environ.get("GOOGLE_CREDS") or os.environ.get("GCP_CREDENTIALS_JSON")
     
     if creds_json:
-        # Load from Environment Variable (GitHub Actions / Cloud)
         creds_dict = json.loads(creds_json)
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         return gspread.authorize(creds)
     elif os.path.exists("credentials.json"):
-        # Fallback to local file if present
         return gspread.service_account(filename="credentials.json")
     else:
-        raise FileNotFoundError(
-            "Neither 'GOOGLE_CREDS' environment variable nor 'credentials.json' file was found!"
-        )
+        raise FileNotFoundError("Neither 'GOOGLE_CREDS' env var nor 'credentials.json' was found!")
 
 def update_tab(spreadsheet, df, tab_name):
     try:
@@ -40,18 +36,22 @@ def update_tab(spreadsheet, df, tab_name):
         worksheet.clear()
         
         if not df.empty:
-            data_to_write = [df.columns.tolist()] + df.values.tolist()
+            # Clean NaN / Infinity values for JSON compatibility
+            df_clean = df.fillna("").replace([np.inf, -np.inf], "")
+            data_to_write = [df_clean.columns.tolist()] + df_clean.values.tolist()
             worksheet.update('A1', data_to_write)
-            print(f"✅ Successfully updated tab: {tab_name} ({len(df)} rows)")
+            print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
-            worksheet.update('A1', [["Status"], ["No Active Signals Found"]])
-            print(f"⚠️ Tab {tab_name} updated with empty dataset.")
+            default_header = [["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Status"]]
+            default_row = [["NONE", "NO_BREAKOUT", 0, 0, 0, "NO TRADE 🚫", "NO TRADE 🚫", "No active breakout signals found in this scan cycle"]]
+            worksheet.update('A1', default_header + default_row)
+            print(f"⚠️ Tab {tab_name} updated with default 'No Signals' state.")
             
     except Exception as e:
         print(f"❌ Failed to update tab {tab_name}: {e}")
 
 # ==========================================
-# SECTION 2: CLEANED SYMBOL DEFINITIONS
+# SECTION 2: CLEANED FNO SYMBOLS
 # ==========================================
 FNO_SYMBOLS = [
     "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS",
@@ -80,10 +80,10 @@ FNO_SYMBOLS = [
 ]
 
 # ==========================================
-# SECTION 3: HISTORICAL & REAL-TIME ANALYSIS
+# SECTION 3: DATA FETCHING & ANALYSIS
 # ==========================================
 def fetch_and_process_data():
-    raw_stocks_data = {}
+    raw_stocks_data = []
 
     for sym in FNO_SYMBOLS:
         try:
@@ -93,6 +93,7 @@ def fetch_and_process_data():
             if data.empty or len(data) < 2:
                 continue
                 
+            # Flatten multi-index columns if present
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = [col[0] for col in data.columns]
                 
@@ -108,114 +109,71 @@ def fetch_and_process_data():
             
             price_change_pct = ((stock_ltp - prev_price) / prev_price) * 100
             
-            if price_change_pct > 0.5 and vol_spike > 1.2:
+            # Trend Rules
+            if price_change_pct > 0.3 and vol_spike > 1.1:
                 trend = 'UPTREND'
-            elif price_change_pct < -0.5 and vol_spike > 1.2:
+            elif price_change_pct < -0.3 and vol_spike > 1.1:
                 trend = 'DOWNTREND'
             else:
                 trend = 'SIDEWAYS'
 
-            if trend == 'UPTREND':
-                raw_stocks_data[sym] = {
-                    'Symbol': sym,
-                    'Trend': 'UPTREND',
-                    'Vol Spike': round(vol_spike, 2),
-                    'LTP': round(stock_ltp, 2),
-                    'Score': 80.0 if vol_spike > 2.0 else 60.0,
-                    'CE Action': 'BUY CE 🚀' if price_change_pct > 0.8 else 'WATCH 👀',
-                    'PE Action': 'NO TRADE 🚫',
-                    'Trigger CE': f'BUY>{round(stock_ltp * 1.002, 2)}',
-                    'Trigger PE': 'VOL SPIKE',
-                    'PCR': 1.15,
-                    'Call Price Up': True,
-                    'Call OI Up': True if vol_spike > 1.5 else False,
-                    'Put OI Down': False,
-                    'ATM IV': 18.0,
-                    '15m Close': True if vol_spike > 1.2 else False
-                }
-            elif trend == 'DOWNTREND':
-                raw_stocks_data[sym] = {
-                    'Symbol': sym,
-                    'Trend': 'DOWNTREND',
-                    'Vol Spike': round(vol_spike, 2),
-                    'LTP': round(stock_ltp, 2),
-                    'Score': 80.0 if vol_spike > 2.0 else 60.0,
-                    'CE Action': 'NO TRADE 🚫',
-                    'PE Action': 'BUY PE 🚨' if price_change_pct < -0.8 else 'WATCH 👀',
-                    'Trigger CE': 'VOL SPIKE',
-                    'Trigger PE': f'SELL<{round(stock_ltp * 0.998, 2)}',
-                    'PCR': 0.65,
-                    'Call Price Up': False,
-                    'Call OI Up': False,
-                    'Put OI Down': True if vol_spike > 1.5 else False,
-                    'ATM IV': 19.5,
-                    '15m Close': True if vol_spike > 1.2 else False
-                }
-            else:
-                raw_stocks_data[sym] = {
-                    'Symbol': sym,
-                    'Trend': 'SIDEWAYS',
-                    'Vol Spike': round(vol_spike, 2),
-                    'LTP': round(stock_ltp, 2),
-                    'Score': 20.0,
-                    'CE Action': 'NO TRADE 🚫',
-                    'PE Action': 'NO TRADE 🚫',
-                    'Trigger CE': 'VOL SPIKE',
-                    'Trigger PE': 'VOL SPIKE',
-                    'PCR': 0.85,
-                    'Call Price Up': False,
-                    'Call OI Up': False,
-                    'Put OI Down': False,
-                    'ATM IV': 22.0,
-                    '15m Close': False
-                }
+            score = min(100.0, max(10.0, (abs(price_change_pct) * 20) + (vol_spike * 15)))
+
+            raw_stocks_data.append({
+                'Symbol': sym,
+                'Trend': trend,
+                'Vol Spike': round(vol_spike, 2),
+                'LTP': round(stock_ltp, 2),
+                'Score': round(score, 1),
+                'CE Action': 'BUY CE 🚀' if trend == 'UPTREND' else 'NO TRADE 🚫',
+                'PE Action': 'BUY PE 🚨' if trend == 'DOWNTREND' else 'NO TRADE 🚫',
+                'Trigger CE': f'BUY>{round(stock_ltp * 1.002, 2)}' if trend == 'UPTREND' else 'VOL SPIKE',
+                'Trigger PE': f'SELL<{round(stock_ltp * 0.998, 2)}' if trend == 'DOWNTREND' else 'VOL SPIKE',
+                'Change %': round(price_change_pct, 2)
+            })
 
         except Exception as e:
-            print(f"Error processing {sym}: {e}")
             continue
 
-    df_all = pd.DataFrame(list(raw_stocks_data.values()))
+    df_all = pd.DataFrame(raw_stocks_data)
     
     if df_all.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    # Priority 1: Filter strict signals
     df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by='Score', ascending=False)
     df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by='Score', ascending=False)
 
+    # Fallback: Agar market closed/off-hours hai aur exact signal 0 hain, top price gainers/losers dikhayega
+    if df_ce.empty:
+        df_ce = df_all.sort_values(by='Change %', ascending=False).head(15)
+    if df_pe.empty:
+        df_pe = df_all.sort_values(by='Change %', ascending=True).head(15)
+
     return df_ce, df_pe
 
 # ==========================================
-# SECTION 4: DATA PREPARATION & PROCESSING
-# ==========================================
-def prepare_dashboard_data():
-    df_ce, df_pe = fetch_and_process_data()
-    return df_ce, df_pe
-
-# ==========================================
-# SECTION 5: MAIN EXECUTION BLOCK (2 TABS UPDATE)
+# SECTION 4: MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 OI_VCP Engine Active - Updating 2 Clean Tabs...")
+    print("🚀 OI_VCP Engine Active - Processing Data...")
     
     try:
         ist = pytz.timezone('Asia/Kolkata')
         now = datetime.now(ist)
         print(f"[⏱️ Execution Time: {now.strftime('%H:%M:%S IST')}] Fetching Market Data...")
 
-        df_ce, df_pe = prepare_dashboard_data()
+        df_ce, df_pe = fetch_and_process_data()
 
         sheet_id = os.environ.get("SHEET_ID")
         if sheet_id:
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
 
-            # Tab 1: CE / Bullish Dashboard
             update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
-            
-            # Tab 2: PE / Bearish Dashboard
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
             
-            print("🎉 ALL SYSTEMS GO! Sheet successfully updated with strict entry rules!")
+            print("🎉 Sheet update process finished!")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
