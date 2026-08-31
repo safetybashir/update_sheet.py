@@ -1,4 +1,4 @@
-NAME:master_FNO_screener auto update
+NAME:master_FNO_screener.yml auto update
 
 on:
   push:
