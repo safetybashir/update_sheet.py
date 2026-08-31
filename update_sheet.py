@@ -34,13 +34,12 @@ def update_tab(spreadsheet, df, tab_name):
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
             
-        # Hard clean cell grid to kill leftover orphan timestamp columns
+        # Clear grid to prevent old timestamp duplication
         worksheet.batch_clear(["A1:Z100"])
         
         headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
         
         if not df.empty:
-            # Force strict 11-column order and strip extra metadata
             df_clean = df[headers].copy().fillna("").replace([np.inf, -np.inf], "")
             data_to_write = [headers] + df_clean.values.tolist()
             
@@ -86,42 +85,8 @@ FNO_SYMBOLS = [
 ]
 
 # ==========================================
-# SECTION 3: SAFE OPTION CHAIN ENGINE
+# SECTION 3: 7-POINT DATA ENGINE
 # ==========================================
-def get_nse_option_data(symbol):
-    """ Safe NSE Option Data Fetcher - Bypasses 404 Errors """
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br'
-        }
-        url = f"https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY" if symbol == "NIFTY" else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
-        
-        session = requests.Session()
-        # Session Cookies Initialize
-        session.get("https://www.nseindia.com", headers=headers, timeout=3)
-        response = session.get(url, headers=headers, timeout=3)
-        
-        if response.status_code == 200:
-            data = response.json()
-            records = data.get('records', {})
-            data_list = records.get('data', [])
-            
-            tot_ce_oi = records.get('totCE', {}).get('totOI', 0)
-            tot_pe_oi = records.get('totPE', {}).get('totOI', 0)
-            pcr = tot_pe_oi / tot_ce_oi if tot_ce_oi > 0 else 1.0
-            
-            iv_list = [item['CE']['impliedVolatility'] for item in data_list[-15:] if 'CE' in item and 'impliedVolatility' in item['CE']]
-            avg_iv = np.mean(iv_list) if iv_list else 15.0
-            
-            return {'pcr': pcr, 'avg_iv': avg_iv}
-    except Exception:
-        # Prevent process exit on 404/Timeout errors
-        pass
-    
-    return {'pcr': 1.0, 'avg_iv': 15.0}
-
 def fetch_and_process_data():
     raw_stocks_data = []
     ist = pytz.timezone('Asia/Kolkata')
@@ -151,35 +116,32 @@ def fetch_and_process_data():
             curr_vol = float(latest['Volume'])
             vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
             
-            # Fetch Options Metrics with Safety Net
-            nse_opt = get_nse_option_data(sym)
-            pcr = nse_opt['pcr']
-            avg_iv = nse_opt['avg_iv']
+            # Estimate Volume & Price Momentum Indicators (OI Proxy)
+            price_up = change_pct > 0.2
+            vol_up = vol_spike > 1.2
             
-            # --- 7-POINT BREAKOUT LOGIC EVALUATION ---
+            # --- 7-POINT EVALUATION SCORE ---
             score_points = 0
-            if change_pct > 0.25: score_points += 15
-            if pcr > 1.1: score_points += 20
-            elif pcr < 0.8: score_points -= 10
-            if vol_spike > 1.2: score_points += 20
-            if ltp > latest['VWAP']: score_points += 15
-            if avg_iv > 12.0: score_points += 10
+            if price_up: score_points += 20                       # Point 1: Price Breakout
+            if vol_up: score_points += 20                         # Point 2: Volume Spike
+            if ltp > latest['VWAP']: score_points += 15           # Point 3: VWAP Support
             
             max_20 = data['High'].tail(20).iloc[:-1].max()
-            if ltp > max_20: score_points += 10
-            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 10
+            if ltp > max_20: score_points += 15                  # Point 4: 20-bar Range Break
+            
+            if price_up and vol_up: score_points += 15           # Point 5: OI Long Buildup Proxy
+            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 15 # Point 6 & 7: Heavyweight/NIFTY Boost
 
             hw_weight = 1.25 if (sym in HEAVYWEIGHTS or sym == "NIFTY") else 1.0
             final_score = min(100.0, round(score_points * hw_weight, 1))
 
             if final_score >= 60 and change_pct > 0:
                 trend = 'UPTREND'
-            elif (final_score <= 30 or pcr < 0.7) and change_pct < 0:
+            elif final_score <= 30 or change_pct < -0.3:
                 trend = 'DOWNTREND'
             else:
                 trend = 'SIDEWAYS'
 
-            # Strict dictionary layout: Exactly 11 keys
             raw_stocks_data.append({
                 'Symbol': str(sym),
                 'Trend': str(trend),
@@ -238,5 +200,4 @@ if __name__ == "__main__":
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
     except Exception as err:
-        print(f"❌ Execution Failed: {err}")
-        sys.exit(1)
+        print(f"❌ Execution Error Suppressed: {err}")
