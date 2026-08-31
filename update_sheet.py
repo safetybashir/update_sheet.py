@@ -69,37 +69,37 @@ FNO_SYMBOLS = [
     "CONCOR", "COROMANDEL", "CROMPTON", "CUB", "CUMMINSIND", "DABUR", "DALBHARAT", "DEEPAKNTR",
     "DIVISLAB", "DIXON", "DLF", "DRREDDY", "EICHERMOT", "ESCORTS", "EXIDEIND", "FEDERALBNK",
     "GAIL", "GLENMARK", "GNFC", "GODREJCP", "GODREJPROP", "GRANULES", "GRASIM",
-    "GUJGASLTD", "HAL", "HAVELLS", "HCLTECH", "HDFCAMC", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO",
+    "HAL", "HAVELLS", "HCLTECH", "HDFCAMC", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO",
     "HINDALCO", "HINDCOPPER", "HINDPETRO", "HINDUNILVR", "ICICIBANK", "ICICIGI", "ICICIPRULI",
     "IDEA", "IDFCFIRSTB", "IEX", "IGL", "INDHOTEL", "INDIACEM", "INDIAMART",
     "INDIGO", "INDUSINDBK", "INDUSTOWER", "INFY", "IOC", "IPCALAB", "IRCTC", "ITC",
     "JINDALSTEL", "JKCEMENT", "JSWSTEEL", "JUBLFOOD", "KOTAKBANK", "LALPATHLAB", "LAURUSLABS",
-    "LICHSGFIN", "LT", "LTIM", "LTF", "LUPIN", "M&M", "M&MFIN", "MANAPPURAM", "MARICO",
-    "MARUTI", "UNITDSPR", "MCX", "METROPOLIS", "MFSL", "MGL", "MOTHERSON", "MPHASIS",
+    "LICHSGFIN", "LT", "LUPIN", "M&M", "M&MFIN", "MANAPPURAM", "MARICO",
+    "MARUTI", "MCX", "METROPOLIS", "MFSL", "MGL", "MOTHERSON", "MPHASIS",
     "MRF", "MUTHOOTFIN", "NATIONALUM", "NAUKRI", "NAVINFLUOR", "NESTLEIND", "NMDC", "NTPC",
     "OBEROIRLTY", "OFSS", "ONGC", "PAGEIND", "PERSISTENT", "PETRONET", "PFC", "PIDILITIND",
     "PIIND", "PNB", "POLYCAB", "POWERGRID", "PVRINOX", "RAMCOCEM", "RBLBANK", "RECLTD",
     "RELIANCE", "SAIL", "SBICARD", "SBILIFE", "SBIN", "SHREECEM", "SHRIRAMFIN", "SIEMENS",
     "SRF", "SUNPHARMA", "SUNTV", "SYNGENE", "TATACHEM", "TATACONSUM", "TATAELXSI",
-    "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TCS", "TECHM", "TITAN", "TORNTPHARM",
+    "TATAPOWER", "TATASTEEL", "TCS", "TECHM", "TITAN", "TORNTPHARM",
     "TRENT", "TVSMOTOR", "UBL", "ULTRACEMCO", "UPL", "VEDL", "VOLTAS", "WIPRO", "ZEEL"
 ]
 
 # ==========================================
-# SECTION 3: NSE OPTION CHAIN & PRICE ENGINE
+# SECTION 3: SAFE OPTION CHAIN ENGINE
 # ==========================================
 def get_nse_option_data(symbol):
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br'
         }
         url = f"https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY" if symbol == "NIFTY" else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
         
         session = requests.Session()
-        session.get("https://www.nseindia.com", headers=headers, timeout=4)
-        response = session.get(url, headers=headers, timeout=4)
+        session.get("https://www.nseindia.com", headers=headers, timeout=2)
+        response = session.get(url, headers=headers, timeout=2)
         
         if response.status_code == 200:
             data = response.json()
@@ -174,21 +174,22 @@ def fetch_and_process_data():
             else:
                 trend = 'SIDEWAYS'
 
+            # Strict dictionary layout: Exact 11 values
             raw_stocks_data.append({
-                'Symbol': sym,
-                'Trend': trend,
-                'Vol Spike': round(vol_spike, 2),
-                'LTP': round(ltp, 2),
-                'Score': final_score,
+                'Symbol': str(sym),
+                'Trend': str(trend),
+                'Vol Spike': round(float(vol_spike), 2),
+                'LTP': round(float(ltp), 2),
+                'Score': float(final_score),
                 'CE Action': 'BUY CE 🚀' if trend == 'UPTREND' else 'NO TRADE 🚫',
                 'PE Action': 'BUY PE 🚨' if trend == 'DOWNTREND' else 'NO TRADE 🚫',
                 'Trigger CE': f'BUY>{round(ltp * 1.002, 2)}' if trend == 'UPTREND' else 'VOL SPIKE',
                 'Trigger PE': f'SELL<{round(ltp * 0.998, 2)}' if trend == 'DOWNTREND' else 'VOL SPIKE',
-                'Change %': round(change_pct, 2),
+                'Change %': round(float(change_pct), 2),
                 'Last Updated': current_time_str
             })
 
-        except Exception as e:
+        except Exception:
             continue
 
     df_all = pd.DataFrame(raw_stocks_data)
