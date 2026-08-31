@@ -1,8 +1,11 @@
 name: Run Advanced FNO Master Screener
 
 on:
+  push:
+    branches:
+      - main  # Agar aapki main branch ka naam master hai, toh yahan master likh sakte hain
   schedule:
-    # IST: Mon-Fri subah 9:15 AM se shaam 3:30 PM tak har 10 minute mein auto-trigger hoga
+    # ⏱️ Cron Timings: IST ke hisab se Mon-Fri subah 9:15 AM se shaam 3:30 PM tak har 10 minute mein auto-run hoga
     - cron: '*/10 3-10 * * 1-5'
   workflow_dispatch: # Taaki aap manual button daba kar bhi jab chahein chala sakein
 
