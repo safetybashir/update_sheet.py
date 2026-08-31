@@ -27,7 +27,7 @@ def connect_google_sheets():
 
 def fetch_derivatives_data():
     print("🔄 Fetching Live Market Data for Master Stock List...")
-    # Real test data generation for proper visualization
+    # Real mock data structure testing ke liye (M&M aur RELIANCE pass breakouts)
     mock_market_feed = {
         "NIFTY_50": {
             "high": 24260.0, "low": 24000.0, "close": 24135.0, "ltp": 24211.0, "pivot": 24150.0,
@@ -82,59 +82,76 @@ def update_scanner_dashboard():
     ]
     
     ticker_updates = [[ticker] for ticker in master_stocks]
+    end_row = len(master_stocks) + 1
     
-    # 1. Force Enter Tickers in Column A (Raw format)
-    cash_tab.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
-    derivatives_tab.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
-    master_dashboard.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
+    # Step 1: Force column A registration
+    print("📝 Syncing Master Tickers in Column A...")
+    cash_tab.update(values=ticker_updates, range_name=f'A2:A{end_row}')
+    derivatives_tab.update(values=ticker_updates, range_name=f'A2:A{end_row}')
+    master_dashboard.update(values=ticker_updates, range_name=f'A2:A{end_row}')
     
     market_data = fetch_derivatives_data()
     
     IST = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
     
-    # Grid data format arrays (Direct rows generation)
-    cash_grid = []
-    derivatives_grid = []
+    # Vertical Column Lists separation for direct grid writing
+    highs, lows, closes, ltps, price_chgs, pivots, vol_spikes, times = [], [], [], [], [], [], [], []
+    pcrs, max_pains, oi_chgs, iv_calls, iv_puts, deltas = [], [], [], [], [], []
     
     for ticker in master_stocks:
-        default_data = {
+        default = {
             "high": "", "low": "", "close": "", "ltp": "", "pivot": "",
             "volume_spike": "NORMAL (0.0x)", "oi_chg": 0, "pcr": 0, "max_pain": "",
             "iv_call": "", "iv_put": "", "delta_mom": "Stable"
         }
+        data = market_data[ticker] if ticker in market_data else default
         
-        data = market_data[ticker] if ticker in market_data else default_data
+        # Calculate price change
+        p_chg = round(((float(data['ltp']) - float(data['close'])) / float(data['close'])) * 100, 2) if data['close'] and data['ltp'] else 0
         
-        # Calculate price change percent
-        if data['close'] and data['ltp']:
-            price_change_pct = round(((float(data['ltp']) - float(data['close'])) / float(data['close'])) * 100, 2)
-        else:
-            price_change_pct = 0
-            
-        # DATA_CASH Columns Structure (B to P)
-        # HIGH(B), LOW(C), CLOSE(D), LTP(E), PRICE_CHG(F), VCP(G), VOLATILITY(H), PIVOT(I), VOL_SPIKE(J), SL(K), TARGET(L), RR(M), CASH_SIG(N), BO_STOCKS(O), TIME(P)
-        cash_grid.append([
-            data['high'], data['low'], data['close'], data['ltp'], 
-            price_change_pct, "", "", data['pivot'], data['volume_spike'], 
-            "", "", "", "", "", current_time_str if ticker in market_data else ""
-        ])
+        # Storing Cash tab values sequentially
+        highs.append([data['high']])
+        lows.append([data['low']])
+        closes.append([data['close']])
+        ltps.append([data['ltp']])
+        price_chgs.append([p_chg])
+        pivots.append([data['pivot']])
+        vol_spikes.append([data['volume_spike']])
+        times.append([current_time_str if ticker in market_data else ""])
         
-        # DATA_DERIVATIVES Columns Structure (B to L)
-        # LTP(B), PCR(C), MAXPAIN(D), MP_STATUS(E), OI_CHG(F), PRICE_CHG(G), BUILDUP(H), CALL_IV(I), PUT_IV(J), SKEW(K), DELTA(L)
-        derivatives_grid.append([
-            data['ltp'], data['pcr'], data['max_pain'], "", 
-            data['oi_chg'], price_change_pct, "", data['iv_call'], 
-            data['iv_put'], "", data['delta_mom']
-        ])
+        # Storing Derivatives tab values sequentially
+        pcrs.append([data['pcr']])
+        max_pains.append([data['max_pain']])
+        oi_chgs.append([data['oi_chg']])
+        iv_calls.append([data['iv_call']])
+        iv_puts.append([data['iv_put']])
+        deltas.append([data['delta_mom']])
 
-    # 👑 BULLETPROOF FULL GRID RE-WRITE WITH strict VALUE_INPUT_OPTION
-    print("🚀 Forcing grid updates into Google Sheets cells...")
+    # 👑 BULLETPROOF VERTICAL GRID CELLS FORCE-WRITE (Never drops data)
+    print("🚀 Forcing discrete column batching into Sheets cells...")
     
-    cash_tab.update(range_name=f'B2:P{len(master_stocks)+1}', values=cash_grid, value_input_option='USER_ENTERED')
-    derivatives_tab.update(range_name=f'B2:L{len(master_stocks)+1}', values=derivatives_grid, value_input_option='USER_ENTERED')
+    # Update TAB 1: DATA_CASH
+    cash_tab.update(values=highs, range_name=f'B2:B{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=lows, range_name=f'C2:C{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=closes, range_name=f'D2:D{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=ltps, range_name=f'E2:E{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=price_chgs, range_name=f'F2:F{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=pivots, range_name=f'I2:I{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=vol_spikes, range_name=f'J2:J{end_row}', value_input_option='USER_ENTERED')
+    cash_tab.update(values=times, range_name=f'P2:P{end_row}', value_input_option='USER_ENTERED')
+    
+    # Update TAB 2: DATA_DERIVATIVES
+    derivatives_tab.update(values=ltps, range_name=f'B2:B{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=pcrs, range_name=f'C2:C{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=max_pains, range_name=f'D2:D{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=oi_chgs, range_name=f'F2:F{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=price_chgs, range_name=f'G2:G{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=iv_calls, range_name=f'I2:I{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=iv_puts, range_name=f'J2:J{end_row}', value_input_option='USER_ENTERED')
+    derivatives_tab.update(values=deltas, range_name=f'L2:L{end_row}', value_input_option='USER_ENTERED')
         
-    print(f"✅ Master Success: Both worksheets fully written at {current_time_str} IST!")
+    print(f"✅ Master Success: All {len(master_stocks)} columns globally locked at {current_time_str} IST!")
 
 if __name__ == "__main__":
     update_scanner_dashboard()
