@@ -12,7 +12,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# SECTION 1: GOOGLE SHEETS AUTH HELPER
+# SECTION 1: GOOGLE SHEETS AUTH & TAB UPDATER
 # ==========================================
 def get_gspread_client():
     creds_json = os.environ.get("GOOGLE_CREDS") or os.environ.get("GCP_CREDENTIALS_JSON")
@@ -27,44 +27,71 @@ def get_gspread_client():
     else:
         raise FileNotFoundError("Neither 'GOOGLE_CREDS' env var nor 'credentials.json' was found!")
 
-def update_tab(spreadsheet, df, tab_name):
+def update_ce_tab(spreadsheet, df):
+    tab_name = "NEW OI_VCP B/O DASHBOARD"
+    headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "Trigger CE", "Change %", "Last Updated"]
+    
     try:
         try:
             worksheet = spreadsheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
+            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="10")
             
-        # Clear values AND formatting completely to prevent ghost time-formats
         worksheet.clear()
         
-        headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
-        
         if not df.empty:
-            # Force strict 11-column order
-            df_clean = df[headers].copy().fillna("").replace([np.inf, -np.inf], "")
+            df_ce = df.copy()
+            df_ce["CE Action"] = "BUY CE 🚀"
+            df_ce["Trigger CE"] = df_ce["LTP"].apply(lambda x: f"BUY>{round(float(x) * 1.002, 2)}")
             
-            # Format numbers explicitly to strings to prevent Google Sheets auto-converting them into dates/times
-            df_clean["Vol Spike"] = df_clean["Vol Spike"].astype(str)
-            df_clean["LTP"] = df_clean["LTP"].astype(str)
-            df_clean["Score"] = df_clean["Score"].astype(str)
-            df_clean["Change %"] = df_clean["Change %"].astype(str)
-            df_clean["Trigger CE"] = df_clean["Trigger CE"].astype(str)
-            df_clean["Trigger PE"] = df_clean["Trigger PE"].astype(str)
-            df_clean["Last Updated"] = df_clean["Last Updated"].astype(str)
+            df_clean = df_ce[headers].copy().fillna("").replace([np.inf, -np.inf], "")
+            for col in headers:
+                df_clean[col] = df_clean[col].astype(str)
 
             data_to_write = [headers] + df_clean.values.tolist()
-            
-            # Write with RAW option so Google Sheets does not misinterpret strings as Times
             worksheet.update(range_name='A1', values=data_to_write, value_input_option='RAW')
-            print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
+            print(f"✅ CE Tab Updated: {tab_name} ({len(df_clean)} rows)")
         else:
             ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
-            default_row = [["NONE", "NO_BREAKOUT", "0.0", "0.0", "0.0", "NO TRADE 🚫", "NO TRADE 🚫", "VOL SPIKE", "VOL SPIKE", "0.0", str(ist_time)]]
+            default_row = [["NONE", "NO_BREAKOUT", "0.0", "0.0", "0.0", "NO TRADE 🚫", "N/A", "0.0", str(ist_time)]]
             worksheet.update(range_name='A1', values=[headers] + default_row, value_input_option='RAW')
-            print(f"⚠️ Tab {tab_name} updated with default 'No Signals' state.")
+            print(f"⚠️ CE Tab Updated with Default State.")
             
     except Exception as e:
-        print(f"❌ Failed to update tab {tab_name}: {e}")
+        print(f"❌ Failed to update CE Tab: {e}")
+
+def update_pe_tab(spreadsheet, df):
+    tab_name = "LIVE_PE_DASHBOARD"
+    headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "PE Action", "Trigger PE", "Change %", "Last Updated"]
+    
+    try:
+        try:
+            worksheet = spreadsheet.worksheet(tab_name)
+        except gspread.WorksheetNotFound:
+            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="10")
+            
+        worksheet.clear()
+        
+        if not df.empty:
+            df_pe = df.copy()
+            df_pe["PE Action"] = "BUY PE 🚨"
+            df_pe["Trigger PE"] = df_pe["LTP"].apply(lambda x: f"SELL<{round(float(x) * 0.998, 2)}")
+            
+            df_clean = df_pe[headers].copy().fillna("").replace([np.inf, -np.inf], "")
+            for col in headers:
+                df_clean[col] = df_clean[col].astype(str)
+
+            data_to_write = [headers] + df_clean.values.tolist()
+            worksheet.update(range_name='A1', values=data_to_write, value_input_option='RAW')
+            print(f"✅ PE Tab Updated: {tab_name} ({len(df_clean)} rows)")
+        else:
+            ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
+            default_row = [["NONE", "NO_BREAKOUT", "0.0", "0.0", "0.0", "NO TRADE 🚫", "N/A", "0.0", str(ist_time)]]
+            worksheet.update(range_name='A1', values=[headers] + default_row, value_input_option='RAW')
+            print(f"⚠️ PE Tab Updated with Default State.")
+            
+    except Exception as e:
+        print(f"❌ Failed to update PE Tab: {e}")
 
 # ==========================================
 # SECTION 2: HEAVYWEIGHTS & FNO SYMBOLS
@@ -132,7 +159,6 @@ def fetch_and_process_data():
             price_up = change_pct > 0.2
             vol_up = vol_spike > 1.2
             
-            # --- 7-POINT EVALUATION SCORE ---
             score_points = 0
             if price_up: score_points += 20
             if vol_up: score_points += 20
@@ -154,19 +180,12 @@ def fetch_and_process_data():
             else:
                 trend = 'SIDEWAYS'
 
-            trigger_ce_val = f"BUY>{round(ltp * 1.002, 2)}" if trend == 'UPTREND' else "VOL SPIKE"
-            trigger_pe_val = f"SELL<{round(ltp * 0.998, 2)}" if trend == 'DOWNTREND' else "VOL SPIKE"
-
             raw_stocks_data.append({
                 'Symbol': str(sym),
                 'Trend': str(trend),
                 'Vol Spike': round(float(vol_spike), 2),
                 'LTP': round(float(ltp), 2),
                 'Score': float(final_score),
-                'CE Action': 'BUY CE 🚀' if trend == 'UPTREND' else 'NO TRADE 🚫',
-                'PE Action': 'BUY PE 🚨' if trend == 'DOWNTREND' else 'NO TRADE 🚫',
-                'Trigger CE': trigger_ce_val,
-                'Trigger PE': trigger_pe_val,
                 'Change %': round(float(change_pct), 2),
                 'Last Updated': current_time_str
             })
@@ -207,10 +226,10 @@ if __name__ == "__main__":
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
 
-            update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
-            update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
+            update_ce_tab(sh, df_ce)
+            update_pe_tab(sh, df_pe)
             
-            print("🎉 Sheet update process finished successfully!")
+            print("🎉 Both CE & PE Tabs updated clean without redundant columns!")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
