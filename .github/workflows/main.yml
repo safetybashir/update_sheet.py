@@ -18,16 +18,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "No requirements.txt found, installing core packages..."
+            pip install pandas requests gspread oauth2client kiteconnect
+          fi
 
       - name: Execute Live Update Script
         env:
-          # Agar aapke API keys ya credentials Github Secrets mein hain toh yahan pass honge
           KITE_API_KEY: ${{ secrets.KITE_API_KEY }}
           KITE_ACCESS_TOKEN: ${{ secrets.KITE_ACCESS_TOKEN }}
         run: python update_sheet.py
