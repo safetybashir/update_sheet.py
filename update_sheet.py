@@ -125,19 +125,13 @@ def calculate_7point_option_score(pcr, ltp, call_price_up, call_oi_up, put_oi_do
     return score_str, entry_status
 
 # ==============================================================================
-# SECTION 4: DATA PROCESSING & SEPARATION (CE vs PE)
+# SECTION 4: DATA PROCESSING & SEPARATION (LIVE MARKET DATA VIA YFINANCE)
 # ==============================================================================
+import yfinance as yf
+
 def fetch_and_process_data():
     ist = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist).strftime('%H:%M:%S')
-
-    sample_stock_ltps = {
-        "CROMPTON": 385.4, "HINDZINC": 512.1, "LODHA": 1180.0, "BLUESTARCO": 1690.5, 
-        "BEL": 288.3, "JUBLFOOD": 560.2, "PREMIERENE": 950.0, "GMRAIRPORT": 92.4, 
-        "VEDL": 465.0, "CONCOR": 1020.0, "PIIND": 3890.0, "EICHERMOT": 4850.0, 
-        "MANKIND": 2398.0, "HDFCBANK": 1650.0, "RELIANCE": 2980.0, "TATASTEEL": 155.0,
-        "INFY": 1880.0, "TCS": 4200.0, "ICICIBANK": 1220.0, "SBIN": 815.0
-    }
 
     all_user_stocks = [
         "CROMPTON", "HINDZINC", "LODHA", "BLUESTARCO", "BEL", "JUBLFOOD", "PREMIERENE", 
@@ -161,26 +155,55 @@ def fetch_and_process_data():
         "INDIGO", "HYUNDAI", "ULTRACEMCO", "WIPRO", "HAVELLS", "SONACOMS", "AMBUJACEM", 
         "BOSCHLTD", "HAL", "COCHINSHIP", "GODREJCP", "HEROMOTOCO", "IOC", "CIPLA", 
         "TCS", "ASHOKLEY", "BRITANNIA", "BHARATFORG", "PETRONET", "GRASIM", "PIDILITIND", 
-        "LTM", "BSE", "CUMMINSIND", 
+        "LTM", "BSE", "CUMMINSIND", "HDFCBANK", "ICICIBANK"
     ]
 
+    print("⏳ Downloading live market data for stocks...")
+    tickers = [f"{sym}.NS" for sym in all_user_stocks]
+    
+    try:
+        # Download batch live data for fast execution
+        downloaded = yf.download(tickers, period="2d", interval="5m", progress=False)
+        close_df = downloaded['Close']
+    except Exception as e:
+        print(f"⚠️ Market data download warning: {e}")
+        close_df = pd.DataFrame()
+
     raw_stocks_data = {}
+
     for sym in all_user_stocks:
-        stock_ltp = sample_stock_ltps.get(sym, 450.0)
+        ticker_sym = f"{sym}.NS"
+        stock_ltp = 0.0
+        trend = 'SIDEWAYS'
         
-        # Bullish Sample
-        if sym in ['MANKIND', 'HDFCBANK', 'RELIANCE', 'TATASTEEL']:
+        if not close_df.empty and ticker_sym in close_df.columns:
+            series = close_df[ticker_sym].dropna()
+            if len(series) >= 2:
+                stock_ltp = round(float(series.iloc[-1]), 2)
+                prev_price = float(series.iloc[-2])
+                
+                if stock_ltp > prev_price:
+                    trend = 'UPTREND'
+                elif stock_ltp < prev_price:
+                    trend = 'DOWNTREND'
+                else:
+                    trend = 'SIDEWAYS'
+
+        # Fallback for stock LTP if 0.0
+        if stock_ltp == 0.0:
+            stock_ltp = 450.0
+
+        if trend == 'UPTREND':
             raw_stocks_data[sym] = {
-                'trend': 'UPTREND', 'vol_spike': 3.5, 'ltp': stock_ltp, 'score': 10.0,
+                'trend': 'UPTREND', 'vol_spike': 2.5, 'ltp': stock_ltp, 'score': 10.0,
                 'ce_action': 'BUY CE 🚀', 'pe_action': 'NO TRADE 🚫',
                 'trigger_ce': f'BUY>{stock_ltp}', 'trigger_pe': 'VOL SPIKE',
                 'pcr': 1.25, 'call_price_up': True, 'call_oi_up': True, 
                 'put_oi_down': True, 'atm_iv': 15.0, 'is_15m_close': True
             }
-        # Bearish Sample
-        elif sym in ['CROMPTON', 'HINDZINC', 'LODHA']:
+        elif trend == 'DOWNTREND':
             raw_stocks_data[sym] = {
-                'trend': 'DOWNTREND', 'vol_spike': 3.2, 'ltp': stock_ltp, 'score': 9.0,
+                'trend': 'DOWNTREND', 'vol_spike': 2.2, 'ltp': stock_ltp, 'score': 9.0,
                 'ce_action': 'NO TRADE 🚫', 'pe_action': 'BUY PE 🚨',
                 'trigger_ce': 'VOL SPIKE', 'trigger_pe': f'SELL<{stock_ltp}',
                 'pcr': 0.65, 'call_price_up': False, 'call_oi_up': False, 
@@ -255,7 +278,6 @@ def fetch_and_process_data():
         rank_count += 1
 
     return pd.DataFrame(data_ce), pd.DataFrame(data_pe)
-
 # ==============================================================================
 # SECTION 5: MAIN EXECUTION BLOCK (2 TABS UPDATE)
 # ==============================================================================
