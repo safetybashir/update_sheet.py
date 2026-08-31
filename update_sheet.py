@@ -35,16 +35,19 @@ def update_tab(spreadsheet, df, tab_name):
             
         worksheet.clear()
         
+        headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
+        
         if not df.empty:
             # Clean NaN / Infinity values for JSON compatibility
             df_clean = df.fillna("").replace([np.inf, -np.inf], "")
+            # Ensure proper column order
+            df_clean = df_clean[headers]
             data_to_write = [df_clean.columns.tolist()] + df_clean.values.tolist()
             worksheet.update('A1', data_to_write)
             print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
-            default_header = [["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Status"]]
-            default_row = [["NONE", "NO_BREAKOUT", 0, 0, 0, "NO TRADE 🚫", "NO TRADE 🚫", "No active breakout signals found in this scan cycle"]]
-            worksheet.update('A1', default_header + default_row)
+            default_row = [["NONE", "NO_BREAKOUT", 0, 0, 0, "NO TRADE 🚫", "NO TRADE 🚫", "VOL SPIKE", "VOL SPIKE", 0, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')]]
+            worksheet.update('A1', [headers] + default_row)
             print(f"⚠️ Tab {tab_name} updated with default 'No Signals' state.")
             
     except Exception as e:
@@ -84,6 +87,8 @@ FNO_SYMBOLS = [
 # ==========================================
 def fetch_and_process_data():
     raw_stocks_data = []
+    ist = pytz.timezone('Asia/Kolkata')
+    current_time_str = datetime.now(ist).strftime('%H:%M:%S')
 
     for sym in FNO_SYMBOLS:
         try:
@@ -129,7 +134,8 @@ def fetch_and_process_data():
                 'PE Action': 'BUY PE 🚨' if trend == 'DOWNTREND' else 'NO TRADE 🚫',
                 'Trigger CE': f'BUY>{round(stock_ltp * 1.002, 2)}' if trend == 'UPTREND' else 'VOL SPIKE',
                 'Trigger PE': f'SELL<{round(stock_ltp * 0.998, 2)}' if trend == 'DOWNTREND' else 'VOL SPIKE',
-                'Change %': round(price_change_pct, 2)
+                'Change %': round(price_change_pct, 2),
+                'Last Updated': current_time_str
             })
 
         except Exception as e:
@@ -140,11 +146,11 @@ def fetch_and_process_data():
     if df_all.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    # Priority 1: Filter strict signals
+    # Filter strict signals
     df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by='Score', ascending=False)
     df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by='Score', ascending=False)
 
-    # Fallback: Agar market closed/off-hours hai aur exact signal 0 hain, top price gainers/losers dikhayega
+    # Fallback if off-hours / no breakout
     if df_ce.empty:
         df_ce = df_all.sort_values(by='Change %', ascending=False).head(15)
     if df_pe.empty:
@@ -173,7 +179,7 @@ if __name__ == "__main__":
             update_tab(sh, df_ce, "NEW OI_VCP B/O DASHBOARD")
             update_tab(sh, df_pe, "LIVE_PE_DASHBOARD")
             
-            print("🎉 Sheet update process finished!")
+            print("🎉 Sheet update process finished successfully!")
         else:
             print("❌ ERROR: SHEET_ID Environment Variable Missing!")
 
