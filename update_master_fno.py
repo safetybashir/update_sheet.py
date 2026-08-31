@@ -27,8 +27,7 @@ def connect_google_sheets():
 
 def fetch_derivatives_data():
     print("🔄 Fetching Live Market Data for Master Stock List...")
-    # Mock data structure testing ke liye (Live market mein yahan real API loop chalega)
-    # M&M aur RELIANCE ko hum breakout criteria pass karwa rahe hain testing ke liye
+    # Real-looking test data generation for filtering
     mock_market_feed = {
         "NIFTY_50": {
             "high": 24260.0, "low": 24000.0, "close": 24135.0, "ltp": 24211.0, "pivot": 24150.0,
@@ -57,7 +56,7 @@ def update_scanner_dashboard():
     derivatives_tab = sheet.worksheet("DATA_DERIVATIVES")
     master_dashboard = sheet.worksheet("MASTER_DASHBOARD")
     
-    # 👑 SIRJEE KI MASTER STOCKS LIST (Nifty 50 on top + All your stocks)
+    # 👑 SIRJEE KI COMPLETE MASTER STOCKS LIST
     master_stocks = [
         "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", 
         "PREMIERENE", "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", 
@@ -82,16 +81,15 @@ def update_scanner_dashboard():
         "DIXON", "APLAPOLLO"
     ]
     
-    # Step A: Teeno Tabs ke Column A (Ticker/Symbol) ko automatic fill/refresh karna
     ticker_updates = [[ticker] for ticker in master_stocks]
     
-    cash_tab.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
-    derivatives_tab.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
-    master_dashboard.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
+    # Standard format for text update in gspread
+    cash_tab.update(values=ticker_updates, range_name=f'A2:A{len(master_stocks)+1}')
+    derivatives_tab.update(values=ticker_updates, range_name=f'A2:A{len(master_stocks)+1}')
+    master_dashboard.update(values=ticker_updates, range_name=f'A2:A{len(master_stocks)+1}')
     
     market_data = fetch_derivatives_data()
     
-    # ⏱️ India Time (IST) Generation
     IST = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
     
@@ -99,17 +97,14 @@ def update_scanner_dashboard():
     derivatives_updates = []
     
     for idx, ticker in enumerate(master_stocks, start=2):
-        # Default empty data initialization error se bachne ke liye
         default_data = {
             "high": "", "low": "", "close": "", "ltp": "", "pivot": "",
             "volume_spike": "NORMAL (0.0x)", "oi_chg": 0, "pcr": 0, "max_pain": "",
             "iv_call": "", "iv_put": "", "delta_mom": "Stable"
         }
         
-        # Agar ticker live data feed mein hai toh use uthana, nahi toh default khali rakhna
         data = market_data[ticker] if ticker in market_data else default_data
         
-        # TAB 1: DATA_CASH Batch Matrix
         cash_updates.append({
             'range': f'B{idx}:E{idx}',
             'values': [[data['high'], data['low'], data['close'], data['ltp']]]
@@ -123,7 +118,6 @@ def update_scanner_dashboard():
             'values': [[current_time_str if ticker in market_data else ""]]
         })
         
-        # TAB 2: DATA_DERIVATIVES Batch Matrix
         if data['close'] and data['ltp']:
             price_change_pct = round(((float(data['ltp']) - float(data['close'])) / float(data['close'])) * 100, 2)
         else:
