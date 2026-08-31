@@ -33,19 +33,22 @@ def update_tab(spreadsheet, df, tab_name):
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="20")
             
+        # Complete clear to remove ghost columns
         worksheet.clear()
         
         headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "PE Action", "Trigger CE", "Trigger PE", "Change %", "Last Updated"]
         
         if not df.empty:
-            # Ensure exact column mapping matching headers
-            df_clean = df[headers].fillna("").replace([np.inf, -np.inf], "")
+            # Re-index to ensure exact 11 columns in strict order
+            df_clean = df.reindex(columns=headers).fillna("").replace([np.inf, -np.inf], "")
             data_to_write = [headers] + df_clean.values.tolist()
-            worksheet.update('A1', data_to_write)
+            
+            # Write explicitly using user_entered to prevent string concatenation
+            worksheet.update(range_name='A1', values=data_to_write, value_input_option='USER_ENTERED')
             print(f"✅ Successfully updated tab: {tab_name} ({len(df_clean)} rows)")
         else:
             default_row = [["NONE", "NO_BREAKOUT", 0, 0, 0, "NO TRADE 🚫", "NO TRADE 🚫", "VOL SPIKE", "VOL SPIKE", 0, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')]]
-            worksheet.update('A1', [headers] + default_row)
+            worksheet.update(range_name='A1', values=[headers] + default_row, value_input_option='USER_ENTERED')
             print(f"⚠️ Tab {tab_name} updated with default 'No Signals' state.")
             
     except Exception as e:
@@ -144,11 +147,11 @@ def fetch_and_process_data():
     if df_all.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    # Filter strict breakout signals
+    # Filter breakout signals
     df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by='Score', ascending=False)
     df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by='Score', ascending=False)
 
-    # Fallback to Top Gainers/Losers if no active breakouts
+    # Fallback to Top Gainers/Losers
     if df_ce.empty:
         df_ce = df_all.sort_values(by='Change %', ascending=False).head(15)
     if df_pe.empty:
