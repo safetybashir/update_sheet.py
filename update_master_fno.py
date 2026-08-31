@@ -27,6 +27,7 @@ def connect_google_sheets():
 
 def fetch_derivatives_data():
     print("🔄 Fetching Live Market Data for Master Stock List...")
+    # Real test data generation for proper visualization
     mock_market_feed = {
         "NIFTY_50": {
             "high": 24260.0, "low": 24000.0, "close": 24135.0, "ltp": 24211.0, "pivot": 24150.0,
@@ -82,7 +83,7 @@ def update_scanner_dashboard():
     
     ticker_updates = [[ticker] for ticker in master_stocks]
     
-    # 1. Sabse pehle teeno tabs ke Column A ko force-write karna
+    # 1. Force Enter Tickers in Column A
     cash_tab.update(ticker_updates, f'A2:A{len(master_stocks)+1}')
     derivatives_tab.update(ticker_updates, f'A2:A{len(master_stocks)+1}')
     master_dashboard.update(ticker_updates, f'A2:A{len(master_stocks)+1}')
@@ -92,8 +93,9 @@ def update_scanner_dashboard():
     IST = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
     
-    # High-level raw value update block definition
-    data_payloads = []
+    # Independent Worksheet Level Matrix definition
+    cash_payload = []
+    derivatives_payload = []
     
     for idx, ticker in enumerate(master_stocks, start=2):
         default_data = {
@@ -104,17 +106,17 @@ def update_scanner_dashboard():
         
         data = market_data[ticker] if ticker in market_data else default_data
         
-        # Core data inputs structure
-        data_payloads.append({
-            'range': f"'DATA_CASH'!B{idx}:E{idx}",
+        # TAB 1: DATA_CASH Dataset Array Mapping
+        cash_payload.append({
+            'range': f'B{idx}:E{idx}',
             'values': [[data['high'], data['low'], data['close'], data['ltp']]]
         })
-        data_payloads.append({
-            'range': f"'DATA_CASH'!I{idx}:J{idx}",
+        cash_payload.append({
+            'range': f'I{idx}:J{idx}',
             'values': [[data['pivot'], data['volume_spike']]]
         })
-        data_payloads.append({
-            'range': f"'DATA_CASH'!P{idx}",
+        cash_payload.append({
+            'range': f'P{idx}',
             'values': [[current_time_str if ticker in market_data else ""]]
         })
         
@@ -123,31 +125,31 @@ def update_scanner_dashboard():
         else:
             price_change_pct = 0
             
-        data_payloads.append({
-            'range': f"'DATA_DERIVATIVES'!C{idx}:D{idx}",
+        # TAB 2: DATA_DERIVATIVES Dataset Array Mapping
+        derivatives_payload.append({
+            'range': f'C{idx}:D{idx}',
             'values': [[data['pcr'], data['max_pain']]]
         })
-        data_payloads.append({
-            'range': f"'DATA_DERIVATIVES'!F{idx}:G{idx}",
+        derivatives_payload.append({
+            'range': f'F{idx}:G{idx}',
             'values': [[data['oi_chg'], price_change_pct]]
         })
-        data_payloads.append({
-            'range': f"'DATA_DERIVATIVES'!I{idx}:J{idx}",
+        derivatives_payload.append({
+            'range': f'I{idx}:J{idx}',
             'values': [[data['iv_call'], data['iv_put']]]
         })
-        data_payloads.append({
-            'range': f"'DATA_DERIVATIVES'!L{idx}",
+        derivatives_payload.append({
+            'range': f'L{idx}',
             'values': [[data['delta_mom']]]
         })
 
-    # 👑 BULLETPROOF GOOGLE API DIRECT BATCH UPDATE METHOD
-    if data_payloads:
-        spreadsheet.batch_update({
-            'valueInputOption': 'USER_ENTERED',  # Yeh line numbers aur texts ko lock karegi
-            'data': data_payloads
-        })
+    # 👑 WORKSHEET LEVEL BULLETPROOF BATCH UPDATES
+    if cash_payload:
+        cash_tab.batch_update(cash_payload, value_input_option='USER_ENTERED')
+    if derivatives_payload:
+        derivatives_tab.batch_update(derivatives_payload, value_input_option='USER_ENTERED')
         
-    print(f"✅ Master Success: All tabs globally updated at {current_time_str} IST!")
+    print(f"✅ Master Success: Both backend worksheets force-entered at {current_time_str} IST!")
 
 if __name__ == "__main__":
     update_scanner_dashboard()
