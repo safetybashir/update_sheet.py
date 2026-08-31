@@ -83,21 +83,21 @@ def update_scanner_dashboard():
     
     ticker_updates = [[ticker] for ticker in master_stocks]
     
-    # 1. Force Enter Tickers in Column A
-    cash_tab.update(ticker_updates, f'A2:A{len(master_stocks)+1}')
-    derivatives_tab.update(ticker_updates, f'A2:A{len(master_stocks)+1}')
-    master_dashboard.update(ticker_updates, f'A2:A{len(master_stocks)+1}')
+    # 1. Force Enter Tickers in Column A (Raw format)
+    cash_tab.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
+    derivatives_tab.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
+    master_dashboard.update(range_name=f'A2:A{len(master_stocks)+1}', values=ticker_updates)
     
     market_data = fetch_derivatives_data()
     
     IST = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
     
-    # Independent Worksheet Level Matrix definition
-    cash_payload = []
-    derivatives_payload = []
+    # Grid data format arrays (Direct rows generation)
+    cash_grid = []
+    derivatives_grid = []
     
-    for idx, ticker in enumerate(master_stocks, start=2):
+    for ticker in master_stocks:
         default_data = {
             "high": "", "low": "", "close": "", "ltp": "", "pivot": "",
             "volume_spike": "NORMAL (0.0x)", "oi_chg": 0, "pcr": 0, "max_pain": "",
@@ -106,50 +106,35 @@ def update_scanner_dashboard():
         
         data = market_data[ticker] if ticker in market_data else default_data
         
-        # TAB 1: DATA_CASH Dataset Array Mapping
-        cash_payload.append({
-            'range': f'B{idx}:E{idx}',
-            'values': [[data['high'], data['low'], data['close'], data['ltp']]]
-        })
-        cash_payload.append({
-            'range': f'I{idx}:J{idx}',
-            'values': [[data['pivot'], data['volume_spike']]]
-        })
-        cash_payload.append({
-            'range': f'P{idx}',
-            'values': [[current_time_str if ticker in market_data else ""]]
-        })
-        
+        # Calculate price change percent
         if data['close'] and data['ltp']:
             price_change_pct = round(((float(data['ltp']) - float(data['close'])) / float(data['close'])) * 100, 2)
         else:
             price_change_pct = 0
             
-        # TAB 2: DATA_DERIVATIVES Dataset Array Mapping
-        derivatives_payload.append({
-            'range': f'C{idx}:D{idx}',
-            'values': [[data['pcr'], data['max_pain']]]
-        })
-        derivatives_payload.append({
-            'range': f'F{idx}:G{idx}',
-            'values': [[data['oi_chg'], price_change_pct]]
-        })
-        derivatives_payload.append({
-            'range': f'I{idx}:J{idx}',
-            'values': [[data['iv_call'], data['iv_put']]]
-        })
-        derivatives_payload.append({
-            'range': f'L{idx}',
-            'values': [[data['delta_mom']]]
-        })
-
-    # 👑 WORKSHEET LEVEL BULLETPROOF BATCH UPDATES
-    if cash_payload:
-        cash_tab.batch_update(cash_payload, value_input_option='USER_ENTERED')
-    if derivatives_payload:
-        derivatives_tab.batch_update(derivatives_payload, value_input_option='USER_ENTERED')
+        # DATA_CASH Columns Structure (B to P)
+        # HIGH(B), LOW(C), CLOSE(D), LTP(E), PRICE_CHG(F), VCP(G), VOLATILITY(H), PIVOT(I), VOL_SPIKE(J), SL(K), TARGET(L), RR(M), CASH_SIG(N), BO_STOCKS(O), TIME(P)
+        cash_grid.append([
+            data['high'], data['low'], data['close'], data['ltp'], 
+            price_change_pct, "", "", data['pivot'], data['volume_spike'], 
+            "", "", "", "", "", current_time_str if ticker in market_data else ""
+        ])
         
-    print(f"✅ Master Success: Both backend worksheets force-entered at {current_time_str} IST!")
+        # DATA_DERIVATIVES Columns Structure (B to L)
+        # LTP(B), PCR(C), MAXPAIN(D), MP_STATUS(E), OI_CHG(F), PRICE_CHG(G), BUILDUP(H), CALL_IV(I), PUT_IV(J), SKEW(K), DELTA(L)
+        derivatives_grid.append([
+            data['ltp'], data['pcr'], data['max_pain'], "", 
+            data['oi_chg'], price_change_pct, "", data['iv_call'], 
+            data['iv_put'], "", data['delta_mom']
+        ])
+
+    # 👑 BULLETPROOF FULL GRID RE-WRITE WITH strict VALUE_INPUT_OPTION
+    print("🚀 Forcing grid updates into Google Sheets cells...")
+    
+    cash_tab.update(range_name=f'B2:P{len(master_stocks)+1}', values=cash_grid, value_input_option='USER_ENTERED')
+    derivatives_tab.update(range_name=f'B2:L{len(master_stocks)+1}', values=derivatives_grid, value_input_option='USER_ENTERED')
+        
+    print(f"✅ Master Success: Both worksheets fully written at {current_time_str} IST!")
 
 if __name__ == "__main__":
     update_scanner_dashboard()
