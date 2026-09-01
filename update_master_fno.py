@@ -47,7 +47,6 @@ def run_master_screener():
         
     stock_data_map = {}
     try:
-        # Aapka automatic data feed tab 'Trading_Dashboard' hona chahiye
         source_sheet = workbook.worksheet("Trading_Dashboard")
         raw_data = source_sheet.get_all_records()
         df_raw = pd.DataFrame(raw_data)
@@ -72,7 +71,7 @@ def run_master_screener():
         try:
             sheet_row = stock_data_map.get(stock, {})
             
-            # Agar input sheet se real data nahi mila toh fallback calculation active rahegi
+            # Real data na milne par falling back to safe simulation for calculation testing
             ltp = float(sheet_row.get('LTP', np.random.uniform(100, 5000) if not stock_data_map else 0))
             prev_close = float(sheet_row.get('PREV_CLOSE', ltp * np.random.uniform(0.97, 1.03) if not stock_data_map else (ltp if ltp > 0 else 1)))
             volume = float(sheet_row.get('VOLUME', np.random.randint(10000, 500000) if not stock_data_map else 0))
@@ -133,15 +132,17 @@ def run_master_screener():
     # ==========================================
     try:
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
+        
+        # 🟢 FORCE CLEAN: Kisi bhi tarah ka purana cache saaf karne ke liye
         output_sheet.clear()
         
-        # 🟢 FIXED: Dot mapping added carefully for columns compilation matrix array
+        # Data format lists extraction
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
         set_with_dataframe_data = [headers] + matrix_data
         
-        # Explicit call execution starting strictly from A1 cell
-        output_sheet.update(range_name='A1', values=set_with_dataframe_data)
+        # 🟢 NEW v6 COMPLIANT METHOD: Is tarah se gspread silent nahi baithega, direct data insert karega
+        output_sheet.update(set_with_dataframe_data, 'A1')
         
         print("📊 Preview Matrix data written successfully:")
         print(df_output.head(3).to_string())
