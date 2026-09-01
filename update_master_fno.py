@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 def get_sheet_client():
     try:
         creds_json = os.environ.get("GCP_CREDENTIALS_JSON")
-        sheet_id = os.environ.get("1IlXpzkmGg5QAbqSd1fiVKOTPymcx8PKr")
+        sheet_id = os.environ.get("SHEET_ID")
         
         if not creds_json or not sheet_id:
             raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
@@ -71,7 +71,6 @@ def run_master_screener():
         try:
             sheet_row = stock_data_map.get(stock, {})
             
-            # Real data na milne par falling back to safe simulation for calculation testing
             ltp = float(sheet_row.get('LTP', np.random.uniform(100, 5000) if not stock_data_map else 0))
             prev_close = float(sheet_row.get('PREV_CLOSE', ltp * np.random.uniform(0.97, 1.03) if not stock_data_map else (ltp if ltp > 0 else 1)))
             volume = float(sheet_row.get('VOLUME', np.random.randint(10000, 500000) if not stock_data_map else 0))
@@ -132,16 +131,13 @@ def run_master_screener():
     # ==========================================
     try:
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
-        
-        # 🟢 FORCE CLEAN: Kisi bhi tarah ka purana cache saaf karne ke liye
         output_sheet.clear()
         
-        # Data format lists extraction
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
         set_with_dataframe_data = [headers] + matrix_data
         
-        # 🟢 NEW v6 COMPLIANT METHOD: Is tarah se gspread silent nahi baithega, direct data insert karega
+        # Matrix force-update with range block routing
         output_sheet.update(set_with_dataframe_data, 'A1')
         
         print("📊 Preview Matrix data written successfully:")
