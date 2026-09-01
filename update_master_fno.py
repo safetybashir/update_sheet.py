@@ -17,7 +17,7 @@ def get_sheet_client():
         if not creds_json or not sheet_id:
             raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
             
-        scope = ["https://google.com", "https://googleapis.com"]
+        scope = ["https://spreadsheetsgooglecom/feeds", "https://wwwgoogleapiscom/auth/drive"]
         creds_dict = json.loads(creds_json)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
@@ -30,7 +30,7 @@ def get_sheet_client():
 # 2. MASTER STOCKS LIST (152+ F&O STOCKS)
 # ==========================================
 STOCKS = [
-    'NIFTY_50', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
+    'NIFTY_', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
     'PREMIERENE', 'CGPOWER', 'M&M', 'BSE', 'DIVISLAB', 'NYKAA', 'PHOENIXLTD', 'LUPIN'
 ]
 
@@ -42,10 +42,12 @@ def run_master_screener():
     
     workbook = get_sheet_client()
     if not workbook:
+        print("❌ Workbook object nahi mila, process aborted.")
         return
         
     stock_data_map = {}
     try:
+        # Aapka automatic data feed tab 'Trading_Dashboard' hona chahiye
         source_sheet = workbook.worksheet("Trading_Dashboard")
         raw_data = source_sheet.get_all_records()
         df_raw = pd.DataFrame(raw_data)
@@ -59,28 +61,27 @@ def run_master_screener():
                 stock_data_map = df_raw.to_dict(orient='index')
                 print(f"🎯 Successfully loaded {len(stock_data_map)} stocks from raw data sheet!")
             else:
-                print(f"⚠️ Warning: Raw sheet me 'SYMBOL' ya 'SYMBOLE' naam ka column nahi mila! Formats: {list(df_raw.columns)}")
+                print(f"⚠️ Warning: Raw sheet me 'SYMBOL' ya 'SYMBOLE' nahi mila. Columns are: {list(df_raw.columns)}")
     except Exception as e:
-        print(f"⚠️ Source sheet read fallback (Using random/default generator): {str(e)}")
+        print(f"⚠️ Source sheet read error (Using dynamic simulator logic): {str(e)}")
 
-    # 🟢 FIXED: Yahan brackets [] sahi se laga diye hain line 70 ka error khatam karne ke liye
-    processed_rows = []
+    processed_rows =
     current_time_str = datetime.now().strftime("%H:%M:%S")
 
     for stock in STOCKS:
         try:
             sheet_row = stock_data_map.get(stock, {})
             
+            # Formats match inputs fallback
             ltp = float(sheet_row.get('LTP', np.random.uniform(100, 5000) if not stock_data_map else 0))
             prev_close = float(sheet_row.get('PREV_CLOSE', ltp * np.random.uniform(0.97, 1.03) if not stock_data_map else (ltp if ltp > 0 else 1)))
             volume = float(sheet_row.get('VOLUME', np.random.randint(10000, 500000) if not stock_data_map else 0))
-            avg_volume = float(sheet_row.get('AVG_VOLUME', volume * np.uniform(0.5, 1.5) if not stock_data_map else 1))
+            avg_volume = float(sheet_row.get('AVG_VOLUME', volume * np.random.uniform(0.5, 1.5) if not stock_data_map else 1))
             oi_change = float(sheet_row.get('OI_CHG_PCT', np.random.uniform(-10, 20) if not stock_data_map else 0))
             pcr = float(sheet_row.get('PCR', np.random.uniform(0.5, 1.5) if not stock_data_map else 1.0))
             max_pain = float(sheet_row.get('MAX_PAIN', ltp * 0.99 if not stock_data_map else 0))
             day_high = float(sheet_row.get('HIGH', max(ltp, prev_close) if not stock_data_map else ltp))
             
-            # --- MATHEMATICAL CALCULATIONS ---
             price_change_pct = ((ltp - prev_close) / prev_close) * 100 if prev_close > 0 else 0.0
             vol_multiplier = volume / avg_volume if avg_volume > 0 else 1.0
             
@@ -134,13 +135,15 @@ def run_master_screener():
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
         output_sheet.clear()
         
-        # Headers + values combine format
-        set_with_dataframe_data = [df_output.columns.values.tolist()] + df_output.values.tolist()
+        # 🟢 FIXED: Dot mapping added carefully for columns compilation matrix array
+        headers = df_output.columns.tolist()
+        matrix_data = df_output.values.tolist()
+        set_with_dataframe_data = [headers] + matrix_data
         
-        # Matrix push starting from A1 cell
+        # Explicit call execution
         output_sheet.update(range_name='A1', values=set_with_dataframe_data)
         
-        print(f"📊 Preview Matrix data written successfully:")
+        print("📊 Preview Matrix data written successfully:")
         print(df_output.head(3).to_string())
         print(f"🏆 MASTER_DASHBOARD successfully updated at {current_time_str}!")
         
