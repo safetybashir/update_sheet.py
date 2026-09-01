@@ -47,6 +47,7 @@ def run_master_screener():
         
     stock_data_map = {}
     try:
+        # Aapka automatic data feed tab 'Trading_Dashboard' hona chahiye
         source_sheet = workbook.worksheet("Trading_Dashboard")
         raw_data = source_sheet.get_all_records()
         df_raw = pd.DataFrame(raw_data)
@@ -64,7 +65,6 @@ def run_master_screener():
     except Exception as e:
         print(f"⚠️ Source sheet read error (Using dynamic simulator logic): {str(e)}")
 
-    # 🟢 FIXED LINE 68: Yahan brackets [] bilkul perfect set kar diye hain!
     processed_rows = []
     current_time_str = datetime.now().strftime("%H:%M:%S")
 
@@ -72,6 +72,7 @@ def run_master_screener():
         try:
             sheet_row = stock_data_map.get(stock, {})
             
+            # Agar input sheet se real data nahi mila toh fallback calculation active rahegi
             ltp = float(sheet_row.get('LTP', np.random.uniform(100, 5000) if not stock_data_map else 0))
             prev_close = float(sheet_row.get('PREV_CLOSE', ltp * np.random.uniform(0.97, 1.03) if not stock_data_map else (ltp if ltp > 0 else 1)))
             volume = float(sheet_row.get('VOLUME', np.random.randint(10000, 500000) if not stock_data_map else 0))
@@ -134,12 +135,12 @@ def run_master_screener():
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
         output_sheet.clear()
         
-        # 🟢 FIXED: DataFrame lists formatting and dot notations corrected
+        # 🟢 FIXED: Dot mapping added carefully for columns compilation matrix array
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
         set_with_dataframe_data = [headers] + matrix_data
         
-        # Explicit push with A1 range address matching gspread v6 structures
+        # Explicit call execution starting strictly from A1 cell
         output_sheet.update(range_name='A1', values=set_with_dataframe_data)
         
         print("📊 Preview Matrix data written successfully:")
