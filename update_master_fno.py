@@ -17,7 +17,7 @@ def get_sheet_client():
         if not creds_json or not sheet_id:
             raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
             
-        scope = ["https://spreadsheetsgooglecom/feeds", "https://wwwgoogleapiscom/auth/drive"]
+        scope = ["https://google.com", "https://googleapis.com"]
         creds_dict = json.loads(creds_json)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
@@ -30,7 +30,7 @@ def get_sheet_client():
 # 2. MASTER STOCKS LIST (152+ F&O STOCKS)
 # ==========================================
 STOCKS = [
-    'NIFTY_', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
+    'NIFTY_50', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
     'PREMIERENE', 'CGPOWER', 'M&M', 'BSE', 'DIVISLAB', 'NYKAA', 'PHOENIXLTD', 'LUPIN'
 ]
 
@@ -46,16 +46,12 @@ def run_master_screener():
         
     stock_data_map = {}
     try:
-        # Step A: Raw Data read karna aapki main tracker sheet se
-        # Agar aapka source tab name 'Trading_Dashboard' nahi hai, toh use badal kar sahi naam likhein
         source_sheet = workbook.worksheet("Trading_Dashboard")
         raw_data = source_sheet.get_all_records()
         df_raw = pd.DataFrame(raw_data)
         
         if not df_raw.empty:
-            # Pura data lowercase trim karke index set karna taaki mapping mismatch na ho
             df_raw.columns = df_raw.columns.str.strip()
-            # Dhyaan dein: Aapke column ka naam 'SYMBOL' ya 'SYMBOLE' hona chahiye
             symbol_col = 'SYMBOL' if 'SYMBOL' in df_raw.columns else ('SYMBOLE' if 'SYMBOLE' in df_raw.columns else None)
             
             if symbol_col:
@@ -67,18 +63,18 @@ def run_master_screener():
     except Exception as e:
         print(f"⚠️ Source sheet read fallback (Using random/default generator): {str(e)}")
 
-    processed_rows =
+    # 🟢 FIXED: Yahan brackets [] sahi se laga diye hain line 70 ka error khatam karne ke liye
+    processed_rows = []
     current_time_str = datetime.now().strftime("%H:%M:%S")
 
     for stock in STOCKS:
         try:
             sheet_row = stock_data_map.get(stock, {})
             
-            # Agar sheet me data nahi hai toh simulation fallback (taaki testing band na ho)
             ltp = float(sheet_row.get('LTP', np.random.uniform(100, 5000) if not stock_data_map else 0))
             prev_close = float(sheet_row.get('PREV_CLOSE', ltp * np.random.uniform(0.97, 1.03) if not stock_data_map else (ltp if ltp > 0 else 1)))
             volume = float(sheet_row.get('VOLUME', np.random.randint(10000, 500000) if not stock_data_map else 0))
-            avg_volume = float(sheet_row.get('AVG_VOLUME', volume * np.random.uniform(0.5, 1.5) if not stock_data_map else 1))
+            avg_volume = float(sheet_row.get('AVG_VOLUME', volume * np.uniform(0.5, 1.5) if not stock_data_map else 1))
             oi_change = float(sheet_row.get('OI_CHG_PCT', np.random.uniform(-10, 20) if not stock_data_map else 0))
             pcr = float(sheet_row.get('PCR', np.random.uniform(0.5, 1.5) if not stock_data_map else 1.0))
             max_pain = float(sheet_row.get('MAX_PAIN', ltp * 0.99 if not stock_data_map else 0))
@@ -138,10 +134,10 @@ def run_master_screener():
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
         output_sheet.clear()
         
-        # Headers aur values ko matrix list me badalna
-        set_with_dataframe_data = [df_outputcolumnsvaluestolist()] + df_output.values.tolist()
+        # Headers + values combine format
+        set_with_dataframe_data = [df_output.columns.values.tolist()] + df_output.values.tolist()
         
-        # 🔥 FIX: Added 'A1' range target explicitly for gspread v6 library matrix routing
+        # Matrix push starting from A1 cell
         output_sheet.update(range_name='A1', values=set_with_dataframe_data)
         
         print(f"📊 Preview Matrix data written successfully:")
