@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      # 🔥 Fixes ModuleNotFoundError: Force installing pandas before running the script
+      # 🔥 Fixes ModuleNotFoundError: Server par pandas force-install karne ke liye
       - name: Install Required Python Libraries
         run: |
           python -m pip install --upgrade pip
@@ -30,4 +30,3 @@ jobs:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_master_fno.py
-
