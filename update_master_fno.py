@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 # ========================================================
 # SECTION 1: GOOGLE SHEETS AUTH & STRUCTURAL DATA WRITER
 # ========================================================
-SHEET_ID = os.environ.get("SHEET_ID") or "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
+SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 TARGET_GID = 103159714  # Exact GID for MASTER_DASHBOARD tab
 
 def get_gspread_client():
