@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 # ========================================================
 # SECTION 1: GOOGLE SHEETS AUTHENTICATION & CONFIG
 # ========================================================
-SHEET_ID = os.environ.get("SHEET_ID") or "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
+SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
 MASTER_TAB_NAME = "MASTER_DASHBOARD"
 CASH_TAB_NAME = "DATA_CASH"
