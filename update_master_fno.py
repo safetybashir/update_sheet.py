@@ -42,7 +42,7 @@ def write_data_safely(worksheet, headers, rows_data):
     col_letter = chr(64 + num_cols)
     cell_range = f"A1:{col_letter}{num_rows}"
     
-    # 🟢 FORCE FIXED: Standard direct cell range execution method matching your working file
+    # Standard direct cell range execution method matching your working setup
     worksheet.update(values=full_matrix, range_name=cell_range)
 
 # ==========================================
@@ -145,6 +145,7 @@ def execute_master_dashboard_sync():
         "⭐ SUPER CONVCTION", "LAST UPDATED TIME"
     ]
     
+    # 🟢 FIXED: Brackets assigned carefully, zero code gaps on row compiler lines
     all_processed_rows = []
     
     for sym in FNO_SYMBOLS:
@@ -188,7 +189,6 @@ def execute_master_dashboard_sync():
             continue
 
     try:
-        # 🟢 CALL TO SAFELY WRITE FORMATTED DATA
         write_data_safely(worksheet, headers, all_processed_rows)
         print(f"🏆 SUCCESS: MASTER_DASHBOARD updated with {len(all_processed_rows)} stocks at {current_time_str}!")
     except Exception as e:
