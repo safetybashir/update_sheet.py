@@ -17,7 +17,7 @@ def get_sheet_client():
         if not creds_json or not sheet_id:
             raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
             
-        scope = ["https://spreadsheetsgooglecom/feeds", "https://wwwgoogleapiscom/auth/drive"]
+        scope = ["https://google.com", "https://googleapis.com"]
         creds_dict = json.loads(creds_json)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
@@ -30,7 +30,7 @@ def get_sheet_client():
 # 2. MASTER STOCKS LIST (152+ F&O STOCKS)
 # ==========================================
 STOCKS = [
-    'NIFTY_', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
+    'NIFTY_50', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
     'PREMIERENE', 'CGPOWER', 'M&M', 'BSE', 'DIVISLAB', 'NYKAA', 'PHOENIXLTD', 'LUPIN'
 ]
 
@@ -47,7 +47,6 @@ def run_master_screener():
         
     stock_data_map = {}
     try:
-        # Aapka automatic data feed tab 'Trading_Dashboard' hona chahiye
         source_sheet = workbook.worksheet("Trading_Dashboard")
         raw_data = source_sheet.get_all_records()
         df_raw = pd.DataFrame(raw_data)
@@ -65,14 +64,14 @@ def run_master_screener():
     except Exception as e:
         print(f"⚠️ Source sheet read error (Using dynamic simulator logic): {str(e)}")
 
-    processed_rows =
+    # 🟢 FIXED LINE 68: Yahan brackets [] bilkul perfect set kar diye hain!
+    processed_rows = []
     current_time_str = datetime.now().strftime("%H:%M:%S")
 
     for stock in STOCKS:
         try:
             sheet_row = stock_data_map.get(stock, {})
             
-            # Formats match inputs fallback
             ltp = float(sheet_row.get('LTP', np.random.uniform(100, 5000) if not stock_data_map else 0))
             prev_close = float(sheet_row.get('PREV_CLOSE', ltp * np.random.uniform(0.97, 1.03) if not stock_data_map else (ltp if ltp > 0 else 1)))
             volume = float(sheet_row.get('VOLUME', np.random.randint(10000, 500000) if not stock_data_map else 0))
@@ -135,12 +134,12 @@ def run_master_screener():
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
         output_sheet.clear()
         
-        # 🟢 FIXED: Dot mapping added carefully for columns compilation matrix array
+        # 🟢 FIXED: DataFrame lists formatting and dot notations corrected
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
         set_with_dataframe_data = [headers] + matrix_data
         
-        # Explicit call execution
+        # Explicit push with A1 range address matching gspread v6 structures
         output_sheet.update(range_name='A1', values=set_with_dataframe_data)
         
         print("📊 Preview Matrix data written successfully:")
