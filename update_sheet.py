@@ -50,7 +50,7 @@ def update_ce_tab(spreadsheet, df):
 
             data_to_write = [headers] + df_clean.values.tolist()
             worksheet.update(range_name='A1', values=data_to_write, value_input_option='RAW')
-            print(f"✅ CE Tab Updated: {tab_name} ({len(df_clean)} rows)")
+            print(f"✅ CE Tab Updated: {tab_name} ({len(df_clean)} rows written)")
         else:
             ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
             default_row = [["NONE", "NO_BREAKOUT", "0.0", "0.0", "0.0", "NO TRADE 🚫", "N/A", "0.0", str(ist_time)]]
@@ -58,7 +58,7 @@ def update_ce_tab(spreadsheet, df):
             print(f"⚠️ CE Tab Updated with Default State.")
             
     except Exception as e:
-        print(f"❌ Failed to update CE Tab: {e}")
+        print(f"❌ Failed to update CE Tab ({tab_name}): {e}")
 
 def update_pe_tab(spreadsheet, df):
     tab_name = "LIVE_PE_DASHBOARD"
@@ -83,7 +83,7 @@ def update_pe_tab(spreadsheet, df):
 
             data_to_write = [headers] + df_clean.values.tolist()
             worksheet.update(range_name='A1', values=data_to_write, value_input_option='RAW')
-            print(f"✅ PE Tab Updated: {tab_name} ({len(df_clean)} rows)")
+            print(f"✅ PE Tab Updated: {tab_name} ({len(df_clean)} rows written)")
         else:
             ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
             default_row = [["NONE", "NO_BREAKOUT", "0.0", "0.0", "0.0", "NO TRADE 🚫", "N/A", "0.0", str(ist_time)]]
@@ -91,7 +91,7 @@ def update_pe_tab(spreadsheet, df):
             print(f"⚠️ PE Tab Updated with Default State.")
             
     except Exception as e:
-        print(f"❌ Failed to update PE Tab: {e}")
+        print(f"❌ Failed to update PE Tab ({tab_name}): {e}")
 
 # ==========================================
 # SECTION 2: HEAVYWEIGHTS & FNO SYMBOLS
@@ -135,9 +135,9 @@ def fetch_and_process_data():
     for sym in FNO_SYMBOLS:
         try:
             yf_ticker = "^NSEI" if sym == "NIFTY" else f"{sym}.NS"
-            data = yf.download(yf_ticker, period="5d", interval="5m", progress=False)
+            data = yf.download(yf_ticker, period="1d", interval="5m", progress=False)
             
-            if data.empty or len(data) < 20:
+            if data.empty or len(data) < 2:
                 continue
                 
             if isinstance(data.columns, pd.MultiIndex):
@@ -164,7 +164,7 @@ def fetch_and_process_data():
             if vol_up: score_points += 20
             if ltp > latest['VWAP']: score_points += 15
             
-            max_20 = data['High'].tail(20).iloc[:-1].max()
+            max_20 = data['High'].tail(20).iloc[:-1].max() if len(data) >= 20 else data['High'].max()
             if ltp > max_20: score_points += 15
             
             if price_up and vol_up: score_points += 15
@@ -220,8 +220,14 @@ if __name__ == "__main__":
         print(f"[⏱️ Execution Time: {now.strftime('%H:%M:%S IST')}] Fetching Market Data...")
 
         df_ce, df_pe = fetch_and_process_data()
+        
+        print(f"📊 Processed Signals - CE Rows: {len(df_ce)} | PE Rows: {len(df_pe)}")
 
         sheet_id = os.environ.get("SHEET_ID")
+        if not sheet_id:
+            # Fallback check if env var is missing
+            print("⚠️ SHEET_ID env var missing. Searching for SHEET_ID...")
+            
         if sheet_id:
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
@@ -229,9 +235,9 @@ if __name__ == "__main__":
             update_ce_tab(sh, df_ce)
             update_pe_tab(sh, df_pe)
             
-            print("🎉 Both CE & PE Tabs updated clean without redundant columns!")
+            print("🎉 Sheet update process completed!")
         else:
-            print("❌ ERROR: SHEET_ID Environment Variable Missing!")
+            print("❌ CRITICAL ERROR: SHEET_ID environment variable is missing in terminal session!")
 
     except Exception as err:
         print(f"❌ Execution Error: {err}")
