@@ -14,11 +14,11 @@ from google.oauth2.service_account import Credentials
 # ========================================================
 # SECTION 1: GOOGLE SHEETS AUTH & STRUCTURAL DATA WRITER
 # ========================================================
-# Fetch SHEET_ID dynamically from environment secrets or fallback to default
 SHEET_ID = os.environ.get("SHEET_ID") or "1IlXpzkmGg5QAbqSd1fiVKOTPymcx8PKr"
+TARGET_GID = 103159714  # Exact GID for MASTER_DASHBOARD tab
 
 def get_gspread_client():
-    """Working auth engine with proper Google Sheets & Drive Scopes"""
+    """Service account authorization with full Sheets & Drive Scopes"""
     creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
     
     scopes = [
@@ -36,11 +36,9 @@ def get_gspread_client():
         raise FileNotFoundError("❌ 'GCP_CREDENTIALS_JSON' secret or 'credentials.json' file not found!")
 
 def write_data_safely(worksheet, headers, rows_data):
-    """Safe data update logic avoiding column letter ASCII overflow bugs"""
+    """Direct cell matrix write logic eliminating ASCII column overflow errors"""
     full_matrix = [headers] + rows_data
     worksheet.clear()
-    
-    # Direct cell values update (gspread v6+ compliant)
     worksheet.update(values=full_matrix, range_name="A1")
 
 # ==========================================
@@ -91,23 +89,23 @@ def run_options_7point_analysis(ltp, chg_pct):
     day_high = max(ltp, ltp * (1 + np.random.uniform(0, 0.005)))
     max_pain = ltp * 0.98
     
-    # 1. Price vs EMA crossover setup
+    # 1. Price vs EMA crossover
     if ltp > ema_10 and ema_10 > ema_21:
         score += 1
-    # 2. Open Interest (OI) Growth alignment
+    # 2. OI Growth alignment
     if chg_pct > 0.3 and oi_change > 4.0:
         score += 1
-    # 3. Put-Call Ratio Breakout framework
+    # 3. Put-Call Ratio Breakout
     if pcr > 1.0:
         score += 1
-    # 4. Volumetric Spike Breakout validation
+    # 4. Volumetric Spike Breakout
     if vol_multiplier >= 1.5:
         score += 1
-    # 5. Day High boundary closeness
+    # 5. Day High closeness
     distance_high = ((day_high - ltp) / ltp) * 100 if ltp > 0 else 1.0
     if distance_high <= 0.25 and chg_pct > 0:
         score += 1
-    # 6. Max Pain levels crossover
+    # 6. Max Pain crossover
     if ltp > max_pain:
         score += 1
     # 7. Volatility Contraction VCP setup
@@ -125,7 +123,20 @@ def execute_master_dashboard_sync():
     try:
         client = get_gspread_client()
         spreadsheet = client.open_by_key(SHEET_ID)
-        worksheet = spreadsheet.worksheet("MASTER_DASHBOARD")
+        
+        # Exact GID Targeting
+        worksheet = None
+        for ws in spreadsheet.worksheets():
+            if ws.id == TARGET_GID:
+                worksheet = ws
+                break
+                
+        if not worksheet:
+            print("⚠️ GID match missing, falling back to tab title search...")
+            worksheet = spreadsheet.worksheet("MASTER_DASHBOARD")
+            
+        print(f"✅ Connected Target Tab: '{worksheet.title}' (GID: {worksheet.id})")
+
     except Exception as e:
         print(f"❌ Connection or Worksheet Setup Mismatch: {e}")
         sys.exit(1)
@@ -187,7 +198,7 @@ def execute_master_dashboard_sync():
 
     try:
         write_data_safely(worksheet, headers, all_processed_rows)
-        print(f"🏆 SUCCESS: MASTER_DASHBOARD updated with {len(all_processed_rows)} stocks at {current_time_str} IST!")
+        print(f"🏆 SUCCESS: Tab '{worksheet.title}' updated with {len(all_processed_rows)} stocks at {current_time_str} IST!")
     except Exception as e:
         print(f"❌ Matrix range push failed: {e}")
         sys.exit(1)
