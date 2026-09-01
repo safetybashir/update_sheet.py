@@ -42,7 +42,7 @@ def write_data_safely(worksheet, headers, rows_data):
     col_letter = chr(64 + num_cols)
     cell_range = f"A1:{col_letter}{num_rows}"
     
-    # 🟢 FORCE FIXED: Standard direct cell range execution method
+    # 🟢 FORCE FIXED: Standard direct cell range execution method matching your working file
     worksheet.update(values=full_matrix, range_name=cell_range)
 
 # ==========================================
@@ -93,19 +93,19 @@ def run_options_7point_analysis(ltp, chg_pct):
     day_high = max(ltp, ltp * (1 + np.random.uniform(0, 0.005)))
     max_pain = ltp * 0.98
     
-    # 1. Price vs EMA crossover setup
+    # 1. Price vs EMA crossover setup (10 EMA > 21 EMA)
     if ltp > ema_10 and ema_10 > ema_21:
         score += 1
-    # 2. Open Interest (OI) Growth alignment
+    # 2. Open Interest (OI) Growth alignment (Long Buildup)
     if chg_pct > 0.3 and oi_change > 4.0:
         score += 1
-    # 3. Put-Call Ratio Breakout framework
+    # 3. Put-Call Ratio Breakout framework (>1.0)
     if pcr > 1.0:
         score += 1
     # 4. Volumetric Spike Breakout validation (Mark Minervini style)
     if vol_multiplier >= 1.5:
         score += 1
-    # 5. Day High boundary closeness
+    # 5. Day High boundary closeness (Close near High)
     distance_high = ((day_high - ltp) / ltp) * 100 if ltp > 0 else 1.0
     if distance_high <= 0.25 and chg_pct > 0:
         score += 1
@@ -188,7 +188,7 @@ def execute_master_dashboard_sync():
             continue
 
     try:
-        # Working mechanism range matrix execution wrapper
+        # 🟢 CALL TO SAFELY WRITE FORMATTED DATA
         write_data_safely(worksheet, headers, all_processed_rows)
         print(f"🏆 SUCCESS: MASTER_DASHBOARD updated with {len(all_processed_rows)} stocks at {current_time_str}!")
     except Exception as e:
