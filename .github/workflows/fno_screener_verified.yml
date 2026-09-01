@@ -26,5 +26,5 @@ jobs:
       - name: Run Master FNO Script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-          SHEET_ID: "1IlXpzkmGg5QAbqSd1fiVKOTPymcx8PKr"
+          SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_master_fno.py
