@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 def get_sheet_client():
     try:
         creds_json = os.environ.get("GCP_CREDENTIALS_JSON")
-        sheet_id = os.environ.get("1IlXpzkmGg5QAbqSd1fiVKOTPymcx8PKr")
+        sheet_id = os.environ.get("SHEET_ID")
         
         if not creds_json or not sheet_id:
             raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
@@ -21,7 +21,7 @@ def get_sheet_client():
         creds_dict = json.loads(creds_json)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        return client.open_by_key(sheet_id)
+        return client.open_by_key(sheet_id.strip())
     except Exception as e:
         print(f"❌ Google Sheet Authentication Failed: {str(e)}")
         return None
@@ -131,13 +131,16 @@ def run_master_screener():
     # ==========================================
     try:
         output_sheet = workbook.worksheet("MASTER_DASHBOARD")
+        
+        # Grid clear karke bypass buffer clean karna
         output_sheet.clear()
         
+        # Format convert to direct list arrays
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
         set_with_dataframe_data = [headers] + matrix_data
         
-        # Matrix force-update with range block routing
+        # 🟢 FORCE UPDATE LOGIC: Naye gspread v6 rules ke hisab se exact arguments overwrite array
         output_sheet.update(set_with_dataframe_data, 'A1')
         
         print("📊 Preview Matrix data written successfully:")
