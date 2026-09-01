@@ -14,6 +14,9 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 # SECTION 1: GOOGLE SHEETS AUTH & TAB UPDATER
 # ==========================================
+# Aapki Google Sheet ID setup kar di gayi hai:
+FALLBACK_SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg" 
+
 def get_gspread_client():
     creds_json = os.environ.get("GOOGLE_CREDS") or os.environ.get("GCP_CREDENTIALS_JSON")
     
@@ -25,7 +28,7 @@ def get_gspread_client():
     elif os.path.exists("credentials.json"):
         return gspread.service_account(filename="credentials.json")
     else:
-        raise FileNotFoundError("Neither 'GOOGLE_CREDS' env var nor 'credentials.json' was found!")
+        raise FileNotFoundError("❌ 'credentials.json' file folder mein nahi mili!")
 
 def update_ce_tab(spreadsheet, df):
     tab_name = "NEW OI_VCP B/O DASHBOARD"
@@ -35,7 +38,7 @@ def update_ce_tab(spreadsheet, df):
         try:
             worksheet = spreadsheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="10")
+            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="9")
             
         worksheet.clear()
         
@@ -68,7 +71,7 @@ def update_pe_tab(spreadsheet, df):
         try:
             worksheet = spreadsheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="10")
+            worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="9")
             
         worksheet.clear()
         
@@ -221,13 +224,8 @@ if __name__ == "__main__":
 
         df_ce, df_pe = fetch_and_process_data()
         
-        print(f"📊 Processed Signals - CE Rows: {len(df_ce)} | PE Rows: {len(df_pe)}")
-
-        sheet_id = os.environ.get("SHEET_ID")
-        if not sheet_id:
-            # Fallback check if env var is missing
-            print("⚠️ SHEET_ID env var missing. Searching for SHEET_ID...")
-            
+        sheet_id = os.environ.get("SHEET_ID") or FALLBACK_SHEET_ID
+        
         if sheet_id:
             gc = get_gspread_client()
             sh = gc.open_by_key(sheet_id)
@@ -235,9 +233,9 @@ if __name__ == "__main__":
             update_ce_tab(sh, df_ce)
             update_pe_tab(sh, df_pe)
             
-            print("🎉 Sheet update process completed!")
+            print("🎉 Google Sheets update successful!")
         else:
-            print("❌ CRITICAL ERROR: SHEET_ID environment variable is missing in terminal session!")
+            print("❌ CRITICAL ERROR: Sheet ID not set.")
 
     except Exception as err:
         print(f"❌ Execution Error: {err}")
