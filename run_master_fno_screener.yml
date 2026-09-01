@@ -1,37 +1,39 @@
 name: Run Advanced FNO Master Screener
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'update_master_fno.py' # 🛡️ Safe Shield: Sirf is file ke change par hi chalega, purana system disturb nahi hoga
   schedule:
-    # ⏱️ Adjusted Cron: IST subah 9:10 AM se shaam 3:30 PM tak, Mon-Fri har 10 minute mein automatic chalega
-    - cron: '*/10 3-10 * * 1-5'
-  workflow_dispatch: # Manual run button hamesha active rahega
+    # ⏱️ Monday se Friday, Indian Market time ke mutabik har 15 minute me chalega (9:15 AM to 3:30 PM IST)
+    # GitHub UTC use karta hai, isliye time ko convert kiya gaya hai
+    - cron: '*/15 3-9 * * 1-5'
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch: # 📈 Jab aapka mann kare GitHub par jaakar "Run workflow" button se manually chalane ke liye
 
 jobs:
-  run-screener:
+  update-dashboard:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository Code
-      uses: actions/checkout@v3
+      # Step 1: GitHub Repository se aapki files ko virtual machine me copy karna
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python Environment
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      # Step 2: Virtual machine me Python environment setup karna
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip' # Isse installation har baar fast hogi
 
-    - name: Install System Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install gspread oauth2client requests pytz
+      # Step 3: Pandas, Gspread aur baki saari required libraries install karna (Fixes ModuleNotFoundError)
+      - name: Install Required Python Libraries
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy gspread oauth2client requests
 
-    - name: Execute FNO Master Python Script
-      env:
-        GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-        SHEET_ID: ${{ secrets.SHEET_ID }}
-      run: python update_master_fno.py
+      # Step 4: Aapke secrets (Google Sheet ID aur Google Cloud credentials) ko inject karke script run karna
+      - name: Run Master FNO Screener Script
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python update_master_fno.py
+
