@@ -15,25 +15,25 @@ def get_sheet_client():
         sheet_id = os.environ.get("SHEET_ID")
         
         if not creds_json or not sheet_id:
-            raise ValueError("❌ Error: GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
+            raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
             
-        scope = ["https://google.com", "https://googleapis.com"]
+        scope = ["https://spreadsheetsgooglecom/feeds", "https://wwwgoogleapiscom/auth/drive"]
         creds_dict = json.loads(creds_json)
         
-        print(f"🔑 [LOG] GitHub Secret Email Chala Raha Hai: {creds_dict.get('client_email')}")
+        print(f"🔑 [LOG] Executing via Service Account: {creds_dict.get('client_email')}")
         
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         return client.open_by_key(sheet_id.strip())
     except Exception as e:
-        print(f"❌ [ERROR] Google Sheet Authentication Failed: {str(e)}")
+        print(f"❌ Google Sheet Authentication Failed: {str(e)}")
         return None
 
 # ==========================================
 # 2. MASTER STOCKS LIST (152+ F&O STOCKS)
 # ==========================================
 STOCKS = [
-    'NIFTY_50', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
+    'NIFTY_', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
     'PREMIERENE', 'CGPOWER', 'M&M', 'BSE', 'DIVISLAB', 'NYKAA', 'PHOENIXLTD', 'LUPIN'
 ]
 
@@ -41,11 +41,11 @@ STOCKS = [
 # 3. LIVE CORE LOGIC & CALCULATION FUNCTION
 # ==========================================
 def run_master_screener():
-    print("🚀 [START] F&O Screener Master Dashboard Execution Started...")
+    print("🚀 F&O Screener Master Dashboard Core Loop Execution Started...")
     
     workbook = get_sheet_client()
     if not workbook:
-        print("❌ [STOP] Workbook object nahi mila, process aborted.")
+        print("❌ Workbook instantiation failed.")
         return
         
     stock_data_map = {}
@@ -61,13 +61,11 @@ def run_master_screener():
             if symbol_col:
                 df_raw.set_index(symbol_col, inplace=True)
                 stock_data_map = df_raw.to_dict(orient='index')
-                print(f"🎯 [LOG] Successfully loaded {len(stock_data_map)} stocks from Trading_Dashboard!")
-            else:
-                print(f"⚠️ [WARN] Raw sheet me 'SYMBOL' ya 'SYMBOLE' nahi mila. Columns are: {list(df_raw.columns)}")
+                print(f"🎯 Loaded {len(stock_data_map)} stocks from source feed.")
     except Exception as e:
-        print(f"⚠️ [WARN] Trading_Dashboard read error (Using dynamic simulator logic): {str(e)}")
+        print(f"⚠️ Trading_Dashboard link bypass (Using live simulator routing): {str(e)}")
 
-    processed_rows = []
+    processed_rows =
     current_time_str = datetime.now().strftime("%H:%M:%S")
 
     for stock in STOCKS:
@@ -124,7 +122,7 @@ def run_master_screener():
             processed_rows.append(row)
             
         except Exception as e:
-            print(f"❌ [ERROR] Stock process failed {stock}: {str(e)}")
+            print(f"❌ Processing exception for {stock}: {str(e)}")
             continue
             
     df_output = pd.DataFrame(processed_rows)
@@ -133,39 +131,29 @@ def run_master_screener():
     # 4. EXECUTING LIVE PUSH TO GOOGLE SHEET
     # ==========================================
     try:
-        # Pehle naam se try karega, nahi toh GID se pick karega
+        # Strict GID selection mechanism targeting 103159714
         try:
-            output_sheet = workbook.worksheet("MASTER_DASHBOARD")
-            print("🎯 [LOG] Target Tab 'MASTER_DASHBOARD' Naam Se Mil Gaya!")
-        except Exception:
-            print("⚠️ [WARN] Tab naam se nahi mila, Forcing GID Target: 103159714")
             output_sheet = workbook.get_worksheet_by_id(103159714)
+            if not output_sheet:
+                output_sheet = workbook.worksheet("MASTER_DASHBOARD")
+        except:
+            output_sheet = workbook.worksheet("MASTER_DASHBOARD")
             
-        if not output_sheet:
-            raise ValueError("❌ Target Sheet tab physically nahi mil pa raha hai!")
-
-        # Purana sara data flush clear karna
+        # Clear out current contents cleanly
         output_sheet.clear()
-        print("🧹 [LOG] Purana Sheet Grid Clear Kiya Gaya.")
         
-        # Prepare Matrix lists data
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
-        set_with_dataframe_data = [headers] + matrix_data
         
-        # 🟢 THE FOOLPROOF ULTIMATE METHOD: Spreadsheet API direct cell sheet injector
-        workbook.values_update(
-            f"'{output_sheet.title}'!A1",
-            params={'valueInputOption': 'RAW'},
-            body={'values': set_with_dataframe_data}
-        )
+        # 🟢 THE UNBREAKABLE METHOD: Direct Value Insertion avoiding v6 update buffers
+        output_sheet.insert_rows([headers] + matrix_data, row=1)
         
-        print("\n📊 --- PREVIEW DATA SENT TO SHEET ---")
+        print("\n📊 --- MATRIX OUTPUT SUCCESSFULLY DUMPED ---")
         print(df_output.head(2).to_string())
-        print(f"\n🏆 [SUCCESS] MASTER_DASHBOARD LIVE UPDATE DONE AT {current_time_str}!")
+        print(f"\n🏆 SUCCESS: MASTER_DASHBOARD FORCE LOAD COMPLETED AT {current_time_str}!")
         
     except Exception as e:
-        print(f"❌ [CRITICAL PUSH ERROR] Failed to push data: {str(e)}")
+        print(f"❌ API Injection Fault: {str(e)}")
 
 if __name__ == "__main__":
     run_master_screener()
