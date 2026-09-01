@@ -3,7 +3,6 @@ name: Run Advanced FNO Master Screener Fixed
 on:
   schedule:
     - cron: '*/15 3-9 * * 1-5'
-    - cron: '30 9 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -27,5 +26,5 @@ jobs:
       - name: Run Master FNO Script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: python update_sheet.py
+          SHEET_ID: "1IlXpzkmGg5QAbqSd1fiVKOTPymcx8PKr"
+        run: python update_master_fno.py
