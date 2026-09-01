@@ -17,7 +17,7 @@ def get_sheet_client():
         if not creds_json or not sheet_id:
             raise ValueError("GCP_CREDENTIALS_JSON ya SHEET_ID GitHub Secrets me missing hai!")
             
-        scope = ["https://spreadsheetsgooglecom/feeds", "https://wwwgoogleapiscom/auth/drive"]
+        scope = ["https://google.com", "https://googleapis.com"]
         creds_dict = json.loads(creds_json)
         
         print(f"🔑 [LOG] Executing via Service Account: {creds_dict.get('client_email')}")
@@ -33,7 +33,7 @@ def get_sheet_client():
 # 2. MASTER STOCKS LIST (152+ F&O STOCKS)
 # ==========================================
 STOCKS = [
-    'NIFTY_', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
+    'NIFTY_50', 'TORNTPHARM', 'ASHOKLEY', 'KAYNES', 'INOXWIND', 'GAIL', 'KEI', 
     'PREMIERENE', 'CGPOWER', 'M&M', 'BSE', 'DIVISLAB', 'NYKAA', 'PHOENIXLTD', 'LUPIN'
 ]
 
@@ -41,7 +41,7 @@ STOCKS = [
 # 3. LIVE CORE LOGIC & CALCULATION FUNCTION
 # ==========================================
 def run_master_screener():
-    print("🚀 F&O Screener Master Dashboard Core Loop Execution Started...")
+    print("🚀 F&O Screener Master Dashboard Core Loop Started...")
     
     workbook = get_sheet_client()
     if not workbook:
@@ -61,11 +61,12 @@ def run_master_screener():
             if symbol_col:
                 df_raw.set_index(symbol_col, inplace=True)
                 stock_data_map = df_raw.to_dict(orient='index')
-                print(f"🎯 Loaded {len(stock_data_map)} stocks from source feed.")
+                print(f"🎯 Loaded {len(stock_data_map)} stocks from Trading_Dashboard.")
     except Exception as e:
-        print(f"⚠️ Trading_Dashboard link bypass (Using live simulator routing): {str(e)}")
+        print(f"⚠️ Trading_Dashboard read error (Using dynamic simulator logic): {str(e)}")
 
-    processed_rows =
+    # 🟢 100% FIXED LINE 68: Isme brackets [] bilkul perfect hain, koi syntax error nahi aa sakta!
+    processed_rows = []
     current_time_str = datetime.now().strftime("%H:%M:%S")
 
     for stock in STOCKS:
@@ -122,7 +123,7 @@ def run_master_screener():
             processed_rows.append(row)
             
         except Exception as e:
-            print(f"❌ Processing exception for {stock}: {str(e)}")
+            print(f"❌ Error processing {stock}: {str(e)}")
             continue
             
     df_output = pd.DataFrame(processed_rows)
@@ -131,26 +132,26 @@ def run_master_screener():
     # 4. EXECUTING LIVE PUSH TO GOOGLE SHEET
     # ==========================================
     try:
-        # Strict GID selection mechanism targeting 103159714
+        # Strict GID Target Configuration matching your exact sheet layout
         try:
             output_sheet = workbook.get_worksheet_by_id(103159714)
             if not output_sheet:
                 output_sheet = workbook.worksheet("MASTER_DASHBOARD")
-        except:
+        except Exception:
             output_sheet = workbook.worksheet("MASTER_DASHBOARD")
             
-        # Clear out current contents cleanly
         output_sheet.clear()
         
         headers = df_output.columns.tolist()
         matrix_data = df_output.values.tolist()
+        set_with_dataframe_data = [headers] + matrix_data
         
-        # 🟢 THE UNBREAKABLE METHOD: Direct Value Insertion avoiding v6 update buffers
-        output_sheet.insert_rows([headers] + matrix_data, row=1)
+        # Original direct matrix v4 write syntax block
+        output_sheet.update(set_with_dataframe_data, 'A1')
         
-        print("\n📊 --- MATRIX OUTPUT SUCCESSFULLY DUMPED ---")
+        print("\n📊 --- MATRIX OUTPUT PREVIEW ---")
         print(df_output.head(2).to_string())
-        print(f"\n🏆 SUCCESS: MASTER_DASHBOARD FORCE LOAD COMPLETED AT {current_time_str}!")
+        print(f"\n🏆 SUCCESS: MASTER_DASHBOARD COMPLETED AT {current_time_str}!")
         
     except Exception as e:
         print(f"❌ API Injection Fault: {str(e)}")
