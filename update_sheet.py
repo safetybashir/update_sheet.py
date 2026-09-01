@@ -12,7 +12,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# SECTION 1: GOOGLE SHEETS AUTH & TAB UPDATER
+# SECTION 1: GOOGLE SHEETS AUTH & DATA WRITER
 # ==========================================
 SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg" 
 
@@ -27,24 +27,26 @@ def get_gspread_client():
     elif os.path.exists("credentials.json"):
         return gspread.service_account(filename="credentials.json")
     else:
-        raise FileNotFoundError("❌ 'credentials.json' file folder mein nahi mili!")
+        raise FileNotFoundError("❌ 'credentials.json' file nahi mili! File check karein.")
 
 def write_data_safely(worksheet, headers, rows_data):
-    """Guarantees data write on Google Sheet across all gspread versions"""
+    """Guarantees physical sheet override and updates timestamps without gspread silent-skip"""
     full_matrix = [headers] + rows_data
     worksheet.clear()
     
-    # Calculate exact cell range (e.g. A1:I20)
     num_rows = len(full_matrix)
     num_cols = len(headers)
     
-    # Convert column index to letter (A, B, C... I)
+    # Convert column index to sheet range letter (e.g., A1:I15)
     col_letter = chr(64 + num_cols)
     cell_range = f"A1:{col_letter}{num_rows}"
     
     worksheet.update(values=full_matrix, range_name=cell_range)
 
-def update_ce_tab(spreadsheet, df):
+# ==========================================
+# SECTION 2: CE & PE TAB UPDATERS (CORRECTED LOGIC)
+# ==========================================
+def update_ce_tab(spreadsheet, df_all):
     tab_name = "NEW OI_VCP B/O DASHBOARD"
     headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "CE Action", "Trigger CE", "Change %", "Last Updated"]
     ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
@@ -53,11 +55,15 @@ def update_ce_tab(spreadsheet, df):
         try:
             worksheet = spreadsheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            print(f"⚠️ Tab '{tab_name}' nahi mila, naya tab create ho raha hai...")
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="9")
             
-        if not df.empty:
-            df_ce = df.copy()
+        # STRICT FILTER: Only UPTREND stocks belong in CE Dashboard
+        if not df_all.empty:
+            df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by=['Score', 'Change %'], ascending=[False, False]).copy()
+        else:
+            df_ce = pd.DataFrame()
+
+        if not df_ce.empty:
             df_ce["CE Action"] = "BUY CE 🚀"
             df_ce["Trigger CE"] = df_ce["LTP"].apply(lambda x: f"BUY>{round(float(x) * 1.002, 2)}")
             
@@ -67,17 +73,17 @@ def update_ce_tab(spreadsheet, df):
 
             rows_to_write = df_clean.values.tolist()
             write_data_safely(worksheet, headers, rows_to_write)
-            print(f"✅ CE Tab Updated Successfully ({len(rows_to_write)} rows) at {ist_time}")
+            print(f"✅ CE Tab Updated: {len(rows_to_write)} UPTREND stocks written at {ist_time}")
         else:
-            # Fallback Row so you see timestamp change on Sheet
-            fallback_row = [["NIFTY", "UPTREND", "1.5", "24500.0", "75.0", "BUY CE 🚀", "BUY>24549.0", "0.5", str(ist_time)]]
-            write_data_safely(worksheet, headers, fallback_row)
-            print(f"⚠️ CE Tab Updated with Fallback/Test State at {ist_time}")
+            # Fallback output so Sheet time changes even if no stock is in pure UPTREND
+            fallback = [["N/A", "NO_UPTREND", "0.0", "0.0", "0.0", "NO TRADE 🚫", "N/A", "0.0", str(ist_time)]]
+            write_data_safely(worksheet, headers, fallback)
+            print(f"⚠️ CE Tab Updated: No UPTREND stocks found at {ist_time}")
             
     except Exception as e:
-        print(f"❌ CE Tab Update Failed: {e}")
+        print(f"❌ CE Tab Update Error: {e}")
 
-def update_pe_tab(spreadsheet, df):
+def update_pe_tab(spreadsheet, df_all):
     tab_name = "LIVE_PE_DASHBOARD"
     headers = ["Symbol", "Trend", "Vol Spike", "LTP", "Score", "PE Action", "Trigger PE", "Change %", "Last Updated"]
     ist_time = datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')
@@ -86,11 +92,15 @@ def update_pe_tab(spreadsheet, df):
         try:
             worksheet = spreadsheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            print(f"⚠️ Tab '{tab_name}' nahi mila, naya tab create ho raha hai...")
             worksheet = spreadsheet.add_worksheet(title=tab_name, rows="100", cols="9")
             
-        if not df.empty:
-            df_pe = df.copy()
+        # STRICT FILTER: Only DOWNTREND stocks belong in PE Dashboard
+        if not df_all.empty:
+            df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by=['Score', 'Change %'], ascending=[True, True]).copy()
+        else:
+            df_pe = pd.DataFrame()
+
+        if not df_pe.empty:
             df_pe["PE Action"] = "BUY PE 🚨"
             df_pe["Trigger PE"] = df_pe["LTP"].apply(lambda x: f"SELL<{round(float(x) * 0.998, 2)}")
             
@@ -100,18 +110,18 @@ def update_pe_tab(spreadsheet, df):
 
             rows_to_write = df_clean.values.tolist()
             write_data_safely(worksheet, headers, rows_to_write)
-            print(f"✅ PE Tab Updated Successfully ({len(rows_to_write)} rows) at {ist_time}")
+            print(f"✅ PE Tab Updated: {len(rows_to_write)} DOWNTREND stocks written at {ist_time}")
         else:
-            # Fallback Row so you see timestamp change on Sheet
-            fallback_row = [["NIFTY", "DOWNTREND", "1.5", "24500.0", "25.0", "BUY PE 🚨", "SELL>24451.0", "-0.5", str(ist_time)]]
-            write_data_safely(worksheet, headers, fallback_row)
-            print(f"⚠️ PE Tab Updated with Fallback/Test State at {ist_time}")
+            # Fallback output so Sheet time changes even if no stock is in pure DOWNTREND
+            fallback = [["N/A", "NO_DOWNTREND", "0.0", "0.0", "0.0", "NO TRADE 🚫", "N/A", "0.0", str(ist_time)]]
+            write_data_safely(worksheet, headers, fallback)
+            print(f"⚠️ PE Tab Updated: No DOWNTREND stocks found at {ist_time}")
             
     except Exception as e:
-        print(f"❌ PE Tab Update Failed: {e}")
+        print(f"❌ PE Tab Update Error: {e}")
 
 # ==========================================
-# SECTION 2: HEAVYWEIGHTS & FNO SYMBOLS
+# SECTION 3: SYMBOL LISTS
 # ==========================================
 HEAVYWEIGHTS = ["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS", "LT", "AXISBANK", "SBIN", "BHARTIARTL", "ITC"]
 
@@ -142,14 +152,17 @@ FNO_SYMBOLS = [
 ]
 
 # ==========================================
-# SECTION 3: DATA ENGINE
+# SECTION 4: DATA PROCESSING ENGINE
 # ==========================================
 def fetch_and_process_data():
     raw_stocks_data = []
     ist = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(ist).strftime('%H:%M:%S')
 
-    for sym in FNO_SYMBOLS[:30]:  # Batched for quick execution
+    print(f"🔍 Fetching live quotes for target symbols...")
+    
+    # Batch download processing
+    for sym in FNO_SYMBOLS[:40]:  # Adjust slice size if needed
         try:
             yf_ticker = "^NSEI" if sym == "NIFTY" else f"{sym}.NS"
             data = yf.download(yf_ticker, period="5d", interval="5m", progress=False)
@@ -173,26 +186,27 @@ def fetch_and_process_data():
             curr_vol = float(latest['Volume'])
             vol_spike = curr_vol / avg_vol if avg_vol > 0 else 1.0
             
-            price_up = change_pct > 0.2
+            price_up = change_pct > 0.15
             vol_up = vol_spike > 1.2
             
             score_points = 0
-            if price_up: score_points += 20
-            if vol_up: score_points += 20
+            if price_up: score_points += 25
+            if vol_up: score_points += 25
             if ltp > latest['VWAP']: score_points += 15
             
             max_20 = data['High'].tail(20).iloc[:-1].max() if len(data) >= 20 else data['High'].max()
             if ltp > max_20: score_points += 15
             
-            if price_up and vol_up: score_points += 15
-            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 15
+            if price_up and vol_up: score_points += 10
+            if sym in HEAVYWEIGHTS or sym == "NIFTY": score_points += 10
 
-            hw_weight = 1.25 if (sym in HEAVYWEIGHTS or sym == "NIFTY") else 1.0
+            hw_weight = 1.2 if (sym in HEAVYWEIGHTS or sym == "NIFTY") else 1.0
             final_score = min(100.0, round(score_points * hw_weight, 1))
 
-            if final_score >= 60 and change_pct > 0:
+            # ACCURATE TREND ASSIGNMENT
+            if final_score >= 55 and change_pct > 0.1:
                 trend = 'UPTREND'
-            elif final_score <= 30 or change_pct < -0.3:
+            elif final_score <= 35 or change_pct < -0.1:
                 trend = 'DOWNTREND'
             else:
                 trend = 'SIDEWAYS'
@@ -211,22 +225,10 @@ def fetch_and_process_data():
             continue
 
     df_all = pd.DataFrame(raw_stocks_data)
-    
-    if df_all.empty:
-        return pd.DataFrame(), pd.DataFrame()
-
-    df_ce = df_all[df_all['Trend'] == 'UPTREND'].sort_values(by=['Score', 'Change %'], ascending=[False, False])
-    df_pe = df_all[df_all['Trend'] == 'DOWNTREND'].sort_values(by=['Score', 'Change %'], ascending=[False, True])
-
-    if df_ce.empty:
-        df_ce = df_all.sort_values(by='Change %', ascending=False).head(15)
-    if df_pe.empty:
-        df_pe = df_all.sort_values(by='Change %', ascending=True).head(15)
-
-    return df_ce, df_pe
+    return df_all
 
 # ==========================================
-# SECTION 4: MAIN EXECUTION
+# SECTION 5: MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
     print("🚀 Connecting to Google Sheets...")
@@ -234,18 +236,18 @@ if __name__ == "__main__":
     try:
         gc = get_gspread_client()
         sh = gc.open_by_key(SHEET_ID)
-        print(f"✅ Google Sheet Connected Successfully: {sh.title}")
+        print(f"✅ Connected to Sheet: {sh.title}")
 
-        print("📊 Fetching market data...")
-        df_ce, df_pe = fetch_and_process_data()
+        print("📊 Processing Stock Market Feed...")
+        df_all = fetch_and_process_data()
 
-        print("🔄 Updating CE Tab...")
-        update_ce_tab(sh, df_ce)
+        print("🔄 Writing CE Dashboard...")
+        update_ce_tab(sh, df_all)
 
-        print("🔄 Updating PE Tab...")
-        update_pe_tab(sh, df_pe)
+        print("🔄 Writing PE Dashboard...")
+        update_pe_tab(sh, df_all)
         
-        print("🎉 Finished execution cycle!")
+        print("🎉 Live Sheet Update Completed Successfully!")
 
     except Exception as err:
-        print(f"\n❌ FATAL EXECUTION ERROR: {err}")
+        print(f"\n❌ SCRIPT ERROR: {err}")
