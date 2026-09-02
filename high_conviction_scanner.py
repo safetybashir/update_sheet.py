@@ -35,16 +35,36 @@ def get_or_create_worksheet(spreadsheet, title):
             if ws.title.strip().upper() == title.strip().upper():
                 return ws
         print(f"➕ Creating new separate tab: '{title}'...")
-        return spreadsheet.add_worksheet(title=title, rows="200", cols="20")
+        return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
     except Exception as e:
         print(f"⚠️ Error opening/creating tab {title}: {str(e)}")
         return spreadsheet.sheet1
 
+# 📊 STRICT EXACT USER CUSTOM STOCK LIST + NIFTY/BANKNIFTY
 FNO_SYMBOLS = [
-    "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", 
-    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "TATASTEEL", 
-    "RELIANCE", "ICICIBANK", "HDFCBANK", "INFY", "TCS", "SBIN", "AXISBANK",
-    "BHARTIARTL", "LT", "BAJFINANCE", "MARUTI", "SUNPHARMA", "TITAN", "HEROMOTOCO"
+    # Key Indices
+    "NIFTY_50", "BANKNIFTY",
+    
+    # User Specific Stock List
+    "RELIANCE", "MARUTI", "CROMPTON", "HINDZINC", "LODHA", "BLUESTARCO", "BEL", "JUBLFOOD", 
+    "PREMIERE", "NEGM", "MR", "AIRPORT", "VEDL", "CONCOR", "PIIND", "EICHERMOT", 
+    "TIINDIA", "ETERNAL", "SUNPHARMA", "SWIGGY", "BHEL", "NATIONALUM", "NBCC", "GVT&D", 
+    "NAUKRI", "DMART", "CAMS", "MOTHERSON", "TATASTEEL", "NESTLEIND", "INOXWIND", "SOLARINDS", 
+    "KEI", "MARICO", "BHARTIARTL", "COFORGE", "PRESTAGE", "TMPV", "DIVISLAB", "TATACONSUM", 
+    "VOLTAS", "NMDC", "JINDALSTEL", "INFY", "PAGEIND", "INDUSTOWER", "SUPREMEIND", "HINDPETRO", 
+    "POLYCAB", "KFINTECH", "MAXHEALTH", "SUZLON", "NYKAA", "OFSS", "M&M", "PERSISTENT", 
+    "RADICO", "KAYNES", "ZYDUSLIFE", "DLF", "PGEL", "TATAELXSI", "IREDA", "REC", 
+    "LTDTATAPOWER", "HCLTECH", "DIXON", "LTF", "LUPIN", "MPHASIS", "ONGC", "AUROPHARMA", 
+    "GLENMARK", "JSWENERGY", "SRF", "MOTILALOFS", "APLAPOLLO", "NAM-INDIA", "UNOMINDA", "POWERINDIA", 
+    "COALINDIA", "DABUR", "IRFC", "OBEROIRLTY", "PHOENIXLTD", "TORNTPHARM", "ALKEM", "AMBER", 
+    "ANGELONE", "ASTRAL", "BDL", "BIOCON", "BPCL", "CDSL", "CGPOWER", "DALBHARAT", 
+    "DELHIVERY", "FORCEMOT", "GODREJPROP", "HINDALCO", "HINDUNILVR", "KALYANK", "JILK", "KPITTECH", 
+    "LAURUSLABS", "LT", "MANKIND", "MAZDOCK", "RVNL", "SIEMENS", "TECHM", "TITAN", 
+    "TRENT", "VMM", "TVSMOTOR", "PAYTM", "SHREECEM", "BAJAJ-AUTO", "ABB", "DRREDDY", 
+    "POWERGRID", "WAAREEENER", "APOLLOHOSP", "COLPAL", "JSWSTEEL", "GAIL", "UPL", "FORTIS", 
+    "ASIANPAINT", "INDIGO", "HYUNDAI", "ULTRACEMCO", "WIPRO", "HAVELLS", "SONACOMS", "AMBUJACEM", 
+    "BOSCHLTD", "HAL", "COCHINSHIP", "GODREJCP", "HEROMOTOCO", "IOC", "CIPLA", "TCS", 
+    "ASHOKLEY", "BRITANNIA", "BHARATFORG", "PETRONET", "GRASIM", "PIDILITIND", "LTMB", "BSE", "CUMMINSIND"
 ]
 
 def run_high_conviction_scanner():
@@ -68,12 +88,18 @@ def run_high_conviction_scanner():
 
     for sym in FNO_SYMBOLS:
         try:
-            # Underlying live market mock inputs (Connect your Broker API here)
-            ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(250, 3800)), 2)
-            iv = round(float(np.random.uniform(12.0, 30.0)), 1)
-            chg_pct = round(float(np.random.uniform(-3.0, 3.5)), 2)
-            vol_mult = round(float(np.random.uniform(0.7, 3.2)), 2)
-            oi_chg = round(float(np.random.uniform(-5.0, 22.0)), 2)
+            # Price simulation based on symbol type
+            if sym == "NIFTY_50":
+                ltp = round(float(np.random.uniform(24000, 25500)), 2)
+            elif sym == "BANKNIFTY":
+                ltp = round(float(np.random.uniform(51000, 53500)), 2)
+            else:
+                ltp = round(float(np.random.uniform(120, 4500)), 2)
+
+            iv = round(float(np.random.uniform(12.0, 32.0)), 1)
+            chg_pct = round(float(np.random.uniform(-3.5, 3.5)), 2)
+            vol_mult = round(float(np.random.uniform(0.7, 3.5)), 2)
+            oi_chg = round(float(np.random.uniform(-5.0, 25.0)), 2)
 
             # 📊 Mathematical Expected Move (5-day Expiry Horizon)
             days_to_expiry = 5
@@ -82,7 +108,7 @@ def run_high_conviction_scanner():
             lower_range = round(ltp - move_pts, 2)
             upper_range = round(ltp + move_pts, 2)
 
-            # 🎯 HIGH CONVICTION SELECTION LOGIC (Filter out noise)
+            # 🎯 HIGH CONVICTION SELECTION LOGIC
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 setup = "BULL PUT SPREAD (Credit)"
                 sell_strike = round(ltp * 0.99, -1)
@@ -112,7 +138,6 @@ def run_high_conviction_scanner():
                 conviction = "⭐⭐⭐⭐ HIGH CONVICTION"
 
             else:
-                # Low conviction setups ignore honge taaki capital loose na ho
                 continue
 
             trade_signals.append([
