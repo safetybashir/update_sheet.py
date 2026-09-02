@@ -8,11 +8,10 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ========================================================
-# NATIVE GOOGLE SHEET ID
+# SPECIFIC SHEET ID FOR CE/PE BREAKOUT DASHBOARD
 # ========================================================
-SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
+SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
-# Target Tabs for OI / VCP Breakout Dashboard
 CE_TAB_NAME = "LIVE_CE_DASHBOARD"
 PE_TAB_NAME = "LIVE_PE_DASHBOARD"
 
@@ -38,7 +37,6 @@ def get_or_create_worksheet(spreadsheet, title):
         print(f"➕ Creating new tab: '{title}'...")
         return spreadsheet.add_worksheet(title=title, rows="200", cols="20")
 
-# Watchlist Tickers
 FNO_SYMBOLS = [
     "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", "MAZDOCK", 
@@ -61,7 +59,7 @@ FNO_SYMBOLS = [
 ]
 
 def execute_oic_vcp_sync():
-    print(f"🚀 Initiating OI_VCP Breakout (CE/PE) Sync Pipeline...")
+    print(f"🚀 Initiating CE/PE Breakout Sync ({SHEET_ID})...")
     
     try:
         client = get_gspread_client()
@@ -70,7 +68,7 @@ def execute_oic_vcp_sync():
         ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
         ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
     except Exception as e:
-        print(f"❌ Connection or Worksheet Setup Mismatch: {e}")
+        print(f"❌ Connection Error with CE/PE Sheet: {e}")
         sys.exit(1)
 
     ist_timezone = pytz.timezone('Asia/Kolkata')
@@ -98,34 +96,26 @@ def execute_oic_vcp_sync():
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # Call Option (CE) Logic
+            # Call Option (CE)
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
-                ce_vcp = "🔥 VCP BULLISH BREAKOUT"
-                ce_buildup = "LONG BUILDUP"
-                ce_signal = "⭐ SUPER CE BUY"
+                ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
             else:
-                ce_vcp = "⏳ CONSOLIDATING"
-                ce_buildup = "NEUTRAL"
-                ce_signal = "😴 NO SIGNAL"
+                ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
             rows_ce.append([
                 sym, str(ltp), str(ce_strike), str(ce_price), f"{chg_pct}%", vol_spike_str,
                 f"{oi_chg}%", str(pcr), ce_vcp, ce_buildup, ce_signal, current_time_str
             ])
 
-            # Put Option (PE) Logic
+            # Put Option (PE)
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
             if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
-                pe_vcp = "📉 VCP BEARISH BREAKOUT"
-                pe_buildup = "SHORT BUILDUP"
-                pe_signal = "⭐ SUPER PE BUY"
+                pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
             else:
-                pe_vcp = "⏳ CONSOLIDATING"
-                pe_buildup = "NEUTRAL"
-                pe_signal = "😴 NO SIGNAL"
+                pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
             rows_pe.append([
                 sym, str(ltp), str(pe_strike), str(pe_price), f"{chg_pct}%", vol_spike_str,
