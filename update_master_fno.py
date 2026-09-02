@@ -8,12 +8,13 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# 🎯 EXACT MASTER DASHBOARD SHEET ID
+# 🎯 MASTER DASHBOARD SHEET ID
 SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
-MASTER_TAB_NAME = "MASTER_DASHBOARD"
-CE_TAB_NAME = "LIVE_CE_DASHBOARD"
-PE_TAB_NAME = "LIVE_PE_DASHBOARD"
+# 📌 EXACT 3 TABS FOR FNO SCREENER
+TAB_MASTER = "MASTER_DASHBOARD"
+TAB_DATA = "DATA_DASHBOARD"
+TAB_DERIVATIVES = "DATA_DERIVATIVES"
 
 def get_gspread_client():
     creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
@@ -23,8 +24,7 @@ def get_gspread_client():
     ]
     if creds_json:
         creds_dict = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(creds)
+        return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
     elif os.path.exists("credentials.json"):
         return gspread.service_account(filename="credentials.json")
     else:
@@ -32,13 +32,11 @@ def get_gspread_client():
 
 def get_or_create_worksheet(spreadsheet, title):
     try:
-        # Check case-insensitive tab matching
         worksheets = spreadsheet.worksheets()
         for ws in worksheets:
             if ws.title.strip().upper() == title.strip().upper():
                 return ws
-        # If not found, create new tab
-        print(f"➕ Creating missing tab: '{title}' in Master Sheet...")
+        print(f"➕ Creating missing tab: '{title}'...")
         return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
     except Exception as e:
         print(f"⚠️ Error opening tab {title}: {str(e)}")
@@ -65,113 +63,92 @@ FNO_SYMBOLS = [
     "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
-def execute_oic_vcp_sync():
+def safe_update_worksheet(ws, payload, t_name):
+    try:
+        ws.clear()
+        ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
+        print(f"✅ Successfully written to Tab: '{t_name}'")
+    except Exception as e:
+        print(f"❌ Failed updating tab '{t_name}': {str(e)}")
+
+def run_fno_screener():
     print(f"🔗 Target Master Sheet ID: {SHEET_ID}")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
-    print(f"📄 Connected to Sheet Title: '{spreadsheet.title}'")
 
-    ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB_NAME)
-    ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
-    ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
+    # CONNECT / CREATE THE 3 TABS
+    ws_master = get_or_create_worksheet(spreadsheet, TAB_MASTER)
+    ws_data = get_or_create_worksheet(spreadsheet, TAB_DATA)
+    ws_deriv = get_or_create_worksheet(spreadsheet, TAB_DERIVATIVES)
 
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    headers = [
-        "TICKER", "LTP", "STRIKE", "OPTION PRICE", "PRICE % CHG", "VOLUME SPIKE", 
-        "OI % CHG", "PCR RATIO", "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
-    ]
+    # HEADERS FOR EACH TAB
+    headers_master = ["TICKER", "LTP", "SIGNAL STRENGTH", "VCP BREAKOUT", "BUILD-UP", "PCR RATIO", "LAST UPDATED"]
+    headers_data = ["TICKER", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "ATM STRIKE", "LAST UPDATED"]
+    headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRICE", "OI % CHG", "PCR RATIO", "BUILD-UP", "LAST UPDATED"]
 
-    list_ce = []
-    list_pe = []
-    list_master = []
+    rows_master = []
+    rows_data = []
+    rows_deriv = []
 
     for sym in FNO_SYMBOLS:
         try:
             ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
             chg_pct = round(float(np.random.uniform(-3.5, 5.0)), 2)
-            vol_mult = np.random.uniform(0.5, 3.0)
+            vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
             oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # ----------------- CE LOGIC -----------------
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
-            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
-                ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
-            elif chg_pct > 0.3 and vol_mult >= 1.2:
-                ce_vcp, ce_buildup, ce_signal = "⚡ WATCHLIST", "MILD LONG", "⚡ HIGH CE WATCH"
-            else:
-                ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
-
-            row_ce = [
-                str(sym), str(ltp), str(ce_strike), str(ce_price),
-                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
-                str(pcr), str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
-            ]
-            list_ce.append(row_ce)
-
-            # ----------------- PE LOGIC -----------------
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
-            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
-                pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
-            elif chg_pct < -0.3 and vol_mult >= 1.2:
-                pe_vcp, pe_buildup, pe_signal = "⚡ WATCHLIST", "MILD SHORT", "⚡ HIGH PE WATCH"
-            else:
-                pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            row_pe = [
-                str(sym), str(ltp), str(pe_strike), str(pe_price),
-                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
-                str(pcr), str(pe_vcp), str(pe_buildup), str(pe_signal), str(curr_time)
-            ]
-            list_pe.append(row_pe)
-
-            # MASTER LIST ASSIGNMENT
-            if "SUPER CE BUY" in ce_signal or "HIGH CE WATCH" in ce_signal:
-                list_master.append(row_ce)
-            elif "SUPER PE BUY" in pe_signal or "HIGH PE WATCH" in pe_signal:
-                list_master.append(row_pe)
+            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+                vcp_signal, buildup, strength = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER BUY"
+            elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+                vcp_signal, buildup, strength = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⚠️ SUPER SELL"
+            elif abs(chg_pct) > 0.3 and vol_mult >= 1.2:
+                vcp_signal, buildup, strength = "⚡ WATCHLIST", "MILD ACTIVITY", "⚡ WATCH"
             else:
-                list_master.append(row_ce)
+                vcp_signal, buildup, strength = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
+
+            # 1. DATA_DASHBOARD ROW
+            rows_data.append([str(sym), str(ltp), f"{chg_pct}%", str(vol_mult), str(vol_spike_str), str(round(ltp, -1)), str(curr_time)])
+
+            # 2. DATA_DERIVATIVES ROW
+            rows_deriv.append([str(sym), str(ltp), str(ce_strike), str(ce_price), str(pe_strike), str(pe_price), f"{oi_chg}%", str(pcr), str(buildup), str(curr_time)])
+
+            # 3. MASTER_DASHBOARD ROW (Main Signals Only)
+            if strength in ["⭐ SUPER BUY", "⚠️ SUPER SELL", "⚡ WATCH"]:
+                rows_master.append([str(sym), str(ltp), str(strength), str(vcp_signal), str(buildup), str(pcr), str(curr_time)])
 
         except Exception:
             continue
 
-    def sort_dataframe(data_list, priority_map):
-        df = pd.DataFrame(data_list, columns=headers)
-        df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
-        df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
-        df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
-        return [headers] + df_sorted.values.tolist()
+    # SORT MASTER DASHBOARD BY SIGNAL PRIORITY
+    df_m = pd.DataFrame(rows_master, columns=headers_master) if rows_master else pd.DataFrame(columns=headers_master)
+    if not df_m.empty:
+        p_map = {"⭐ SUPER BUY": 0, "⚠️ SUPER SELL": 1, "⚡ WATCH": 2}
+        df_m["RANK"] = df_m["SIGNAL STRENGTH"].map(p_map).fillna(99)
+        df_m["IS_NIFTY"] = df_m["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
+        df_m = df_m.sort_values(by=["RANK", "IS_NIFTY", "TICKER"]).drop(columns=["RANK", "IS_NIFTY"])
+        payload_master = [headers_master] + df_m.values.tolist()
+    else:
+        payload_master = [headers_master]
 
-    ce_priority = {"⭐ SUPER CE BUY": 0, "⚡ HIGH CE WATCH": 1, "😴 NO SIGNAL": 2}
-    pe_priority = {"⭐ SUPER PE BUY": 0, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
-    master_priority = {"⭐ SUPER CE BUY": 0, "⭐ SUPER PE BUY": 0, "⚡ HIGH CE WATCH": 1, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
+    payload_data = [headers_data] + rows_data
+    payload_deriv = [headers_deriv] + rows_deriv
 
-    payload_ce = sort_dataframe(list_ce, ce_priority)
-    payload_pe = sort_dataframe(list_pe, pe_priority)
-    payload_master = sort_dataframe(list_master, master_priority)
+    # EXECUTE WRITES
+    safe_update_worksheet(ws_master, payload_master, TAB_MASTER)
+    safe_update_worksheet(ws_data, payload_data, TAB_DATA)
+    safe_update_worksheet(ws_deriv, payload_deriv, TAB_DERIVATIVES)
 
-    # INDIVIDUAL SAFE WRITES
-    targets = [
-        (ws_master, payload_master, MASTER_TAB_NAME),
-        (ws_ce, payload_ce, CE_TAB_NAME),
-        (ws_pe, payload_pe, PE_TAB_NAME)
-    ]
-
-    for ws, payload, t_name in targets:
-        try:
-            ws.clear()
-            ws.update(range_name='A1', values=payload, value_input_option='USER_ENTERED')
-            print(f"✅ Tab '{t_name}' updated successfully!")
-        except Exception as err:
-            print(f"❌ Failed updating tab '{t_name}': {str(err)}")
-
-    print(f"🚀 Master Dashboard fully updated at {curr_time} IST!")
+    print(f"🚀 FNO Screener completed at {curr_time} IST!")
 
 if __name__ == "__main__":
-    execute_oic_vcp_sync()
+    run_fno_screener()
