@@ -13,7 +13,7 @@ SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
 # 📌 EXACT 3 TABS FOR FNO SCREENER
 TAB_MASTER = "MASTER_DASHBOARD"
-TAB_DATA = "DATA_CASH"
+TAB_CASH = "DATA_CASH"
 TAB_DERIVATIVES = "DATA_DERIVATIVES"
 
 def get_gspread_client():
@@ -78,19 +78,19 @@ def run_fno_screener():
 
     # CONNECT / CREATE THE 3 TABS
     ws_master = get_or_create_worksheet(spreadsheet, TAB_MASTER)
-    ws_data = get_or_create_worksheet(spreadsheet, TAB_DATA)
+    ws_cash = get_or_create_worksheet(spreadsheet, TAB_CASH)
     ws_deriv = get_or_create_worksheet(spreadsheet, TAB_DERIVATIVES)
 
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # HEADERS FOR EACH TAB
-headers_master = ["TICKER", "LTP", "VCP BREAKOUT", "BUILD-UP", "PCR RATIO", "SIGNAL STRENGTH", "LAST UPDATED"]
-headers_data = ["TICKER", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "ATM STRIKE", "LAST UPDATED"]
-headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRICE", "OI % CHG", "PCR RATIO", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"]
+    # HEADERS FOR EACH TAB (CORRECTED ORDER & NAMES)
+    headers_master = ["TICKER", "LTP", "VCP BREAKOUT", "BUILD-UP", "PCR RATIO", "SIGNAL STRENGTH", "LAST UPDATED"]
+    headers_cash = ["TICKER", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "ATM STRIKE", "LAST UPDATED"]
+    headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRICE", "OI % CHG", "PCR RATIO", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"]
 
     rows_master = []
-    rows_data = []
+    rows_cash = []
     rows_deriv = []
 
     for sym in FNO_SYMBOLS:
@@ -116,15 +116,25 @@ headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRIC
             else:
                 vcp_signal, buildup, strength = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            # 1. DATA_DASHBOARD ROW
-            rows_data.append([str(sym), str(ltp), f"{chg_pct}%", str(vol_mult), str(vol_spike_str), str(round(ltp, -1)), str(curr_time)])
+            # 1. DATA_CASH ROW
+            rows_cash.append([
+                str(sym), str(ltp), f"{chg_pct}%", str(vol_mult), 
+                str(vol_spike_str), str(round(ltp, -1)), str(curr_time)
+            ])
 
-            # 2. DATA_DERIVATIVES ROW
-            rows_deriv.append([str(sym), str(ltp), str(ce_strike), str(ce_price), str(pe_strike), str(pe_price), f"{oi_chg}%", str(pcr), str(buildup), str(curr_time)])
+            # 2. DATA_DERIVATIVES ROW (11 Columns)
+            rows_deriv.append([
+                str(sym), str(ltp), str(ce_strike), str(ce_price), 
+                str(pe_strike), str(pe_price), f"{oi_chg}%", str(pcr), 
+                str(buildup), str(strength), str(curr_time)
+            ])
 
-            # 3. MASTER_DASHBOARD ROW (Main Signals Only)
+            # 3. MASTER_DASHBOARD ROW (7 Columns with SIGNAL STRENGTH before LAST UPDATED)
             if strength in ["⭐ SUPER BUY", "⚠️ SUPER SELL", "⚡ WATCH"]:
-                rows_master.append([str(sym), str(ltp), str(strength), str(vcp_signal), str(buildup), str(pcr), str(curr_time)])
+                rows_master.append([
+                    str(sym), str(ltp), str(vcp_signal), str(buildup), 
+                    str(pcr), str(strength), str(curr_time)
+                ])
 
         except Exception:
             continue
@@ -140,15 +150,15 @@ headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRIC
     else:
         payload_master = [headers_master]
 
-    payload_data = [headers_data] + rows_data
+    payload_cash = [headers_cash] + rows_cash
     payload_deriv = [headers_deriv] + rows_deriv
 
     # EXECUTE WRITES
     safe_update_worksheet(ws_master, payload_master, TAB_MASTER)
-    safe_update_worksheet(ws_data, payload_data, TAB_DATA)
+    safe_update_worksheet(ws_cash, payload_cash, TAB_CASH)
     safe_update_worksheet(ws_deriv, payload_deriv, TAB_DERIVATIVES)
 
-    print(f"🚀 FNO Screener completed at {curr_time} IST!")
+    print(f"🚀 FNO Screener completed successfully at {curr_time} IST!")
 
 if __name__ == "__main__":
     run_fno_screener()
