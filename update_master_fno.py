@@ -8,8 +8,8 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# Strictly Hardcoded Sheet ID
-SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
+# 🎯 EXACT MASTER DASHBOARD SHEET ID
+SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
 MASTER_TAB_NAME = "MASTER_DASHBOARD"
 CE_TAB_NAME = "LIVE_CE_DASHBOARD"
@@ -32,10 +32,17 @@ def get_gspread_client():
 
 def get_or_create_worksheet(spreadsheet, title):
     try:
-        return spreadsheet.worksheet(title)
-    except gspread.exceptions.WorksheetNotFound:
-        print(f"➕ Creating missing tab: '{title}'...")
-        return spreadsheet.add_worksheet(title=title, rows="250", cols="20")
+        # Check case-insensitive tab matching
+        worksheets = spreadsheet.worksheets()
+        for ws in worksheets:
+            if ws.title.strip().upper() == title.strip().upper():
+                return ws
+        # If not found, create new tab
+        print(f"➕ Creating missing tab: '{title}' in Master Sheet...")
+        return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
+    except Exception as e:
+        print(f"⚠️ Error opening tab {title}: {str(e)}")
+        return spreadsheet.sheet1
 
 FNO_SYMBOLS = [
     "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
@@ -59,7 +66,7 @@ FNO_SYMBOLS = [
 ]
 
 def execute_oic_vcp_sync():
-    print(f"🔗 Target Sheet ID: {SHEET_ID}")
+    print(f"🔗 Target Master Sheet ID: {SHEET_ID}")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
     print(f"📄 Connected to Sheet Title: '{spreadsheet.title}'")
@@ -137,7 +144,6 @@ def execute_oic_vcp_sync():
     def sort_dataframe(data_list, priority_map):
         df = pd.DataFrame(data_list, columns=headers)
         df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
-        # NIFTY_50 dynamic rank booster for priority ties
         df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
         df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
         return [headers] + df_sorted.values.tolist()
@@ -150,13 +156,22 @@ def execute_oic_vcp_sync():
     payload_pe = sort_dataframe(list_pe, pe_priority)
     payload_master = sort_dataframe(list_master, master_priority)
 
-    # DIRECT & FORCED WRITE VIA API
-    for ws, payload, t_name in zip([ws_ce, ws_pe, ws_master], [payload_ce, payload_pe, payload_master], [CE_TAB_NAME, PE_TAB_NAME, MASTER_TAB_NAME]):
-        ws.clear()
-        ws.update('A1', payload, value_input_option='USER_ENTERED')
-        print(f"✅ Sheet '{t_name}' updated successfully.")
+    # INDIVIDUAL SAFE WRITES
+    targets = [
+        (ws_master, payload_master, MASTER_TAB_NAME),
+        (ws_ce, payload_ce, CE_TAB_NAME),
+        (ws_pe, payload_pe, PE_TAB_NAME)
+    ]
 
-    print(f"🚀 All 3 tabs synchronized at {curr_time} IST!")
+    for ws, payload, t_name in targets:
+        try:
+            ws.clear()
+            ws.update(range_name='A1', values=payload, value_input_option='USER_ENTERED')
+            print(f"✅ Tab '{t_name}' updated successfully!")
+        except Exception as err:
+            print(f"❌ Failed updating tab '{t_name}': {str(err)}")
+
+    print(f"🚀 Master Dashboard fully updated at {curr_time} IST!")
 
 if __name__ == "__main__":
     execute_oic_vcp_sync()
