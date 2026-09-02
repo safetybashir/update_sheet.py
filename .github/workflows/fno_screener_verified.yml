@@ -2,8 +2,8 @@ name: 📊 Master FNO Screener Update
 
 on:
   schedule:
-    - cron: '*/5 3-10 * * 1-5'  # Har 5 minute mein (Market hours: Mon-Fri)
-  workflow_dispatch:           # Manual trigger button
+    - cron: '*/5 3-10 * * 1-5'  # Every 5 mins during market hours
+  workflow_dispatch:
 
 jobs:
   update-master-fno:
@@ -20,7 +20,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install gspread google-auth pandas numpy pytz
+          pip install gspread google-auth pandas numpy pytz yfinance requests
 
       - name: Run Master FNO Script
         env:
