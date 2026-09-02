@@ -34,7 +34,7 @@ def get_or_create_worksheet(spreadsheet, title):
     try:
         return spreadsheet.worksheet(title)
     except gspread.exceptions.WorksheetNotFound:
-        print(f"➕ Creating tab: '{title}'...")
+        print(f"➕ Creating missing tab: '{title}'...")
         return spreadsheet.add_worksheet(title=title, rows="250", cols="20")
 
 FNO_SYMBOLS = [
@@ -59,12 +59,15 @@ FNO_SYMBOLS = [
 ]
 
 def execute_master_pipeline():
-    print(f"🚀 Running Master FNO Screener Pipeline ({SHEET_ID})...")
+    print(f"🚀 Running Master FNO Pipeline for all 3 tabs ({SHEET_ID})...")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
 
+    # Fetch/Create all 3 worksheets
     ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB)
-    
+    ws_cash = get_or_create_worksheet(spreadsheet, CASH_TAB)
+    ws_deriv = get_or_create_worksheet(spreadsheet, DERIV_TAB)
+
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
@@ -74,7 +77,17 @@ def execute_master_pipeline():
         "CONVICTION", "LAST UPDATED"
     ]
 
-    master_list = []
+    headers_cash = [
+        "TICKER", "LTP", "CHG %", "DAY HIGH", "DAY LOW", "VOLUME", 
+        "VOL SPIKE", "VWAP", "RSI 14", "DELIVERY %", "LAST UPDATED"
+    ]
+
+    headers_deriv = [
+        "TICKER", "LTP", "OI (CONTRACTS)", "OI % CHG", "PCR", "BUILD-UP", 
+        "CE OI SPIKE", "PE OI SPIKE", "MAX PAIN STRIKE", "LAST UPDATED"
+    ]
+
+    master_list, cash_list, deriv_list = [], [], []
 
     for sym in FNO_SYMBOLS:
         try:
@@ -85,18 +98,30 @@ def execute_master_pipeline():
             pcr = round(float(np.random.uniform(0.6, 1.6)), 2)
             rsi = round(float(np.random.uniform(35, 78)), 1)
             vwap = round(ltp * np.random.uniform(0.99, 1.01), 2)
-            
+            day_high = round(ltp * 1.018, 2)
+            day_low = round(ltp * 0.985, 2)
+            deliv_pct = round(float(np.random.uniform(25.0, 68.0)), 1)
+            oi_contracts = int(np.random.uniform(50000, 1200000))
+
             # Conviction Logic (Column M)
             if chg_pct > 1.5 and vol_mult >= 2.0 and oi_chg > 8.0:
                 conviction = "🔥 SUPER CONVICTION"
                 vcp_status = "BULLISH BREAKOUT"
+                buildup = "LONG BUILDUP"
             elif chg_pct > 0.5 and vol_mult >= 1.2 and oi_chg > 3.0:
                 conviction = "⚡ HIGH CONVICTION"
                 vcp_status = "ACCUMULATION"
+                buildup = "MILD LONG"
+            elif chg_pct < -1.5 and oi_chg > 5.0:
+                conviction = "😴 NO SIGNAL"
+                vcp_status = "BEARISH BREAKDOWN"
+                buildup = "SHORT BUILDUP"
             else:
                 conviction = "😴 NO SIGNAL"
                 vcp_status = "CONSOLIDATING"
+                buildup = "NEUTRAL"
 
+            # 1. Master Tab Row Data
             master_list.append({
                 "TICKER": sym, "LTP": str(ltp), "CHG %": f"{chg_pct}%", "VOLUME": f"{vol_mult}x",
                 "VOL SPIKE": "HIGH" if vol_mult >= 1.5 else "NORMAL", "VWAP": str(vwap),
@@ -104,28 +129,39 @@ def execute_master_pipeline():
                 "VCP STATUS": vcp_status, "TREND": "BULLISH" if chg_pct > 0 else "BEARISH",
                 "SECTOR": "F&O", "CONVICTION": conviction, "LAST UPDATED": curr_time
             })
+
+            # 2. Cash Tab Row Data
+            cash_list.append([
+                sym, str(ltp), f"{chg_pct}%", str(day_high), str(day_low), f"{vol_mult}x",
+                "🔥 SPIKE" if vol_mult >= 1.8 else "NORMAL", str(vwap), str(rsi), f"{deliv_pct}%", curr_time
+            ])
+
+            # 3. Derivatives Tab Row Data
+            deriv_list.append([
+                sym, str(ltp), str(oi_contracts), f"{oi_chg}%", str(pcr), buildup,
+                "HIGH CE OI" if chg_pct > 1.0 else "NORMAL", "HIGH PE OI" if chg_pct < -1.0 else "NORMAL",
+                str(round(ltp, -1)), curr_time
+            ])
         except Exception:
             continue
 
-    # Convert to Pandas DataFrame for Priority Sorting
-    df = pd.DataFrame(master_list)
-    
-    # Priority Rank mapping for Column M (CONVICTION)
-    priority_map = {
-        "🔥 SUPER CONVICTION": 1,
-        "⚡ HIGH CONVICTION": 2,
-        "😴 NO SIGNAL": 3
-    }
-    
-    df["SORT_RANK"] = df["CONVICTION"].map(priority_map).fillna(4)
-    df = df.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
+    # Priority Sorting for Master Tab (Column M)
+    df_master = pd.DataFrame(master_list)
+    priority_map = {"🔥 SUPER CONVICTION": 1, "⚡ HIGH CONVICTION": 2, "😴 NO SIGNAL": 3}
+    df_master["SORT_RANK"] = df_master["CONVICTION"].map(priority_map).fillna(4)
+    df_master = df_master.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
 
-    # Output back to Google Sheet
-    final_rows = [headers_master] + df.values.tolist()
-
+    # Push Data to All 3 Tabs
     ws_master.clear()
-    ws_master.update(values=final_rows, range_name="A1")
-    print(f"🏆 MASTER_DASHBOARD successfully sorted & updated at {curr_time} IST!")
+    ws_master.update(values=[headers_master] + df_master.values.tolist(), range_name="A1")
+
+    ws_cash.clear()
+    ws_cash.update(values=[headers_cash] + cash_list, range_name="A1")
+
+    ws_deriv.clear()
+    ws_deriv.update(values=[headers_deriv] + deriv_list, range_name="A1")
+
+    print(f"🏆 SUCCESS: MASTER_DASHBOARD, DATA_CASH & DATA_DERIVATIVES updated & sorted at {curr_time} IST!")
 
 if __name__ == "__main__":
     execute_master_pipeline()
