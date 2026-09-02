@@ -25,4 +25,4 @@ jobs:
       - name: Run CE PE Breakout Script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-        run: python update_ce_pe_breakout.py
+        run: python update_sheet.py
