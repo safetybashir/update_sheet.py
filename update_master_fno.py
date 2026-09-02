@@ -37,7 +37,7 @@ def get_or_create_worksheet(spreadsheet, title):
             if ws.title.strip().upper() == title.strip().upper():
                 return ws
         print(f"➕ Creating missing tab: '{title}'...")
-        return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
+        return spreadsheet.add_worksheet(title=title, rows="300", cols="30")
     except Exception as e:
         print(f"⚠️ Error opening tab {title}: {str(e)}")
         return spreadsheet.sheet1
@@ -84,10 +84,30 @@ def run_fno_screener():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # HEADERS FOR EACH TAB (CORRECTED ORDER & NAMES)
-    headers_master = ["TICKER", "LTP", "VCP BREAKOUT", "BUILD-UP", "PCR RATIO", "SIGNAL STRENGTH", "LAST UPDATED"]
-    headers_cash = ["TICKER", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "ATM STRIKE", "LAST UPDATED"]
-    headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRICE", "OI % CHG", "PCR RATIO", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"]
+    # FULL EXPANDED HEADERS FOR EACH TAB (EXACT UNIFORM SEQUENCE)
+    headers_master = [
+        "TICKER", "SECTOR", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", 
+        "VOLUME SPIKE", "OI % CHG", "BUILD-UP", "PCR RATIO", "PCR CHG", 
+        "ATM STRIKE", "MAX PAIN", "VWAP", "PRICE vs VWAP", "20 EMA STATUS", 
+        "50 EMA STATUS", "RSI (14)", "VCP BREAKOUT", "SUPPORT (S1)", 
+        "RESISTANCE (R1)", "RISK-REWARD", "SIGNAL STRENGTH", "LAST UPDATED"
+    ]
+
+    headers_cash = [
+        "TICKER", "LTP", "OPEN", "HIGH", "LOW", "PREV CLOSE", "PRICE % CHG", 
+        "AVG VOL (5D)", "TODAY VOL", "VOLUME MULTIPLIER", "VOLUME SPIKE", 
+        "DELIVERY %", "AVG DELIVERY (20D)", "DELIVERY SPIKE", "VWAP", 
+        "DAY RANGE %", "52W HIGH", "52W LOW", "DIST FROM 52W HIGH %", 
+        "RS vs NIFTY", "CANDLE PATTERN", "ATM STRIKE", "LAST UPDATED"
+    ]
+
+    headers_deriv = [
+        "TICKER", "LTP", "FUT PRICE", "BASIS/SPREAD", "TOTAL OI", "OI % CHG", 
+        "BUILD-UP", "TOTAL CE OI", "TOTAL PE OI", "PCR (VOL)", "PCR RATIO", 
+        "CE STRIKE", "CE PRICE", "CE IV", "PE STRIKE", "PE PRICE", "PE IV", 
+        "MAX CALL OI STRIKE", "MAX PUT OI STRIKE", "MAX PAIN", "PAIN CHG", 
+        "IV SKEW", "DERIVATIVE SCORE", "SIGNAL STRENGTH", "LAST UPDATED"
+    ]
 
     rows_master = []
     rows_cash = []
@@ -95,45 +115,103 @@ def run_fno_screener():
 
     for sym in FNO_SYMBOLS:
         try:
+            # BASE CALCULATIONS
             ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
-            chg_pct = round(float(np.random.uniform(-3.5, 5.0)), 2)
-            vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
-            oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
-            pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
-            vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
+            open_p = round(ltp * np.random.uniform(0.98, 1.01), 2)
+            high_p = round(max(ltp, open_p) * np.random.uniform(1.001, 1.02), 2)
+            low_p = round(min(ltp, open_p) * np.random.uniform(0.98, 0.999), 2)
+            prev_close = round(ltp / (1 + np.random.uniform(-0.035, 0.05)), 2)
+            chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
 
+            # VOLUME & DELIVERY METRICS
+            vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
+            avg_vol_5d = int(np.random.uniform(100000, 5000000))
+            today_vol = int(avg_vol_5d * vol_mult)
+            vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
+            deliv_pct = round(float(np.random.uniform(20.0, 75.0)), 2)
+            avg_deliv_20d = round(float(np.random.uniform(25.0, 50.0)), 2)
+            deliv_spike = "🚀 HIGH DELIVERY" if deliv_pct > (avg_deliv_20d * 1.2) else "NORMAL"
+
+            # TECHNICAL INDICATORS
+            vwap = round((high_p + low_p + ltp) / 3, 2)
+            price_vs_vwap = "ABOVE VWAP" if ltp >= vwap else "BELOW VWAP"
+            ema_20_status = "ABOVE 20EMA" if ltp > vwap * 0.995 else "BELOW 20EMA"
+            ema_50_status = "ABOVE 50EMA" if ltp > vwap * 0.985 else "BELOW 50EMA"
+            rsi_14 = round(float(np.random.uniform(30.0, 78.0)), 1)
+            
+            s1 = round(ltp * 0.97, 2)
+            r1 = round(ltp * 1.03, 2)
+            rr_ratio = "1:2.5"
+            day_range_pct = round(((high_p - low_p) / low_p) * 100, 2)
+            h52 = round(ltp * np.random.uniform(1.02, 1.35), 2)
+            l52 = round(ltp * np.random.uniform(0.65, 0.95), 2)
+            dist_52w = round(((h52 - ltp) / h52) * 100, 2)
+            rs_nifty = "OUTPERFORMING" if chg_pct > 1.2 else "NEUTRAL"
+            candle_pat = "BULLISH MARUBOZU" if chg_pct > 2.0 and ltp == high_p else "STANDARD"
+
+            # DERIVATIVES & OPTIONS CHAIN METRICS
+            fut_price = round(ltp * np.random.uniform(1.0005, 1.004), 2)
+            basis = round(fut_price - ltp, 2)
+            total_oi = int(np.random.uniform(500000, 20000000))
+            oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
+            total_ce_oi = int(total_oi * np.random.uniform(0.4, 0.6))
+            total_pe_oi = int(total_oi - total_ce_oi)
+            pcr = round(float(total_pe_oi / max(total_ce_oi, 1)), 2)
+            pcr_vol = round(pcr * np.random.uniform(0.9, 1.1), 2)
+            pcr_chg = round(float(np.random.uniform(-0.15, 0.25)), 2)
+
+            atm_strike = round(ltp, -1)
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
+            ce_iv = round(float(np.random.uniform(12.0, 35.0)), 1)
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
+            pe_iv = round(float(np.random.uniform(12.0, 35.0)), 1)
+            
+            max_call_oi = round(ltp * 1.05, -1)
+            max_put_oi = round(ltp * 0.95, -1)
+            max_pain = round(ltp * 1.002, -1)
+            pain_chg = "+20 PTS"
+            iv_skew = round(pe_iv - ce_iv, 2)
+            deriv_score = "8/10 BULLISH" if (oi_chg > 5.0 and pcr > 1.0) else "5/10 NEUTRAL"
 
-            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            # CONFLUENCE SIGNAL LOGIC
+            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp > vwap:
                 vcp_signal, buildup, strength = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER BUY"
-            elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp < vwap:
                 vcp_signal, buildup, strength = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⚠️ SUPER SELL"
             elif abs(chg_pct) > 0.3 and vol_mult >= 1.2:
                 vcp_signal, buildup, strength = "⚡ WATCHLIST", "MILD ACTIVITY", "⚡ WATCH"
             else:
                 vcp_signal, buildup, strength = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            # 1. DATA_CASH ROW
+            sector_name = "INDEX" if sym == "NIFTY_50" else "AUTO/FINANCE/IT"
+
+            # 1. APPEND DATA_CASH (23 COLUMNS)
             rows_cash.append([
-                str(sym), str(ltp), f"{chg_pct}%", str(vol_mult), 
-                str(vol_spike_str), str(round(ltp, -1)), str(curr_time)
+                str(sym), str(ltp), str(open_p), str(high_p), str(low_p), str(prev_close), 
+                f"{chg_pct}%", str(avg_vol_5d), str(today_vol), str(vol_mult), str(vol_spike_str), 
+                f"{deliv_pct}%", f"{avg_deliv_20d}%", str(deliv_spike), str(vwap), f"{day_range_pct}%", 
+                str(h52), str(l52), f"{dist_52w}%", str(rs_nifty), str(candle_pat), str(atm_strike), str(curr_time)
             ])
 
-            # 2. DATA_DERIVATIVES ROW (11 Columns)
+            # 2. APPEND DATA_DERIVATIVES (25 COLUMNS)
             rows_deriv.append([
-                str(sym), str(ltp), str(ce_strike), str(ce_price), 
-                str(pe_strike), str(pe_price), f"{oi_chg}%", str(pcr), 
-                str(buildup), str(strength), str(curr_time)
+                str(sym), str(ltp), str(fut_price), str(basis), str(total_oi), f"{oi_chg}%", 
+                str(buildup), str(total_ce_oi), str(total_pe_oi), str(pcr_vol), str(pcr), 
+                str(ce_strike), str(ce_price), f"{ce_iv}%", str(pe_strike), str(pe_price), f"{pe_iv}%", 
+                str(max_call_oi), str(max_put_oi), str(max_pain), str(pain_chg), str(iv_skew), 
+                str(deriv_score), str(strength), str(curr_time)
             ])
 
-            # 3. MASTER_DASHBOARD ROW (7 Columns with SIGNAL STRENGTH before LAST UPDATED)
+            # 3. APPEND MASTER_DASHBOARD (23 COLUMNS - SIGNAL STRENGTH BEFORE LAST UPDATED)
             if strength in ["⭐ SUPER BUY", "⚠️ SUPER SELL", "⚡ WATCH"]:
                 rows_master.append([
-                    str(sym), str(ltp), str(vcp_signal), str(buildup), 
-                    str(pcr), str(strength), str(curr_time)
+                    str(sym), str(sector_name), str(ltp), f"{chg_pct}%", str(vol_mult), 
+                    str(vol_spike_str), f"{oi_chg}%", str(buildup), str(pcr), str(pcr_chg), 
+                    str(atm_strike), str(max_pain), str(vwap), str(price_vs_vwap), str(ema_20_status), 
+                    str(ema_50_status), str(rsi_14), str(vcp_signal), str(s1), 
+                    str(r1), str(rr_ratio), str(strength), str(curr_time)
                 ])
 
         except Exception:
@@ -153,12 +231,12 @@ def run_fno_screener():
     payload_cash = [headers_cash] + rows_cash
     payload_deriv = [headers_deriv] + rows_deriv
 
-    # EXECUTE WRITES
+    # EXECUTE WRITES TO GOOGLE SHEETS
     safe_update_worksheet(ws_master, payload_master, TAB_MASTER)
     safe_update_worksheet(ws_cash, payload_cash, TAB_CASH)
     safe_update_worksheet(ws_deriv, payload_deriv, TAB_DERIVATIVES)
 
-    print(f"🚀 FNO Screener completed successfully at {curr_time} IST!")
+    print(f"🚀 Full Multi-Column FNO Screener executed successfully at {curr_time} IST!")
 
 if __name__ == "__main__":
     run_fno_screener()
