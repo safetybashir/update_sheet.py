@@ -13,7 +13,7 @@ SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
 # 📌 EXACT 3 TABS FOR FNO SCREENER
 TAB_MASTER = "MASTER_DASHBOARD"
-TAB_DATA = "DATA_DASHBOARD"
+TAB_DATA = "DATA_CASH"
 TAB_DERIVATIVES = "DATA_DERIVATIVES"
 
 def get_gspread_client():
@@ -85,9 +85,9 @@ def run_fno_screener():
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
     # HEADERS FOR EACH TAB
-    headers_master = ["TICKER", "LTP", "SIGNAL STRENGTH", "VCP BREAKOUT", "BUILD-UP", "PCR RATIO", "LAST UPDATED"]
-    headers_data = ["TICKER", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "ATM STRIKE", "LAST UPDATED"]
-    headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRICE", "OI % CHG", "PCR RATIO", "BUILD-UP", "LAST UPDATED"]
+headers_master = ["TICKER", "LTP", "VCP BREAKOUT", "BUILD-UP", "PCR RATIO", "SIGNAL STRENGTH", "LAST UPDATED"]
+headers_data = ["TICKER", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "ATM STRIKE", "LAST UPDATED"]
+headers_deriv = ["TICKER", "LTP", "CE STRIKE", "CE PRICE", "PE STRIKE", "PE PRICE", "OI % CHG", "PCR RATIO", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"]
 
     rows_master = []
     rows_data = []
