@@ -8,6 +8,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
+# Strictly Hardcoded Sheet ID
 SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
 MASTER_TAB_NAME = "MASTER_DASHBOARD"
@@ -27,7 +28,7 @@ def get_gspread_client():
     elif os.path.exists("credentials.json"):
         return gspread.service_account(filename="credentials.json")
     else:
-        raise FileNotFoundError("❌ Credentials not found!")
+        raise FileNotFoundError("❌ Credentials not found in environment or local files!")
 
 def get_or_create_worksheet(spreadsheet, title):
     try:
@@ -58,9 +59,10 @@ FNO_SYMBOLS = [
 ]
 
 def execute_oic_vcp_sync():
-    print(f"🚀 Syncing Dynamic Dashboards (Master, CE, PE)...")
+    print(f"🔗 Target Sheet ID: {SHEET_ID}")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
+    print(f"📄 Connected to Sheet Title: '{spreadsheet.title}'")
 
     ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB_NAME)
     ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
@@ -121,8 +123,7 @@ def execute_oic_vcp_sync():
             ]
             list_pe.append(row_pe)
 
-            # ----------------- MASTER SELECTION -----------------
-            # Master gets CE signal if Bullish, PE signal if Bearish, else Default CE
+            # MASTER LIST ASSIGNMENT
             if "SUPER CE BUY" in ce_signal or "HIGH CE WATCH" in ce_signal:
                 list_master.append(row_ce)
             elif "SUPER PE BUY" in pe_signal or "HIGH PE WATCH" in pe_signal:
@@ -133,11 +134,10 @@ def execute_oic_vcp_sync():
         except Exception:
             continue
 
-    # ----------------- DYNAMIC SORTING FUNCTION -----------------
     def sort_dataframe(data_list, priority_map):
         df = pd.DataFrame(data_list, columns=headers)
         df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
-        # NIFTY_50 gets top tie-breaker priority (0) within the SAME signal group
+        # NIFTY_50 dynamic rank booster for priority ties
         df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
         df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
         return [headers] + df_sorted.values.tolist()
@@ -150,17 +150,13 @@ def execute_oic_vcp_sync():
     payload_pe = sort_dataframe(list_pe, pe_priority)
     payload_master = sort_dataframe(list_master, master_priority)
 
-    # ----------------- CLEAN WRITE TO SHEETS -----------------
-    ws_ce.clear()
-    ws_ce.update(range_name='A1', values=payload_ce)
+    # DIRECT & FORCED WRITE VIA API
+    for ws, payload, t_name in zip([ws_ce, ws_pe, ws_master], [payload_ce, payload_pe, payload_master], [CE_TAB_NAME, PE_TAB_NAME, MASTER_TAB_NAME]):
+        ws.clear()
+        ws.update('A1', payload, value_input_option='USER_ENTERED')
+        print(f"✅ Sheet '{t_name}' updated successfully.")
 
-    ws_pe.clear()
-    ws_pe.update(range_name='A1', values=payload_pe)
-
-    ws_master.clear()
-    ws_master.update(range_name='A1', values=payload_master)
-
-    print(f"✅ All 3 Dashboards (Master, CE, PE) synced successfully at {curr_time} IST!")
+    print(f"🚀 All 3 tabs synchronized at {curr_time} IST!")
 
 if __name__ == "__main__":
     execute_oic_vcp_sync()
