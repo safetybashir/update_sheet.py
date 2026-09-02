@@ -8,7 +8,6 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# CE / PE Breakout Sheet ID
 SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
 CE_TAB_NAME = "LIVE_CE_DASHBOARD"
@@ -33,7 +32,7 @@ def get_or_create_worksheet(spreadsheet, title):
     try:
         return spreadsheet.worksheet(title)
     except gspread.exceptions.WorksheetNotFound:
-        print(f"➕ Creating tab: '{title}'...")
+        print(f"➕ Creating missing tab: '{title}'...")
         return spreadsheet.add_worksheet(title=title, rows="250", cols="20")
 
 FNO_SYMBOLS = [
@@ -58,7 +57,7 @@ FNO_SYMBOLS = [
 ]
 
 def execute_oic_vcp_sync():
-    print(f"🚀 Running CE/PE Breakout Sync ({SHEET_ID})...")
+    print(f"🚀 Starting Dashboard Refresh...")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
 
@@ -90,62 +89,67 @@ def execute_oic_vcp_sync():
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # Call Option (CE) Logic
+            # ----------------- CE LOGIC -----------------
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
-            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            if sym == "NIFTY_50":
+                ce_vcp, ce_buildup, ce_signal = "📌 INDEX TRACKER", "INDEX", "⚡ INDEX NIFTY"
+            elif chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
             elif chg_pct > 0.3 and vol_mult >= 1.2:
                 ce_vcp, ce_buildup, ce_signal = "⚡ WATCHLIST", "MILD LONG", "⚡ HIGH CE WATCH"
             else:
                 ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            list_ce.append({
-                "TICKER": sym, "LTP": str(ltp), "CE STRIKE": str(ce_strike), "CE PRICE": str(ce_price),
-                "PRICE % CHG": f"{chg_pct}%", "VOLUME SPIKE": vol_spike_str, "OI % CHG": f"{oi_chg}%",
-                "PCR RATIO": str(pcr), "VCP BREAKOUT": ce_vcp, "BUILD-UP": ce_buildup,
-                "SIGNAL STRENGTH": ce_signal, "LAST UPDATED": curr_time
-            })
+            list_ce.append([
+                str(sym), str(ltp), str(ce_strike), str(ce_price),
+                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
+                str(pcr), str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
+            ])
 
-            # Put Option (PE) Logic
+            # ----------------- PE LOGIC -----------------
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
-            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            if sym == "NIFTY_50":
+                pe_vcp, pe_buildup, pe_signal = "📌 INDEX TRACKER", "INDEX", "⚡ INDEX NIFTY"
+            elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
             elif chg_pct < -0.3 and vol_mult >= 1.2:
                 pe_vcp, pe_buildup, pe_signal = "⚡ WATCHLIST", "MILD SHORT", "⚡ HIGH PE WATCH"
             else:
                 pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            list_pe.append({
-                "TICKER": sym, "LTP": str(ltp), "PE STRIKE": str(pe_strike), "PE PRICE": str(pe_price),
-                "PRICE % CHG": f"{chg_pct}%", "VOLUME SPIKE": vol_spike_str, "OI % CHG": f"{oi_chg}%",
-                "PCR RATIO": str(pcr), "VCP BREAKOUT": pe_vcp, "BUILD-UP": pe_buildup,
-                "SIGNAL STRENGTH": pe_signal, "LAST UPDATED": curr_time
-            })
+            list_pe.append([
+                str(sym), str(ltp), str(pe_strike), str(pe_price),
+                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
+                str(pcr), str(pe_vcp), str(pe_buildup), str(pe_signal), str(curr_time)
+            ])
         except Exception:
             continue
 
-    # Priority Sorting for CE Dashboard (Column K: SIGNAL STRENGTH)
-    df_ce = pd.DataFrame(list_ce)
-    ce_priority = {"⭐ SUPER CE BUY": 1, "⚡ HIGH CE WATCH": 2, "😴 NO SIGNAL": 3}
+    # ----------------- SORTING LOGIC -----------------
+    df_ce = pd.DataFrame(list_ce, columns=headers_ce)
+    ce_priority = {"⚡ INDEX NIFTY": 0, "⭐ SUPER CE BUY": 1, "⚡ HIGH CE WATCH": 2, "😴 NO SIGNAL": 3}
     df_ce["SORT_RANK"] = df_ce["SIGNAL STRENGTH"].map(ce_priority).fillna(4)
     df_ce = df_ce.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
 
-    # Priority Sorting for PE Dashboard (Column K: SIGNAL STRENGTH)
-    df_pe = pd.DataFrame(list_pe)
-    pe_priority = {"⭐ SUPER PE BUY": 1, "⚡ HIGH PE WATCH": 2, "😴 NO SIGNAL": 3}
+    df_pe = pd.DataFrame(list_pe, columns=headers_pe)
+    pe_priority = {"⚡ INDEX NIFTY": 0, "⭐ SUPER PE BUY": 1, "⚡ HIGH PE WATCH": 2, "😴 NO SIGNAL": 3}
     df_pe["SORT_RANK"] = df_pe["SIGNAL STRENGTH"].map(pe_priority).fillna(4)
     df_pe = df_pe.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
 
-    # Push Sorted Data to Sheets
+    # Prepare final clean 2D lists
+    final_ce_payload = [headers_ce] + df_ce.values.tolist()
+    final_pe_payload = [headers_pe] + df_pe.values.tolist()
+
+    # ----------------- CLEAN WRITE TO SHEETS -----------------
     ws_ce.clear()
-    ws_ce.update(values=[headers_ce] + df_ce.values.tolist(), range_name="A1")
+    ws_ce.update(range_name='A1', values=final_ce_payload)
 
     ws_pe.clear()
-    ws_pe.update(values=[headers_pe] + df_pe.values.tolist(), range_name="A1")
+    ws_pe.update(range_name='A1', values=final_pe_payload)
 
-    print(f"🏆 CE & PE Dashboards sorted & updated at {curr_time} IST!")
+    print(f"✅ Sheet payload updated successfully at {curr_time} IST.")
 
 if __name__ == "__main__":
     execute_oic_vcp_sync()
