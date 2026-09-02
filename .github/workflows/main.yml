@@ -1,4 +1,4 @@
-name: OI_VCP Dashboard Auto Update
+name:update_sheet.py auto update
 
 on:
   schedule:
