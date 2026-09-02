@@ -57,7 +57,7 @@ FNO_SYMBOLS = [
 ]
 
 def execute_oic_vcp_sync():
-    print(f"🚀 Starting Dashboard Refresh...")
+    print(f"🚀 Refreshing CE/PE Dashboards with Dynamic NIFTY Signals...")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
 
@@ -89,12 +89,10 @@ def execute_oic_vcp_sync():
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # ----------------- CE LOGIC -----------------
+            # ----------------- DYNAMIC CE SIGNAL -----------------
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
-            if sym == "NIFTY_50":
-                ce_vcp, ce_buildup, ce_signal = "📌 INDEX TRACKER", "INDEX", "⚡ INDEX NIFTY"
-            elif chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
             elif chg_pct > 0.3 and vol_mult >= 1.2:
                 ce_vcp, ce_buildup, ce_signal = "⚡ WATCHLIST", "MILD LONG", "⚡ HIGH CE WATCH"
@@ -107,12 +105,10 @@ def execute_oic_vcp_sync():
                 str(pcr), str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
             ])
 
-            # ----------------- PE LOGIC -----------------
+            # ----------------- DYNAMIC PE SIGNAL -----------------
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
-            if sym == "NIFTY_50":
-                pe_vcp, pe_buildup, pe_signal = "📌 INDEX TRACKER", "INDEX", "⚡ INDEX NIFTY"
-            elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
             elif chg_pct < -0.3 and vol_mult >= 1.2:
                 pe_vcp, pe_buildup, pe_signal = "⚡ WATCHLIST", "MILD SHORT", "⚡ HIGH PE WATCH"
@@ -127,29 +123,34 @@ def execute_oic_vcp_sync():
         except Exception:
             continue
 
-    # ----------------- SORTING LOGIC -----------------
+    # ----------------- SORTING LOGIC (SUPER BUY -> WATCH -> NO SIGNAL) -----------------
+    # CE DataFrame Processing
     df_ce = pd.DataFrame(list_ce, columns=headers_ce)
-    ce_priority = {"⚡ INDEX NIFTY": 0, "⭐ SUPER CE BUY": 1, "⚡ HIGH CE WATCH": 2, "😴 NO SIGNAL": 3}
-    df_ce["SORT_RANK"] = df_ce["SIGNAL STRENGTH"].map(ce_priority).fillna(4)
-    df_ce = df_ce.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
+    ce_priority = {"⭐ SUPER CE BUY": 0, "⚡ HIGH CE WATCH": 1, "😴 NO SIGNAL": 2}
+    df_ce["SORT_RANK"] = df_ce["SIGNAL STRENGTH"].map(ce_priority).fillna(3)
+    # NIFTY_50 gets top rank among identical signal levels
+    df_ce["IS_NIFTY"] = df_ce["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
+    df_ce = df_ce.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
 
+    # PE DataFrame Processing
     df_pe = pd.DataFrame(list_pe, columns=headers_pe)
-    pe_priority = {"⚡ INDEX NIFTY": 0, "⭐ SUPER PE BUY": 1, "⚡ HIGH PE WATCH": 2, "😴 NO SIGNAL": 3}
-    df_pe["SORT_RANK"] = df_pe["SIGNAL STRENGTH"].map(pe_priority).fillna(4)
-    df_pe = df_pe.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
+    pe_priority = {"⭐ SUPER PE BUY": 0, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
+    df_pe["SORT_RANK"] = df_pe["SIGNAL STRENGTH"].map(pe_priority).fillna(3)
+    # NIFTY_50 gets top rank among identical signal levels
+    df_pe["IS_NIFTY"] = df_pe["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
+    df_pe = df_pe.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
 
-    # Prepare final clean 2D lists
+    # ----------------- WRITE TO SHEETS -----------------
     final_ce_payload = [headers_ce] + df_ce.values.tolist()
     final_pe_payload = [headers_pe] + df_pe.values.tolist()
 
-    # ----------------- CLEAN WRITE TO SHEETS -----------------
     ws_ce.clear()
     ws_ce.update(range_name='A1', values=final_ce_payload)
 
     ws_pe.clear()
     ws_pe.update(range_name='A1', values=final_pe_payload)
 
-    print(f"✅ Sheet payload updated successfully at {curr_time} IST.")
+    print(f"✅ Dashboard refreshed successfully at {curr_time} IST!")
 
 if __name__ == "__main__":
     execute_oic_vcp_sync()
