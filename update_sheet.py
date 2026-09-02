@@ -1,24 +1,20 @@
 import os
 import json
-import time
 import sys
-import requests
 from datetime import datetime
 import pytz
-import pandas as pd
 import numpy as np
-import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
 
 # ========================================================
-# NATIVE GOOGLE SHEET ID (BINA KISI EXCEL / GID MIXUP KE)
+# NATIVE GOOGLE SHEET ID
 # ========================================================
 SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
-MASTER_TAB_NAME = "MASTER_DASHBOARD"
-CASH_TAB_NAME = "DATA_CASH"
-DERIVATIVES_TAB_NAME = "DATA_DERIVATIVES"
+# Target Tabs for OI / VCP Breakout Dashboard
+CE_TAB_NAME = "LIVE_CE_DASHBOARD"
+PE_TAB_NAME = "LIVE_PE_DASHBOARD"
 
 def get_gspread_client():
     creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
@@ -42,16 +38,7 @@ def get_or_create_worksheet(spreadsheet, title):
         print(f"➕ Creating new tab: '{title}'...")
         return spreadsheet.add_worksheet(title=title, rows="200", cols="20")
 
-def write_data_safely(worksheet, headers, rows_data):
-    full_matrix = [headers] + rows_data
-    worksheet.clear()
-    worksheet.update(values=full_matrix, range_name="A1")
-
-# ==========================================
-# WATCHLIST SYMBOLS (NIFTY 50 + 136 STOCKS)
-# ==========================================
-HEAVYWEIGHTS = ["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS", "LT", "AXISBANK", "SBIN", "BHARTIARTL", "ITC"]
-
+# Watchlist Tickers
 FNO_SYMBOLS = [
     "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", "MAZDOCK", 
@@ -73,120 +60,91 @@ FNO_SYMBOLS = [
     "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
-def calculate_market_weightage_pull():
-    positive_pullers = sum(1 for _ in HEAVYWEIGHTS if np.random.uniform(-1.5, 2.5) > 0.2)
-    negative_pullers = sum(1 for _ in HEAVYWEIGHTS if np.random.uniform(-1.5, 2.5) < -0.2)
-    pulling_points = (positive_pullers * 4.5) - (negative_pullers * 4.2)
-    vibe = "🔥 PULL UP" if pulling_points > 8.0 else ("📉 PULL DOWN" if pulling_points < -8.0 else "😴 CHILL / RANGE")
-    return round(pulling_points, 2), vibe
-
-def run_options_7point_analysis(ltp, chg_pct):
-    score = 0
-    ema_10, ema_21 = ltp * 0.992, ltp * 0.985
-    oi_change = np.random.uniform(-4, 15)
-    pcr = np.random.uniform(0.5, 1.6)
-    vol_multiplier = np.random.uniform(0.4, 2.8)
-    day_high = max(ltp, ltp * (1 + np.random.uniform(0, 0.005)))
-    max_pain = ltp * 0.98
-
-    if ltp > ema_10 > ema_21: score += 1
-    if chg_pct > 0.3 and oi_change > 4.0: score += 1
-    if pcr > 1.0: score += 1
-    if vol_multiplier >= 1.5: score += 1
-    if (((day_high - ltp) / ltp) * 100 if ltp > 0 else 1.0) <= 0.25 and chg_pct > 0: score += 1
-    if ltp > max_pain: score += 1
-    if abs(chg_pct) < 1.2 and vol_multiplier < 0.9: score += 1
-
-    return score, vol_multiplier, oi_change, pcr, max_pain
-
-def execute_master_dashboard_sync():
-    print(f"🚀 Running OI_VCP Screener for NIFTY 50 + {len(FNO_SYMBOLS)-1} Tickers...")
+def execute_oic_vcp_sync():
+    print(f"🚀 Initiating OI_VCP Breakout (CE/PE) Sync Pipeline...")
     
     try:
         client = get_gspread_client()
         spreadsheet = client.open_by_key(SHEET_ID)
         
-        ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB_NAME)
-        ws_cash = get_or_create_worksheet(spreadsheet, CASH_TAB_NAME)
-        ws_deriv = get_or_create_worksheet(spreadsheet, DERIVATIVES_TAB_NAME)
-        
+        ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
+        ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
     except Exception as e:
-        print(f"❌ Connection error: {e}")
+        print(f"❌ Connection or Worksheet Setup Mismatch: {e}")
         sys.exit(1)
 
     ist_timezone = pytz.timezone('Asia/Kolkata')
     current_time_str = datetime.now(ist_timezone).strftime('%H:%M:%S')
-    
-    pull_pts, market_vibe = calculate_market_weightage_pull()
 
-    headers_master = [
-        "SYMBOLE", "LTP", "Price % Change", "Volume Spike", "OI % Change", 
-        "PCR Ratio", "Max Pain Status", "F&O Build-Up", "IV Skew Delta", 
-        "Momentum Status", "Nifty Weightage %", "Nifty Pulling Points", 
-        "⭐ SUPER CONVICTION", "LAST UPDATED TIME"
+    headers_ce = [
+        "TICKER", "LTP", "CE STRIKE", "CE PRICE", "PRICE % CHG", "VOLUME SPIKE", 
+        "OI % CHG", "PCR RATIO", "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
     
-    headers_cash = [
-        "TICKER", "HIGH", "LOW", "CLOSE", "LTP", "Price % Change", 
-        "VCP Count", "Volatility (%)", "Pivot Price", "Volume Spike", 
-        "SL (%)", "Target (%)", "Risk Reward", "Cash Signal", "B/O STOCKS", "TIME"
+    headers_pe = [
+        "TICKER", "LTP", "PE STRIKE", "PE PRICE", "PRICE % CHG", "VOLUME SPIKE", 
+        "OI % CHG", "PCR RATIO", "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
 
-    headers_deriv = [
-        "TICKER", "LTP", "PCR RATIO", "Max Pain", "Max Pain Status", 
-        "OI % Change", "Price % Change", "F&O Build-Up", 
-        "Call ATM IV", "Put ATM IV", "IV Skew", "Delta Momentum", "TIME"
-    ]
+    rows_ce = []
+    rows_pe = []
 
-    rows_master, rows_cash, rows_deriv = [], [], []
-    
     for sym in FNO_SYMBOLS:
         try:
             ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
-            high, low, close = round(ltp * 1.015, 2), round(ltp * 0.985, 2), round(ltp * 0.998, 2)
             chg_pct = round(float(np.random.uniform(-3.5, 5.0)), 2)
-            
-            score, vol_mult, oi_chg, pcr, max_pain = run_options_7point_analysis(ltp, chg_pct)
-            
-            if chg_pct > 0.5 and score >= 4:
-                fo_buildup, momentum_status, cash_signal, bo_stocks = "🔥 LONG BUILDUP", "🔥 STRONG BREAKOUT", "🔥 STRONG BUY", "YES - BREAKOUT"
-                conviction = "⭐ SUPER CONVICTION" if score >= 5 else "HIGH CONVICTION"
-            elif chg_pct < -0.5 and score >= 4:
-                fo_buildup, momentum_status, cash_signal, bo_stocks, conviction = "📉 SHORT BUILDUP", "📉 DOWNTREND B/O", "⚠️ LOW VOL BREAKOUT", "No Cash Breakouts", "😴 NO SIGNAL"
+            vol_mult = np.random.uniform(0.5, 3.0)
+            oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
+            pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
+            vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
+
+            # Call Option (CE) Logic
+            ce_strike = round(ltp * 1.01, -1)
+            ce_price = round(ltp * 0.025, 2)
+            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+                ce_vcp = "🔥 VCP BULLISH BREAKOUT"
+                ce_buildup = "LONG BUILDUP"
+                ce_signal = "⭐ SUPER CE BUY"
             else:
-                fo_buildup, momentum_status, cash_signal, bo_stocks, conviction = "😴 NEUTRAL", "⏳ RANGE / CONSOLIDATION", "😴 NEUTRAL", "No Cash Breakouts", "😴 NO SIGNAL"
+                ce_vcp = "⏳ CONSOLIDATING"
+                ce_buildup = "NEUTRAL"
+                ce_signal = "😴 NO SIGNAL"
 
-            vol_spike_str = "🔥 SPIKE" if vol_mult >= 1.5 else "😴 STABLE"
-            
-            rows_master.append([
-                sym, str(ltp), f"{chg_pct}%", vol_spike_str, f"{round(oi_chg, 2)}%", str(round(pcr, 2)),
-                f"LTP > MP ({round(max_pain, 2)})", fo_buildup, "😴 NEUTRAL", momentum_status, "Dynamic %",
-                f"{pull_pts} ({market_vibe})", conviction, current_time_str
+            rows_ce.append([
+                sym, str(ltp), str(ce_strike), str(ce_price), f"{chg_pct}%", vol_spike_str,
+                f"{oi_chg}%", str(pcr), ce_vcp, ce_buildup, ce_signal, current_time_str
             ])
 
-            rows_cash.append([
-                sym, str(high), str(low), str(close), str(ltp), f"{chg_pct}%",
-                str(np.random.choice([0, 1, 2, 3])), f"{round(float(np.random.uniform(1.1, 3.8)), 2)}%",
-                str(round(ltp * 0.995, 2)), vol_spike_str, "1.5%", "4.5%", "1:3", cash_signal, bo_stocks, current_time_str
-            ])
+            # Put Option (PE) Logic
+            pe_strike = round(ltp * 0.99, -1)
+            pe_price = round(ltp * 0.025, 2)
+            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+                pe_vcp = "📉 VCP BEARISH BREAKOUT"
+                pe_buildup = "SHORT BUILDUP"
+                pe_signal = "⭐ SUPER PE BUY"
+            else:
+                pe_vcp = "⏳ CONSOLIDATING"
+                pe_buildup = "NEUTRAL"
+                pe_signal = "😴 NO SIGNAL"
 
-            call_iv, put_iv = round(float(np.random.uniform(12.0, 28.0)), 2), round(float(np.random.uniform(12.0, 28.0)), 2)
-            rows_deriv.append([
-                sym, str(ltp), str(round(pcr, 2)), str(round(max_pain, 2)),
-                f"LTP > MP ({round(max_pain, 2)})" if ltp > max_pain else "LTP < MP",
-                f"{round(oi_chg, 2)}%", f"{chg_pct}%", fo_buildup, f"{call_iv}%", f"{put_iv}%", str(round(call_iv - put_iv, 2)), momentum_status, current_time_str
+            rows_pe.append([
+                sym, str(ltp), str(pe_strike), str(pe_price), f"{chg_pct}%", vol_spike_str,
+                f"{oi_chg}%", str(pcr), pe_vcp, pe_buildup, pe_signal, current_time_str
             ])
-        except Exception as err:
+        except Exception:
             continue
 
     try:
-        write_data_safely(ws_master, headers_master, rows_master)
-        write_data_safely(ws_cash, headers_cash, rows_cash)
-        write_data_safely(ws_deriv, headers_deriv, rows_deriv)
-        print(f"🏆 SUCCESS: OI_VCP Dashboard updated at {current_time_str} IST!")
+        ws_ce.clear()
+        ws_ce.update(values=[headers_ce] + rows_ce, range_name="A1")
+        
+        ws_pe.clear()
+        ws_pe.update(values=[headers_pe] + rows_pe, range_name="A1")
+
+        print(f"🏆 SUCCESS: LIVE_CE_DASHBOARD & LIVE_PE_DASHBOARD updated at {current_time_str} IST!")
     except Exception as e:
         print(f"❌ Write operation failed: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    execute_master_dashboard_sync()
+    execute_oic_vcp_sync()
