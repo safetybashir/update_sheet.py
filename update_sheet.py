@@ -36,7 +36,7 @@ def get_or_create_worksheet(spreadsheet, title):
             if ws.title.strip().upper() == title.strip().upper():
                 return ws
         print(f"➕ Creating missing tab: '{title}'...")
-        return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
+        return spreadsheet.add_worksheet(title=title, rows="300", cols="30")
     except Exception as e:
         print(f"⚠️ Error opening tab {title}: {str(e)}")
         return spreadsheet.sheet1
@@ -82,9 +82,12 @@ def run_live_options_sync():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
+    # FULL CRITICAL HEADERS FOR LIVE OPTIONS DASHBOARDS (18 COLUMNS)
     headers = [
-        "TICKER", "LTP", "STRIKE", "OPTION PRICE", "PRICE % CHG", "VOLUME SPIKE", 
-        "OI % CHG", "PCR RATIO", "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
+        "TICKER", "LTP", "ATM STRIKE", "SELECTED STRIKE", "OPTION PRICE", 
+        "OPTION % CHG", "VOLUME MULTIPLIER", "VOLUME SPIKE", "OI % CHG", 
+        "PCR RATIO", "IV", "DELTA", "VWAP", "PRICE vs VWAP", 
+        "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
 
     list_ce = []
@@ -92,17 +95,26 @@ def run_live_options_sync():
 
     for sym in FNO_SYMBOLS:
         try:
+            # UNDERLYING PRICE ACTION DATA
             ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
             chg_pct = round(float(np.random.uniform(-3.5, 5.0)), 2)
-            vol_mult = np.random.uniform(0.5, 3.0)
+            vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
             oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
+            
+            atm_strike = round(ltp, -1)
+            vwap = round(ltp * np.random.uniform(0.995, 1.005), 2)
+            price_vs_vwap = "ABOVE VWAP" if ltp >= vwap else "BELOW VWAP"
 
-            # 🟢 CE OPTION SIGNAL LOGIC
+            # 🟢 1. CALL OPTION (CE) SPECIFIC CALCULATIONS
             ce_strike = round(ltp * 1.01, -1)
-            ce_price = round(ltp * 0.025, 2)
-            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            ce_price = round(ltp * np.random.uniform(0.015, 0.035), 2)
+            ce_chg_pct = round(chg_pct * np.random.uniform(2.0, 4.5), 2) if chg_pct > 0 else round(chg_pct * np.random.uniform(1.5, 3.0), 2)
+            ce_iv = round(float(np.random.uniform(14.0, 32.0)), 1)
+            ce_delta = round(float(np.random.uniform(0.42, 0.65)), 2)
+
+            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp > vwap:
                 ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
             elif chg_pct > 0.3 and vol_mult >= 1.2:
                 ce_vcp, ce_buildup, ce_signal = "⚡ WATCHLIST", "MILD LONG", "⚡ HIGH CE WATCH"
@@ -110,15 +122,20 @@ def run_live_options_sync():
                 ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
             list_ce.append([
-                str(sym), str(ltp), str(ce_strike), str(ce_price),
-                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
-                str(pcr), str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
+                str(sym), str(ltp), str(atm_strike), str(ce_strike), str(ce_price),
+                f"{ce_chg_pct}%", str(vol_mult), str(vol_spike_str), f"{oi_chg}%",
+                str(pcr), f"{ce_iv}%", str(ce_delta), str(vwap), str(price_vs_vwap),
+                str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
             ])
 
-            # 🔴 PE OPTION SIGNAL LOGIC
+            # 🔴 2. PUT OPTION (PE) SPECIFIC CALCULATIONS
             pe_strike = round(ltp * 0.99, -1)
-            pe_price = round(ltp * 0.025, 2)
-            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+            pe_price = round(ltp * np.random.uniform(0.015, 0.035), 2)
+            pe_chg_pct = round(abs(chg_pct) * np.random.uniform(2.0, 4.5), 2) if chg_pct < 0 else round(-chg_pct * np.random.uniform(1.5, 3.0), 2)
+            pe_iv = round(float(np.random.uniform(14.0, 32.0)), 1)
+            pe_delta = round(float(-1 * np.random.uniform(0.42, 0.65)), 2)
+
+            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp < vwap:
                 pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
             elif chg_pct < -0.3 and vol_mult >= 1.2:
                 pe_vcp, pe_buildup, pe_signal = "⚡ WATCHLIST", "MILD SHORT", "⚡ HIGH PE WATCH"
@@ -126,24 +143,29 @@ def run_live_options_sync():
                 pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
             list_pe.append([
-                str(sym), str(ltp), str(pe_strike), str(pe_price),
-                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
-                str(pcr), str(pe_vcp), str(pe_buildup), str(pe_signal), str(curr_time)
+                str(sym), str(ltp), str(atm_strike), str(pe_strike), str(pe_price),
+                f"{pe_chg_pct}%", str(vol_mult), str(vol_spike_str), f"{oi_chg}%",
+                str(pcr), f"{pe_iv}%", str(pe_delta), str(vwap), str(price_vs_vwap),
+                str(pe_vcp), str(pe_buildup), str(pe_signal), str(curr_time)
             ])
+
         except Exception:
             continue
 
+    # SORTING FUNCTION FOR DYNAMIC PRIORITIZATION
     def format_and_sort(data_list, priority_map):
         df = pd.DataFrame(data_list, columns=headers)
-        df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
-        df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
-        df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
-        return [headers] + df_sorted.values.tolist()
+        if not df.empty:
+            df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
+            df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
+            df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
+            return [headers] + df_sorted.values.tolist()
+        return [headers]
 
     payload_ce = format_and_sort(list_ce, {"⭐ SUPER CE BUY": 0, "⚡ HIGH CE WATCH": 1, "😴 NO SIGNAL": 2})
     payload_pe = format_and_sort(list_pe, {"⭐ SUPER PE BUY": 0, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2})
 
-    # UPDATE SHEET TABS
+    # UPDATE GOOGLE SHEET TABS
     safe_update_worksheet(ws_ce, payload_ce, CE_TAB_NAME)
     safe_update_worksheet(ws_pe, payload_pe, PE_TAB_NAME)
 
