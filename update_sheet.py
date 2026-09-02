@@ -8,10 +8,10 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# 🎯 EXACT MASTER DASHBOARD SHEET ID
-SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
+# 🎯 TARGET MASTER SPREADSHEET ID
+SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
-MASTER_TAB_NAME = "MASTER_DASHBOARD"
+# 📌 EXACT 2 TABS FOR UPDATE_SHEET.PY
 CE_TAB_NAME = "LIVE_CE_DASHBOARD"
 PE_TAB_NAME = "LIVE_PE_DASHBOARD"
 
@@ -23,8 +23,7 @@ def get_gspread_client():
     ]
     if creds_json:
         creds_dict = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return gspread.authorize(creds)
+        return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
     elif os.path.exists("credentials.json"):
         return gspread.service_account(filename="credentials.json")
     else:
@@ -32,10 +31,15 @@ def get_gspread_client():
 
 def get_or_create_worksheet(spreadsheet, title):
     try:
-        return spreadsheet.worksheet(title)
-    except gspread.exceptions.WorksheetNotFound:
-        print(f"➕ Creating missing tab: '{title}' in Master Dashboard...")
-        return spreadsheet.add_worksheet(title=title, rows="250", cols="20")
+        worksheets = spreadsheet.worksheets()
+        for ws in worksheets:
+            if ws.title.strip().upper() == title.strip().upper():
+                return ws
+        print(f"➕ Creating missing tab: '{title}'...")
+        return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
+    except Exception as e:
+        print(f"⚠️ Error opening tab {title}: {str(e)}")
+        return spreadsheet.sheet1
 
 FNO_SYMBOLS = [
     "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
@@ -58,13 +62,20 @@ FNO_SYMBOLS = [
     "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
-def execute_oic_vcp_sync():
+def safe_update_worksheet(ws, payload, t_name):
+    try:
+        ws.clear()
+        ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
+        print(f"✅ Successfully written to Tab: '{t_name}'")
+    except Exception as e:
+        print(f"❌ Failed updating tab '{t_name}': {str(e)}")
+
+def run_live_options_sync():
     print(f"🔗 Target Master Sheet ID: {SHEET_ID}")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
-    print(f"📄 Connected to Master Sheet Title: '{spreadsheet.title}'")
 
-    ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB_NAME)
+    # CONNECT TO BOTH LIVE TABS
     ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
     ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
 
@@ -78,7 +89,6 @@ def execute_oic_vcp_sync():
 
     list_ce = []
     list_pe = []
-    list_master = []
 
     for sym in FNO_SYMBOLS:
         try:
@@ -89,7 +99,7 @@ def execute_oic_vcp_sync():
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # ----------------- CE LOGIC -----------------
+            # 🟢 CE OPTION SIGNAL LOGIC
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
@@ -99,14 +109,13 @@ def execute_oic_vcp_sync():
             else:
                 ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            row_ce = [
+            list_ce.append([
                 str(sym), str(ltp), str(ce_strike), str(ce_price),
                 f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
                 str(pcr), str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
-            ]
-            list_ce.append(row_ce)
+            ])
 
-            # ----------------- PE LOGIC -----------------
+            # 🔴 PE OPTION SIGNAL LOGIC
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
             if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
@@ -116,46 +125,29 @@ def execute_oic_vcp_sync():
             else:
                 pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            row_pe = [
+            list_pe.append([
                 str(sym), str(ltp), str(pe_strike), str(pe_price),
                 f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
                 str(pcr), str(pe_vcp), str(pe_buildup), str(pe_signal), str(curr_time)
-            ]
-            list_pe.append(row_pe)
-
-            # MASTER LIST LOGIC
-            if "SUPER CE BUY" in ce_signal or "HIGH CE WATCH" in ce_signal:
-                list_master.append(row_ce)
-            elif "SUPER PE BUY" in pe_signal or "HIGH PE WATCH" in pe_signal:
-                list_master.append(row_pe)
-            else:
-                list_master.append(row_ce)
-
+            ])
         except Exception:
             continue
 
-    def sort_dataframe(data_list, priority_map):
+    def format_and_sort(data_list, priority_map):
         df = pd.DataFrame(data_list, columns=headers)
         df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
         df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
         df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
         return [headers] + df_sorted.values.tolist()
 
-    ce_priority = {"⭐ SUPER CE BUY": 0, "⚡ HIGH CE WATCH": 1, "😴 NO SIGNAL": 2}
-    pe_priority = {"⭐ SUPER PE BUY": 0, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
-    master_priority = {"⭐ SUPER CE BUY": 0, "⭐ SUPER PE BUY": 0, "⚡ HIGH CE WATCH": 1, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
+    payload_ce = format_and_sort(list_ce, {"⭐ SUPER CE BUY": 0, "⚡ HIGH CE WATCH": 1, "😴 NO SIGNAL": 2})
+    payload_pe = format_and_sort(list_pe, {"⭐ SUPER PE BUY": 0, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2})
 
-    payload_ce = sort_dataframe(list_ce, ce_priority)
-    payload_pe = sort_dataframe(list_pe, pe_priority)
-    payload_master = sort_dataframe(list_master, master_priority)
+    # UPDATE SHEET TABS
+    safe_update_worksheet(ws_ce, payload_ce, CE_TAB_NAME)
+    safe_update_worksheet(ws_pe, payload_pe, PE_TAB_NAME)
 
-    # MASTER SHEET UPDATE
-    for ws, payload, t_name in zip([ws_ce, ws_pe, ws_master], [payload_ce, payload_pe, payload_master], [CE_TAB_NAME, PE_TAB_NAME, MASTER_TAB_NAME]):
-        ws.clear()
-        ws.update('A1', payload, value_input_option='USER_ENTERED')
-        print(f"✅ Master Sheet Tab '{t_name}' updated successfully.")
-
-    print(f"🚀 Master Dashboard fully synchronized at {curr_time} IST!")
+    print(f"🚀 LIVE CE & PE Dashboards updated successfully at {curr_time} IST!")
 
 if __name__ == "__main__":
-    execute_oic_vcp_sync()
+    run_live_options_sync()
