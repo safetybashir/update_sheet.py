@@ -4,12 +4,11 @@ import sys
 from datetime import datetime
 import pytz
 import numpy as np
+import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ========================================================
-# SPECIFIC SHEET ID FOR CE/PE BREAKOUT DASHBOARD
-# ========================================================
+# CE / PE Breakout Sheet ID
 SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
 CE_TAB_NAME = "LIVE_CE_DASHBOARD"
@@ -34,8 +33,8 @@ def get_or_create_worksheet(spreadsheet, title):
     try:
         return spreadsheet.worksheet(title)
     except gspread.exceptions.WorksheetNotFound:
-        print(f"➕ Creating new tab: '{title}'...")
-        return spreadsheet.add_worksheet(title=title, rows="200", cols="20")
+        print(f"➕ Creating tab: '{title}'...")
+        return spreadsheet.add_worksheet(title=title, rows="250", cols="20")
 
 FNO_SYMBOLS = [
     "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
@@ -59,20 +58,15 @@ FNO_SYMBOLS = [
 ]
 
 def execute_oic_vcp_sync():
-    print(f"🚀 Initiating CE/PE Breakout Sync ({SHEET_ID})...")
-    
-    try:
-        client = get_gspread_client()
-        spreadsheet = client.open_by_key(SHEET_ID)
-        
-        ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
-        ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
-    except Exception as e:
-        print(f"❌ Connection Error with CE/PE Sheet: {e}")
-        sys.exit(1)
+    print(f"🚀 Running CE/PE Breakout Sync ({SHEET_ID})...")
+    client = get_gspread_client()
+    spreadsheet = client.open_by_key(SHEET_ID)
 
-    ist_timezone = pytz.timezone('Asia/Kolkata')
-    current_time_str = datetime.now(ist_timezone).strftime('%H:%M:%S')
+    ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
+    ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
+
+    ist_tz = pytz.timezone('Asia/Kolkata')
+    curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
     headers_ce = [
         "TICKER", "LTP", "CE STRIKE", "CE PRICE", "PRICE % CHG", "VOLUME SPIKE", 
@@ -84,8 +78,8 @@ def execute_oic_vcp_sync():
         "OI % CHG", "PCR RATIO", "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
 
-    rows_ce = []
-    rows_pe = []
+    list_ce = []
+    list_pe = []
 
     for sym in FNO_SYMBOLS:
         try:
@@ -96,45 +90,62 @@ def execute_oic_vcp_sync():
             pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # Call Option (CE)
+            # Call Option (CE) Logic
             ce_strike = round(ltp * 1.01, -1)
             ce_price = round(ltp * 0.025, 2)
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
+            elif chg_pct > 0.3 and vol_mult >= 1.2:
+                ce_vcp, ce_buildup, ce_signal = "⚡ WATCHLIST", "MILD LONG", "⚡ HIGH CE WATCH"
             else:
                 ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            rows_ce.append([
-                sym, str(ltp), str(ce_strike), str(ce_price), f"{chg_pct}%", vol_spike_str,
-                f"{oi_chg}%", str(pcr), ce_vcp, ce_buildup, ce_signal, current_time_str
-            ])
+            list_ce.append({
+                "TICKER": sym, "LTP": str(ltp), "CE STRIKE": str(ce_strike), "CE PRICE": str(ce_price),
+                "PRICE % CHG": f"{chg_pct}%", "VOLUME SPIKE": vol_spike_str, "OI % CHG": f"{oi_chg}%",
+                "PCR RATIO": str(pcr), "VCP BREAKOUT": ce_vcp, "BUILD-UP": ce_buildup,
+                "SIGNAL STRENGTH": ce_signal, "LAST UPDATED": curr_time
+            })
 
-            # Put Option (PE)
+            # Put Option (PE) Logic
             pe_strike = round(ltp * 0.99, -1)
             pe_price = round(ltp * 0.025, 2)
             if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
                 pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
+            elif chg_pct < -0.3 and vol_mult >= 1.2:
+                pe_vcp, pe_buildup, pe_signal = "⚡ WATCHLIST", "MILD SHORT", "⚡ HIGH PE WATCH"
             else:
                 pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            rows_pe.append([
-                sym, str(ltp), str(pe_strike), str(pe_price), f"{chg_pct}%", vol_spike_str,
-                f"{oi_chg}%", str(pcr), pe_vcp, pe_buildup, pe_signal, current_time_str
-            ])
+            list_pe.append({
+                "TICKER": sym, "LTP": str(ltp), "PE STRIKE": str(pe_strike), "PE PRICE": str(pe_price),
+                "PRICE % CHG": f"{chg_pct}%", "VOLUME SPIKE": vol_spike_str, "OI % CHG": f"{oi_chg}%",
+                "PCR RATIO": str(pcr), "VCP BREAKOUT": pe_vcp, "BUILD-UP": pe_buildup,
+                "SIGNAL STRENGTH": pe_signal, "LAST UPDATED": curr_time
+            })
         except Exception:
             continue
 
-    try:
-        ws_ce.clear()
-        ws_ce.update(values=[headers_ce] + rows_ce, range_name="A1")
-        
-        ws_pe.clear()
-        ws_pe.update(values=[headers_pe] + rows_pe, range_name="A1")
+    # Priority Sorting for CE Dashboard (Column K: SIGNAL STRENGTH)
+    df_ce = pd.DataFrame(list_ce)
+    ce_priority = {"⭐ SUPER CE BUY": 1, "⚡ HIGH CE WATCH": 2, "😴 NO SIGNAL": 3}
+    df_ce["SORT_RANK"] = df_ce["SIGNAL STRENGTH"].map(ce_priority).fillna(4)
+    df_ce = df_ce.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
 
-        print(f"🏆 SUCCESS: LIVE_CE_DASHBOARD & LIVE_PE_DASHBOARD updated at {current_time_str} IST!")
-    except Exception as e:
-        print(f"❌ Write operation failed: {e}")
-        sys.exit(1)
+    # Priority Sorting for PE Dashboard (Column K: SIGNAL STRENGTH)
+    df_pe = pd.DataFrame(list_pe)
+    pe_priority = {"⭐ SUPER PE BUY": 1, "⚡ HIGH PE WATCH": 2, "😴 NO SIGNAL": 3}
+    df_pe["SORT_RANK"] = df_pe["SIGNAL STRENGTH"].map(pe_priority).fillna(4)
+    df_pe = df_pe.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
+
+    # Push Sorted Data to Sheets
+    ws_ce.clear()
+    ws_ce.update(values=[headers_ce] + df_ce.values.tolist(), range_name="A1")
+
+    ws_pe.clear()
+    ws_pe.update(values=[headers_pe] + df_pe.values.tolist(), range_name="A1")
+
+    print(f"🏆 CE & PE Dashboards sorted & updated at {curr_time} IST!")
 
 if __name__ == "__main__":
     execute_oic_vcp_sync()
