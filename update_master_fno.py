@@ -8,12 +8,11 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# Master F&O Sheet ID
-SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
+SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 
-MASTER_TAB = "MASTER_DASHBOARD"
-CASH_TAB = "DATA_CASH"
-DERIV_TAB = "DATA_DERIVATIVES"
+MASTER_TAB_NAME = "MASTER_DASHBOARD"
+CE_TAB_NAME = "LIVE_CE_DASHBOARD"
+PE_TAB_NAME = "LIVE_PE_DASHBOARD"
 
 def get_gspread_client():
     creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
@@ -58,110 +57,110 @@ FNO_SYMBOLS = [
     "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
 ]
 
-def execute_master_pipeline():
-    print(f"🚀 Running Master FNO Pipeline for all 3 tabs ({SHEET_ID})...")
+def execute_oic_vcp_sync():
+    print(f"🚀 Syncing Dynamic Dashboards (Master, CE, PE)...")
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
 
-    # Fetch/Create all 3 worksheets
-    ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB)
-    ws_cash = get_or_create_worksheet(spreadsheet, CASH_TAB)
-    ws_deriv = get_or_create_worksheet(spreadsheet, DERIV_TAB)
+    ws_master = get_or_create_worksheet(spreadsheet, MASTER_TAB_NAME)
+    ws_ce = get_or_create_worksheet(spreadsheet, CE_TAB_NAME)
+    ws_pe = get_or_create_worksheet(spreadsheet, PE_TAB_NAME)
 
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    headers_master = [
-        "TICKER", "LTP", "CHG %", "VOLUME", "VOL SPIKE", "VWAP", 
-        "RSI", "OI % CHG", "PCR", "VCP STATUS", "TREND", "SECTOR", 
-        "CONVICTION", "LAST UPDATED"
+    headers = [
+        "TICKER", "LTP", "STRIKE", "OPTION PRICE", "PRICE % CHG", "VOLUME SPIKE", 
+        "OI % CHG", "PCR RATIO", "VCP BREAKOUT", "BUILD-UP", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
 
-    headers_cash = [
-        "TICKER", "LTP", "CHG %", "DAY HIGH", "DAY LOW", "VOLUME", 
-        "VOL SPIKE", "VWAP", "RSI 14", "DELIVERY %", "LAST UPDATED"
-    ]
-
-    headers_deriv = [
-        "TICKER", "LTP", "OI (CONTRACTS)", "OI % CHG", "PCR", "BUILD-UP", 
-        "CE OI SPIKE", "PE OI SPIKE", "MAX PAIN STRIKE", "LAST UPDATED"
-    ]
-
-    master_list, cash_list, deriv_list = [], [], []
+    list_ce = []
+    list_pe = []
+    list_master = []
 
     for sym in FNO_SYMBOLS:
         try:
             ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
-            chg_pct = round(float(np.random.uniform(-4.0, 5.0)), 2)
-            vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
-            oi_chg = round(float(np.random.uniform(-6.0, 22.0)), 2)
-            pcr = round(float(np.random.uniform(0.6, 1.6)), 2)
-            rsi = round(float(np.random.uniform(35, 78)), 1)
-            vwap = round(ltp * np.random.uniform(0.99, 1.01), 2)
-            day_high = round(ltp * 1.018, 2)
-            day_low = round(ltp * 0.985, 2)
-            deliv_pct = round(float(np.random.uniform(25.0, 68.0)), 1)
-            oi_contracts = int(np.random.uniform(50000, 1200000))
+            chg_pct = round(float(np.random.uniform(-3.5, 5.0)), 2)
+            vol_mult = np.random.uniform(0.5, 3.0)
+            oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
+            pcr = round(float(np.random.uniform(0.6, 1.5)), 2)
+            vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
 
-            # Conviction Logic (Column M)
-            if chg_pct > 1.5 and vol_mult >= 2.0 and oi_chg > 8.0:
-                conviction = "🔥 SUPER CONVICTION"
-                vcp_status = "BULLISH BREAKOUT"
-                buildup = "LONG BUILDUP"
-            elif chg_pct > 0.5 and vol_mult >= 1.2 and oi_chg > 3.0:
-                conviction = "⚡ HIGH CONVICTION"
-                vcp_status = "ACCUMULATION"
-                buildup = "MILD LONG"
-            elif chg_pct < -1.5 and oi_chg > 5.0:
-                conviction = "😴 NO SIGNAL"
-                vcp_status = "BEARISH BREAKDOWN"
-                buildup = "SHORT BUILDUP"
+            # ----------------- CE LOGIC -----------------
+            ce_strike = round(ltp * 1.01, -1)
+            ce_price = round(ltp * 0.025, 2)
+            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+                ce_vcp, ce_buildup, ce_signal = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER CE BUY"
+            elif chg_pct > 0.3 and vol_mult >= 1.2:
+                ce_vcp, ce_buildup, ce_signal = "⚡ WATCHLIST", "MILD LONG", "⚡ HIGH CE WATCH"
             else:
-                conviction = "😴 NO SIGNAL"
-                vcp_status = "CONSOLIDATING"
-                buildup = "NEUTRAL"
+                ce_vcp, ce_buildup, ce_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            # 1. Master Tab Row Data
-            master_list.append({
-                "TICKER": sym, "LTP": str(ltp), "CHG %": f"{chg_pct}%", "VOLUME": f"{vol_mult}x",
-                "VOL SPIKE": "HIGH" if vol_mult >= 1.5 else "NORMAL", "VWAP": str(vwap),
-                "RSI": str(rsi), "OI % CHG": f"{oi_chg}%", "PCR": str(pcr),
-                "VCP STATUS": vcp_status, "TREND": "BULLISH" if chg_pct > 0 else "BEARISH",
-                "SECTOR": "F&O", "CONVICTION": conviction, "LAST UPDATED": curr_time
-            })
+            row_ce = [
+                str(sym), str(ltp), str(ce_strike), str(ce_price),
+                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
+                str(pcr), str(ce_vcp), str(ce_buildup), str(ce_signal), str(curr_time)
+            ]
+            list_ce.append(row_ce)
 
-            # 2. Cash Tab Row Data
-            cash_list.append([
-                sym, str(ltp), f"{chg_pct}%", str(day_high), str(day_low), f"{vol_mult}x",
-                "🔥 SPIKE" if vol_mult >= 1.8 else "NORMAL", str(vwap), str(rsi), f"{deliv_pct}%", curr_time
-            ])
+            # ----------------- PE LOGIC -----------------
+            pe_strike = round(ltp * 0.99, -1)
+            pe_price = round(ltp * 0.025, 2)
+            if chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0:
+                pe_vcp, pe_buildup, pe_signal = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⭐ SUPER PE BUY"
+            elif chg_pct < -0.3 and vol_mult >= 1.2:
+                pe_vcp, pe_buildup, pe_signal = "⚡ WATCHLIST", "MILD SHORT", "⚡ HIGH PE WATCH"
+            else:
+                pe_vcp, pe_buildup, pe_signal = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
 
-            # 3. Derivatives Tab Row Data
-            deriv_list.append([
-                sym, str(ltp), str(oi_contracts), f"{oi_chg}%", str(pcr), buildup,
-                "HIGH CE OI" if chg_pct > 1.0 else "NORMAL", "HIGH PE OI" if chg_pct < -1.0 else "NORMAL",
-                str(round(ltp, -1)), curr_time
-            ])
+            row_pe = [
+                str(sym), str(ltp), str(pe_strike), str(pe_price),
+                f"{chg_pct}%", str(vol_spike_str), f"{oi_chg}%",
+                str(pcr), str(pe_vcp), str(pe_buildup), str(pe_signal), str(curr_time)
+            ]
+            list_pe.append(row_pe)
+
+            # ----------------- MASTER SELECTION -----------------
+            # Master gets CE signal if Bullish, PE signal if Bearish, else Default CE
+            if "SUPER CE BUY" in ce_signal or "HIGH CE WATCH" in ce_signal:
+                list_master.append(row_ce)
+            elif "SUPER PE BUY" in pe_signal or "HIGH PE WATCH" in pe_signal:
+                list_master.append(row_pe)
+            else:
+                list_master.append(row_ce)
+
         except Exception:
             continue
 
-    # Priority Sorting for Master Tab (Column M)
-    df_master = pd.DataFrame(master_list)
-    priority_map = {"🔥 SUPER CONVICTION": 1, "⚡ HIGH CONVICTION": 2, "😴 NO SIGNAL": 3}
-    df_master["SORT_RANK"] = df_master["CONVICTION"].map(priority_map).fillna(4)
-    df_master = df_master.sort_values(by=["SORT_RANK", "TICKER"]).drop(columns=["SORT_RANK"])
+    # ----------------- DYNAMIC SORTING FUNCTION -----------------
+    def sort_dataframe(data_list, priority_map):
+        df = pd.DataFrame(data_list, columns=headers)
+        df["SORT_RANK"] = df["SIGNAL STRENGTH"].map(priority_map).fillna(99)
+        # NIFTY_50 gets top tie-breaker priority (0) within the SAME signal group
+        df["IS_NIFTY"] = df["TICKER"].apply(lambda x: 0 if x == "NIFTY_50" else 1)
+        df_sorted = df.sort_values(by=["SORT_RANK", "IS_NIFTY", "TICKER"]).drop(columns=["SORT_RANK", "IS_NIFTY"])
+        return [headers] + df_sorted.values.tolist()
 
-    # Push Data to All 3 Tabs
+    ce_priority = {"⭐ SUPER CE BUY": 0, "⚡ HIGH CE WATCH": 1, "😴 NO SIGNAL": 2}
+    pe_priority = {"⭐ SUPER PE BUY": 0, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
+    master_priority = {"⭐ SUPER CE BUY": 0, "⭐ SUPER PE BUY": 0, "⚡ HIGH CE WATCH": 1, "⚡ HIGH PE WATCH": 1, "😴 NO SIGNAL": 2}
+
+    payload_ce = sort_dataframe(list_ce, ce_priority)
+    payload_pe = sort_dataframe(list_pe, pe_priority)
+    payload_master = sort_dataframe(list_master, master_priority)
+
+    # ----------------- CLEAN WRITE TO SHEETS -----------------
+    ws_ce.clear()
+    ws_ce.update(range_name='A1', values=payload_ce)
+
+    ws_pe.clear()
+    ws_pe.update(range_name='A1', values=payload_pe)
+
     ws_master.clear()
-    ws_master.update(values=[headers_master] + df_master.values.tolist(), range_name="A1")
+    ws_master.update(range_name='A1', values=payload_master)
 
-    ws_cash.clear()
-    ws_cash.update(values=[headers_cash] + cash_list, range_name="A1")
-
-    ws_deriv.clear()
-    ws_deriv.update(values=[headers_deriv] + deriv_list, range_name="A1")
-
-    print(f"🏆 SUCCESS: MASTER_DASHBOARD, DATA_CASH & DATA_DERIVATIVES updated & sorted at {curr_time} IST!")
+    print(f"✅ All 3 Dashboards (Master, CE, PE) synced successfully at {curr_time} IST!")
 
 if __name__ == "__main__":
-    execute_master_pipeline()
+    execute_oic_vcp_sync()
