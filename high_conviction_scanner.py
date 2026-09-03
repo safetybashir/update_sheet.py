@@ -31,7 +31,7 @@ def get_or_create_worksheet(spreadsheet, title):
     except Exception:
         return spreadsheet.sheet1
 
-# CUSTOM STOCKS LIST
+# CUSTOM STOCKS LIST (COMPACT HORIZONTAL FORMAT)
 FNO_SYMBOLS = [
     "NIFTY_50", "BANKNIFTY", "RELIANCE", "MARUTI", "CROMPTON", "HINDZINC", "LODHA", "BLUESTARCO", "BEL", 
     "JUBLFOOD", "PREMIERE", "NEGM", "MRF", "AIRPORT", "VEDL", "CONCOR", "PIIND", "EICHERMOT", 
@@ -75,24 +75,24 @@ def run_high_conviction_scanner():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # ROW 1: ENTRY RULE CONDITIONS (Exact Column Alignment)
-rule_headers = [
-    "Valid F&O Symbol",                # Col A Alignment (TICKER)
-    "Live Market Price",               # Col B Alignment (LTP)
-    "IV > 15% (High Premium)",         # Col C Alignment (IV %)
-    "Sell PE < 1SD Low",               # Col D Alignment (EXPECTED 1SD LOW)
-    "Sell CE > 1SD High",              # Col E Alignment (EXPECTED 1SD HIGH)
-    "Bull Put / Bear Call Only",       # Col F Alignment (STRATEGY SETUP)
-    "Defined Risk Spread Gap",         # Col G Alignment (RECOMMENDED STRIKES)
-    "Risk:Reward Capped",              # Col H Alignment (RISK TYPE)
-    "Target ₹2k - ₹8k",               # Col I Alignment (DAILY TARGET PROFIT)
-    "Strict SL ₹1.5k - ₹2.5k",         # Col J Alignment (MAX RISK SL)
-    "ULTRA HIGH (80%+ Win Rate)",      # Col K Alignment (CONVICTION SCORE)
-    "Automated Rule Match",            # Col L Alignment (TRADE ACTION)
-    "Last Refresh Time"                # Col M Alignment (LAST UPDATED)
-]
+    # ROW 1: ENTRY RULE CONDITIONS (Col A to Col M exact 1-to-1 alignment)
+    rule_headers = [
+        "Valid F&O Symbol",            # Col A (TICKER)
+        "Live Market Price",           # Col B (LTP)
+        "IV > 15% (High Premium)",     # Col C (IV %)
+        "Sell PE < 1SD Low",           # Col D (EXPECTED 1SD LOW)
+        "Sell CE > 1SD High",          # Col E (EXPECTED 1SD HIGH)
+        "Bull Put / Bear Call Only",   # Col F (STRATEGY SETUP)
+        "Defined Risk Spread Gap",     # Col G (RECOMMENDED STRIKES)
+        "Risk:Reward Capped",          # Col H (RISK TYPE)
+        "Target ₹2k - ₹8k",           # Col I (DAILY TARGET PROFIT)
+        "Strict SL ₹1.5k - ₹2.5k",     # Col J (MAX RISK SL)
+        "ULTRA HIGH (80%+ Win Rate)",  # Col K (CONVICTION SCORE)
+        "Automated Rule Match",        # Col L (TRADE ACTION)
+        "Last Refresh Time"            # Col M (LAST UPDATED)
+    ]
 
-    # ROW 2: COLUMN NAMES
+    # ROW 2: COLUMN HEADERS (Matching exact width of Row 1)
     column_headers = [
         "TICKER", "LTP", "IV %", "EXPECTED 1SD LOW", "EXPECTED 1SD HIGH", 
         "STRATEGY SETUP", "RECOMMENDED STRIKES", "RISK TYPE", 
@@ -118,7 +118,6 @@ rule_headers = [
             target_profit = "₹3,500 - ₹8,000" if ltp > 10000 else "₹2,000 - ₹4,500"
             max_risk = "₹2,500" if ltp > 10000 else "₹1,500"
 
-            # FILTER CHECK & ENTRY DECISION LOGIC
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and iv >= 14.0:
                 setup = "BULL PUT SPREAD (Credit)"
                 strike_suggestion = calculate_proportional_strikes(ltp, "BULL_PUT")
@@ -130,7 +129,6 @@ rule_headers = [
                 conviction = "⭐⭐⭐⭐⭐ ULTRA HIGH (80% Win Rate)"
                 action = "✅ TAKE TRADE"
             else:
-                # Reject trades that do not meet entry criteria
                 continue
 
             trade_signals.append([
