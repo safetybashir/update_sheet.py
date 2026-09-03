@@ -75,22 +75,22 @@ def run_high_conviction_scanner():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # ROW 1: ENTRY RULE CONDITIONS
-    rule_headers = [
-        "📌 CRITERIA / RULE:",
-        "Valid F&O Symbol",
-        "Live Market Price",
-        "IV > 15% (High Premium)",
-        "Sell PE < 1SD Low",
-        "Sell CE > 1SD High",
-        "Bull Put / Bear Call Only",
-        "Defined Risk Spread Gap",
-        "Risk:Reward Capped",
-        "Strict Stop Loss ₹1.5k-₹2.5k",
-        "ULTRA HIGH (80%+ Win Rate)",
-        "AUTOMATED MATCH DECISION",
-        "LAST REFREShed"
-    ]
+    # ROW 1: ENTRY RULE CONDITIONS (Exact Column Alignment)
+rule_headers = [
+    "Valid F&O Symbol",                # Col A Alignment (TICKER)
+    "Live Market Price",               # Col B Alignment (LTP)
+    "IV > 15% (High Premium)",         # Col C Alignment (IV %)
+    "Sell PE < 1SD Low",               # Col D Alignment (EXPECTED 1SD LOW)
+    "Sell CE > 1SD High",              # Col E Alignment (EXPECTED 1SD HIGH)
+    "Bull Put / Bear Call Only",       # Col F Alignment (STRATEGY SETUP)
+    "Defined Risk Spread Gap",         # Col G Alignment (RECOMMENDED STRIKES)
+    "Risk:Reward Capped",              # Col H Alignment (RISK TYPE)
+    "Target ₹2k - ₹8k",               # Col I Alignment (DAILY TARGET PROFIT)
+    "Strict SL ₹1.5k - ₹2.5k",         # Col J Alignment (MAX RISK SL)
+    "ULTRA HIGH (80%+ Win Rate)",      # Col K Alignment (CONVICTION SCORE)
+    "Automated Rule Match",            # Col L Alignment (TRADE ACTION)
+    "Last Refresh Time"                # Col M Alignment (LAST UPDATED)
+]
 
     # ROW 2: COLUMN NAMES
     column_headers = [
