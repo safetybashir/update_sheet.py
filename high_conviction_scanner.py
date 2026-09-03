@@ -27,11 +27,10 @@ def get_or_create_worksheet(spreadsheet, title):
         for ws in spreadsheet.worksheets():
             if ws.title.strip().upper() == title.strip().upper():
                 return ws
-        return spreadsheet.add_worksheet(title=title, rows="300", cols="20")
+        return spreadsheet.add_worksheet(title=title, rows="300", cols="25")
     except Exception:
         return spreadsheet.sheet1
 
-# CUSTOM STOCKS LIST (COMPACT HORIZONTAL FORMAT)
 FNO_SYMBOLS = [
     "NIFTY_50", "BANKNIFTY", "RELIANCE", "MARUTI", "CROMPTON", "HINDZINC", "LODHA", "BLUESTARCO", "BEL", 
     "JUBLFOOD", "PREMIERE", "NEGM", "MRF", "AIRPORT", "VEDL", "CONCOR", "PIIND", "EICHERMOT", 
@@ -63,9 +62,13 @@ def calculate_proportional_strikes(ltp, setup_type):
     step = 500 if ltp >= 50000 else (100 if ltp >= 10000 else (50 if ltp >= 2500 else (20 if ltp >= 1000 else 10)))
     base_strike = round(ltp / step) * step
     if setup_type == "BULL_PUT":
-        return f"Sell {int(base_strike - step)} PE | Buy {int(base_strike - 3*step)} PE"
+        sold_strike = int(base_strike - step)
+        bought_strike = int(base_strike - 3*step)
+        return sold_strike, bought_strike, f"Sell {sold_strike} PE | Buy {bought_strike} PE"
     elif setup_type == "BEAR_CALL":
-        return f"Sell {int(base_strike + step)} CE | Buy {int(base_strike + 3*step)} CE"
+        sold_strike = int(base_strike + step)
+        bought_strike = int(base_strike + 3*step)
+        return sold_strike, bought_strike, f"Sell {sold_strike} CE | Buy {bought_strike} CE"
 
 def run_high_conviction_scanner():
     client = get_gspread_client()
@@ -75,31 +78,20 @@ def run_high_conviction_scanner():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # ROW 1: ENTRY RULE CONDITIONS (Col A to Col M exact 1-to-1 alignment)
     rule_headers = [
-        "Valid F&O Symbol",            # Col A (TICKER)
-        "Live Market Price",           # Col B (LTP)
-        "IV > 15% (High Premium)",     # Col C (IV %)
-        "Sell PE < 1SD Low",           # Col D (EXPECTED 1SD LOW)
-        "Sell CE > 1SD High",          # Col E (EXPECTED 1SD HIGH)
-        "Bull Put / Bear Call Only",   # Col F (STRATEGY SETUP)
-        "Defined Risk Spread Gap",     # Col G (RECOMMENDED STRIKES)
-        "Risk:Reward Capped",          # Col H (RISK TYPE)
-        "Target ₹2k - ₹8k",           # Col I (DAILY TARGET PROFIT)
-        "Strict SL ₹1.5k - ₹2.5k",     # Col J (MAX RISK SL)
-        "ULTRA HIGH (80%+ Win Rate)",  # Col K (CONVICTION SCORE)
-        "Automated Rule Match",        # Col L (TRADE ACTION)
-        "Last Refresh Time"            # Col M (LAST UPDATED)
+        "Valid F&O Symbol", "Live Market Price", "IV > 15% (High Premium)", "Sell PE < 1SD Low", 
+        "Sell CE > 1SD High", "Bull Put / Bear Call Only", "Defined Risk Spread Gap", "Risk:Reward Capped", 
+        "Target ₹2k - ₹8k", "Strict SL ₹1.5k - ₹2.5k", "ULTRA HIGH (80%+ Win Rate)", "Automated Rule Match", 
+        "Last Refresh Time", "Top 3 Strict Execution Filter"
     ]
 
-    # ROW 2: COLUMN HEADERS (Matching exact width of Row 1)
     column_headers = [
         "TICKER", "LTP", "IV %", "EXPECTED 1SD LOW", "EXPECTED 1SD HIGH", 
         "STRATEGY SETUP", "RECOMMENDED STRIKES", "RISK TYPE", 
-        "DAILY TARGET PROFIT", "MAX RISK (SL)", "CONVICTION SCORE", "TRADE ACTION", "LAST UPDATED"
+        "DAILY TARGET PROFIT", "MAX RISK (SL)", "CONVICTION SCORE", "TRADE ACTION", "LAST UPDATED", "TOP 3 SELECTION"
     ]
 
-    trade_signals = []
+    raw_signals = []
 
     for sym in FNO_SYMBOLS:
         try:
@@ -120,37 +112,56 @@ def run_high_conviction_scanner():
 
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and iv >= 14.0:
                 setup = "BULL PUT SPREAD (Credit)"
-                strike_suggestion = calculate_proportional_strikes(ltp, "BULL_PUT")
+                sold_stk, bought_stk, strike_suggestion = calculate_proportional_strikes(ltp, "BULL_PUT")
                 conviction = "⭐⭐⭐⭐⭐ ULTRA HIGH (82% Win Rate)"
                 action = "✅ TAKE TRADE"
+                buffer_pct = abs((ltp - sold_stk) / ltp) * 100
             elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and iv >= 14.0:
                 setup = "BEAR CALL SPREAD (Credit)"
-                strike_suggestion = calculate_proportional_strikes(ltp, "BEAR_CALL")
+                sold_stk, bought_stk, strike_suggestion = calculate_proportional_strikes(ltp, "BEAR_CALL")
                 conviction = "⭐⭐⭐⭐⭐ ULTRA HIGH (80% Win Rate)"
                 action = "✅ TAKE TRADE"
+                buffer_pct = abs((sold_stk - ltp) / ltp) * 100
             else:
                 continue
 
-            trade_signals.append([
-                str(sym), str(ltp), f"{iv}%", str(lower_range), str(upper_range),
-                str(setup), str(strike_suggestion), "Defined Risk (Spread)",
-                str(target_profit), str(max_risk), str(conviction), str(action), str(curr_time)
-            ])
+            raw_signals.append({
+                "TICKER": str(sym), "LTP": ltp, "IV": iv, "LOWER": lower_range, "UPPER": upper_range,
+                "SETUP": setup, "STRIKES": strike_suggestion, "RISK_TYPE": "Defined Risk (Spread)",
+                "TARGET": target_profit, "SL": max_risk, "CONVICTION": conviction, "ACTION": action,
+                "TIME": curr_time, "BUFFER_PCT": buffer_pct
+            })
 
         except Exception:
             continue
 
-    df = pd.DataFrame(trade_signals, columns=column_headers)
-    if not df.empty:
-        df_sorted = df.sort_values(by="CONVICTION SCORE", ascending=False)
-        payload = [rule_headers, column_headers] + df_sorted.values.tolist()
+    # FILTER TOP 3 SELECTION LOGIC
+    if raw_signals:
+        df_raw = pd.DataFrame(raw_signals)
+        
+        # Sort by Optimal IV Range (18% - 28%) and Maximum Safety Buffer
+        df_raw['SCORE'] = df_raw['BUFFER_PCT'] + (df_raw['IV'].apply(lambda x: 15 if 18.0 <= x <= 28.0 else 5))
+        df_raw = df_raw.sort_values(by="SCORE", ascending=False)
+
+        top_3_indices = df_raw.head(3).index
+
+        final_rows = []
+        for idx, row in df_raw.iterrows():
+            top_selection = "🔥 BUY THIS STOCK (TOP 3)" if idx in top_3_indices else "SKIP"
+            final_rows.append([
+                row["TICKER"], str(row["LTP"]), f"{row['IV']}%", str(row["LOWER"]), str(row["UPPER"]),
+                row["SETUP"], row["STRIKES"], row["RISK_TYPE"], row["TARGET"], row["SL"],
+                row["CONVICTION"], row["ACTION"], row["TIME"], top_selection
+            ])
+
+        payload = [rule_headers, column_headers] + final_rows
     else:
-        payload = [rule_headers, column_headers, ["NO SIGNAL MATCHING RULES AT THIS MOMENT"] + [""] * 12]
+        payload = [rule_headers, column_headers, ["NO SIGNAL MATCHING RULES AT THIS MOMENT"] + [""] * 13]
 
     try:
         ws.clear()
         ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
-        print(f"✅ Rules Header & Signals pushed to '{NEW_TAB_NAME}' at {curr_time} IST!")
+        print(f"✅ Top 3 Filters Applied & Sheet Updated successfully at {curr_time} IST!")
     except Exception as e:
         print(f"❌ Error: {str(e)}")
 
