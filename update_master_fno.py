@@ -4,9 +4,9 @@ import sys
 import time
 from datetime import datetime
 import pytz
-import numpy as np
 import pandas as pd
 import gspread
+import yfinance as yf
 from google.oauth2.service_account import Credentials
 
 SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
@@ -70,6 +70,14 @@ def safe_update_worksheet(ws, payload, t_name):
     except Exception as e:
         print(f"❌ Failed updating tab '{t_name}': {str(e)}")
 
+def fetch_real_market_data(symbols):
+    """Yahoo Finance se real NSE live data batch mein fetch karta hai."""
+    yf_tickers = [f"{s}.NS" if s != "NIFTY_50" else "^NSEI" for s in symbols]
+    
+    print(f"📥 Downloading real market data for {len(yf_tickers)} tickers...")
+    data = yf.download(yf_tickers, period="5d", interval="1d", group_by="ticker", threads=True, progress=False)
+    return data
+
 def run_fno_screener():
     print(f"🔗 Target Master Sheet ID: {SHEET_ID}")
     client = get_gspread_client()
@@ -106,71 +114,50 @@ def run_fno_screener():
         "IV SKEW", "DERIVATIVE SCORE", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
 
+    market_data = fetch_real_market_data(FNO_SYMBOLS)
     rows_master, rows_cash, rows_deriv = [], [], []
 
     for sym in FNO_SYMBOLS:
+        yf_sym = "^NSEI" if sym == "NIFTY_50" else f"{sym}.NS"
         try:
-            ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
-            open_p = round(ltp * np.random.uniform(0.98, 1.01), 2)
-            high_p = round(max(ltp, open_p) * np.random.uniform(1.001, 1.02), 2)
-            low_p = round(min(ltp, open_p) * np.random.uniform(0.98, 0.999), 2)
-            prev_close = round(ltp / (1 + np.random.uniform(-0.035, 0.05)), 2)
-            chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
+            df = market_data[yf_sym].dropna()
+            if df.empty or len(df) < 2:
+                continue
 
-            vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
-            avg_vol_5d = int(np.random.uniform(100000, 5000000))
-            today_vol = int(avg_vol_5d * vol_mult)
+            ltp = round(float(df['Close'].iloc[-1]), 2)
+            open_p = round(float(df['Open'].iloc[-1]), 2)
+            high_p = round(float(df['High'].iloc[-1]), 2)
+            low_p = round(float(df['Low'].iloc[-1]), 2)
+            prev_close = round(float(df['Close'].iloc[-2]), 2)
+            
+            chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
+            
+            today_vol = int(df['Volume'].iloc[-1])
+            avg_vol_5d = int(df['Volume'].mean()) if len(df) >= 5 else today_vol
+            vol_mult = round(float(today_vol / avg_vol_5d), 2) if avg_vol_5d > 0 else 1.0
             vol_spike_str = "🔥 HIGH VOL" if vol_mult >= 1.5 else "😴 NORMAL"
-            deliv_pct = round(float(np.random.uniform(20.0, 75.0)), 2)
-            avg_deliv_20d = round(float(np.random.uniform(25.0, 50.0)), 2)
-            deliv_spike = "🚀 HIGH DELIVERY" if deliv_pct > (avg_deliv_20d * 1.2) else "NORMAL"
 
             vwap = round((high_p + low_p + ltp) / 3, 2)
             price_vs_vwap = "ABOVE VWAP" if ltp >= vwap else "BELOW VWAP"
-            ema_20_status = "ABOVE 20EMA" if ltp > vwap * 0.995 else "BELOW 20EMA"
-            ema_50_status = "ABOVE 50EMA" if ltp > vwap * 0.985 else "BELOW 50EMA"
-            rsi_14 = round(float(np.random.uniform(30.0, 78.0)), 1)
+            ema_20_status = "ABOVE 20EMA" if ltp >= vwap else "BELOW 20EMA"
+            ema_50_status = "ABOVE 50EMA" if ltp >= vwap * 0.99 else "BELOW 50EMA"
             
-            s1 = round(ltp * 0.97, 2)
-            r1 = round(ltp * 1.03, 2)
-            rr_ratio = "1:2.5"
-            day_range_pct = round(((high_p - low_p) / low_p) * 100, 2)
-            h52 = round(ltp * np.random.uniform(1.02, 1.35), 2)
-            l52 = round(ltp * np.random.uniform(0.65, 0.95), 2)
-            dist_52w = round(((h52 - ltp) / h52) * 100, 2)
-            rs_nifty = "OUTPERFORMING" if chg_pct > 1.2 else "NEUTRAL"
-            candle_pat = "BULLISH MARUBOZU" if chg_pct > 2.0 and ltp == high_p else "STANDARD"
-
-            fut_price = round(ltp * np.random.uniform(1.0005, 1.004), 2)
-            basis = round(fut_price - ltp, 2)
-            total_oi = int(np.random.uniform(500000, 20000000))
-            oi_chg = round(float(np.random.uniform(-5.0, 20.0)), 2)
-            total_ce_oi = int(total_oi * np.random.uniform(0.4, 0.6))
-            total_pe_oi = int(total_oi - total_ce_oi)
-            pcr = round(float(total_pe_oi / max(total_ce_oi, 1)), 2)
-            pcr_vol = round(pcr * np.random.uniform(0.9, 1.1), 2)
-            pcr_chg = round(float(np.random.uniform(-0.15, 0.25)), 2)
-
-            atm_strike = round(ltp, -1)
-            ce_strike = round(ltp * 1.01, -1)
-            ce_price = round(ltp * 0.025, 2)
-            ce_iv = round(float(np.random.uniform(12.0, 35.0)), 1)
-            pe_strike = round(ltp * 0.99, -1)
-            pe_price = round(ltp * 0.025, 2)
-            pe_iv = round(float(np.random.uniform(12.0, 35.0)), 1)
+            rsi_14 = 50.0  # Placeholder for technical indicator logic
             
-            max_call_oi = round(ltp * 1.05, -1)
-            max_put_oi = round(ltp * 0.95, -1)
-            max_pain = round(ltp * 1.002, -1)
-            pain_chg = "+20 PTS"
-            iv_skew = round(pe_iv - ce_iv, 2)
-            deriv_score = "8/10 BULLISH" if (oi_chg > 5.0 and pcr > 1.0) else "5/10 NEUTRAL"
+            s1 = round(low_p * 0.995, 2)
+            r1 = round(high_p * 1.005, 2)
+            rr_ratio = "1:2.0"
+            day_range_pct = round(((high_p - low_p) / low_p) * 100, 2) if low_p > 0 else 0.0
 
-            if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp > vwap:
+            # Derivatives calculation
+            atm_strike = round(ltp, -1) if ltp < 10000 else round(ltp, -2)
+            
+            # Pure signal evaluation based on REAL price momentum & REAL volume spike
+            if chg_pct > 1.2 and vol_mult >= 1.5 and ltp > vwap:
                 vcp_signal, buildup, strength = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER BUY"
-            elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp < vwap:
+            elif chg_pct < -1.2 and vol_mult >= 1.5 and ltp < vwap:
                 vcp_signal, buildup, strength = "📉 VCP BEARISH BREAKOUT", "SHORT BUILDUP", "⚠️ SUPER SELL"
-            elif abs(chg_pct) > 0.3 and vol_mult >= 1.2:
+            elif abs(chg_pct) > 0.5 and vol_mult >= 1.2:
                 vcp_signal, buildup, strength = "⚡ WATCHLIST", "MILD ACTIVITY", "⚡ WATCH"
             else:
                 vcp_signal, buildup, strength = "⏳ CONSOLIDATING", "NEUTRAL", "😴 NO SIGNAL"
@@ -180,28 +167,28 @@ def run_fno_screener():
             rows_cash.append([
                 str(sym), str(ltp), str(open_p), str(high_p), str(low_p), str(prev_close), 
                 f"{chg_pct}%", str(avg_vol_5d), str(today_vol), str(vol_mult), str(vol_spike_str), 
-                f"{deliv_pct}%", f"{avg_deliv_20d}%", str(deliv_spike), str(vwap), f"{day_range_pct}%", 
-                str(h52), str(l52), f"{dist_52w}%", str(rs_nifty), str(candle_pat), str(atm_strike), str(curr_time)
+                "N/A", "N/A", "NORMAL", str(vwap), f"{day_range_pct}%", 
+                "N/A", "N/A", "N/A", "NEUTRAL", "STANDARD", str(atm_strike), str(curr_time)
             ])
 
             rows_deriv.append([
-                str(sym), str(ltp), str(fut_price), str(basis), str(total_oi), f"{oi_chg}%", 
-                str(buildup), str(total_ce_oi), str(total_pe_oi), str(pcr_vol), str(pcr), 
-                str(ce_strike), str(ce_price), f"{ce_iv}%", str(pe_strike), str(pe_price), f"{pe_iv}%", 
-                str(max_call_oi), str(max_put_oi), str(max_pain), str(pain_chg), str(iv_skew), 
-                str(deriv_score), str(strength), str(curr_time)
+                str(sym), str(ltp), str(ltp), "0.0", "N/A", "N/A", 
+                str(buildup), "N/A", "N/A", "N/A", "1.0", 
+                str(atm_strike), "N/A", "N/A", str(atm_strike), "N/A", "N/A", 
+                str(atm_strike), str(atm_strike), str(atm_strike), "0 PTS", 
+                "0.0", "5/10 NEUTRAL", str(strength), str(curr_time)
             ])
 
             if strength in ["⭐ SUPER BUY", "⚠️ SUPER SELL", "⚡ WATCH"]:
                 rows_master.append([
                     str(sym), str(sector_name), str(ltp), f"{chg_pct}%", str(vol_mult), 
-                    str(vol_spike_str), f"{oi_chg}%", str(buildup), str(pcr), str(pcr_chg), 
-                    str(atm_strike), str(max_pain), str(vwap), str(price_vs_vwap), str(ema_20_status), 
+                    str(vol_spike_str), "0.0%", str(buildup), "1.0", "0.0", 
+                    str(atm_strike), str(atm_strike), str(vwap), str(price_vs_vwap), str(ema_20_status), 
                     str(ema_50_status), str(rsi_14), str(vcp_signal), str(s1), 
                     str(r1), str(rr_ratio), str(strength), str(curr_time)
                 ])
 
-        except Exception:
+        except Exception as e:
             continue
 
     df_m = pd.DataFrame(rows_master, columns=headers_master) if rows_master else pd.DataFrame(columns=headers_master)
@@ -221,13 +208,12 @@ def run_fno_screener():
     safe_update_worksheet(ws_cash, payload_cash, TAB_CASH)
     safe_update_worksheet(ws_deriv, payload_deriv, TAB_DERIVATIVES)
 
-    print(f"🚀 Master Screener executed successfully at {curr_time} IST!")
+    print(f"🚀 Real Market Screener executed successfully at {curr_time} IST!")
 
 def start_15min_automation():
     ist = pytz.timezone('Asia/Kolkata')
-    print("🚀 F&O Auto-Scanner (update_master_fno.py) Started...")
+    print("🚀 F&O Real Market Auto-Scanner Started...")
     
-    # Check for single execution command (GitHub Actions)
     if "--once" in sys.argv:
         print("⚡ Executing Single Run Mode...")
         run_fno_screener()
@@ -235,7 +221,6 @@ def start_15min_automation():
 
     while True:
         now = datetime.now(ist)
-        # Check Monday (0) to Friday (4) between 9:15 AM & 3:30 PM IST
         is_market_open = (
             now.weekday() < 5 and 
             (
@@ -246,13 +231,12 @@ def start_15min_automation():
         )
         
         if is_market_open:
-            print(f"🔄 [{now.strftime('%H:%M:%S')}] Triggering 15-Minute Market Refresh...")
+            print(f"🔄 [{now.strftime('%H:%M:%S')}] Refreshing Real Market Data...")
             try:
                 run_fno_screener()
             except Exception as e:
                 print(f"⚠️ Error during update execution: {e}")
             
-            # Sleep 15 Minutes = 900 Seconds
             time.sleep(900)
         else:
             print(f"😴 [{now.strftime('%H:%M:%S')}] Outside Market Hours. Retrying in 15 minutes...")
