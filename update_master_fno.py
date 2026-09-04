@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import time
 from datetime import datetime
 import pytz
 import numpy as np
@@ -8,10 +9,8 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# 🎯 MASTER DASHBOARD SHEET ID
 SHEET_ID = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg"
 
-# 📌 EXACT 3 TABS FOR FNO SCREENER
 TAB_MASTER = "MASTER_DASHBOARD"
 TAB_CASH = "DATA_CASH"
 TAB_DERIVATIVES = "DATA_DERIVATIVES"
@@ -67,7 +66,7 @@ def safe_update_worksheet(ws, payload, t_name):
     try:
         ws.clear()
         ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
-        print(f"✅ Successfully written to Tab: '{t_name}'")
+        print(f"✅ Successfully updated Tab: '{t_name}'")
     except Exception as e:
         print(f"❌ Failed updating tab '{t_name}': {str(e)}")
 
@@ -76,7 +75,6 @@ def run_fno_screener():
     client = get_gspread_client()
     spreadsheet = client.open_by_key(SHEET_ID)
 
-    # CONNECT / CREATE THE 3 TABS
     ws_master = get_or_create_worksheet(spreadsheet, TAB_MASTER)
     ws_cash = get_or_create_worksheet(spreadsheet, TAB_CASH)
     ws_deriv = get_or_create_worksheet(spreadsheet, TAB_DERIVATIVES)
@@ -84,7 +82,6 @@ def run_fno_screener():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # FULL EXPANDED HEADERS FOR EACH TAB (EXACT UNIFORM SEQUENCE)
     headers_master = [
         "TICKER", "SECTOR", "LTP", "PRICE % CHG", "VOLUME MULTIPLIER", 
         "VOLUME SPIKE", "OI % CHG", "BUILD-UP", "PCR RATIO", "PCR CHG", 
@@ -109,13 +106,10 @@ def run_fno_screener():
         "IV SKEW", "DERIVATIVE SCORE", "SIGNAL STRENGTH", "LAST UPDATED"
     ]
 
-    rows_master = []
-    rows_cash = []
-    rows_deriv = []
+    rows_master, rows_cash, rows_deriv = [], [], []
 
     for sym in FNO_SYMBOLS:
         try:
-            # BASE CALCULATIONS
             ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
             open_p = round(ltp * np.random.uniform(0.98, 1.01), 2)
             high_p = round(max(ltp, open_p) * np.random.uniform(1.001, 1.02), 2)
@@ -123,7 +117,6 @@ def run_fno_screener():
             prev_close = round(ltp / (1 + np.random.uniform(-0.035, 0.05)), 2)
             chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
 
-            # VOLUME & DELIVERY METRICS
             vol_mult = round(float(np.random.uniform(0.5, 3.5)), 2)
             avg_vol_5d = int(np.random.uniform(100000, 5000000))
             today_vol = int(avg_vol_5d * vol_mult)
@@ -132,7 +125,6 @@ def run_fno_screener():
             avg_deliv_20d = round(float(np.random.uniform(25.0, 50.0)), 2)
             deliv_spike = "🚀 HIGH DELIVERY" if deliv_pct > (avg_deliv_20d * 1.2) else "NORMAL"
 
-            # TECHNICAL INDICATORS
             vwap = round((high_p + low_p + ltp) / 3, 2)
             price_vs_vwap = "ABOVE VWAP" if ltp >= vwap else "BELOW VWAP"
             ema_20_status = "ABOVE 20EMA" if ltp > vwap * 0.995 else "BELOW 20EMA"
@@ -149,7 +141,6 @@ def run_fno_screener():
             rs_nifty = "OUTPERFORMING" if chg_pct > 1.2 else "NEUTRAL"
             candle_pat = "BULLISH MARUBOZU" if chg_pct > 2.0 and ltp == high_p else "STANDARD"
 
-            # DERIVATIVES & OPTIONS CHAIN METRICS
             fut_price = round(ltp * np.random.uniform(1.0005, 1.004), 2)
             basis = round(fut_price - ltp, 2)
             total_oi = int(np.random.uniform(500000, 20000000))
@@ -175,7 +166,6 @@ def run_fno_screener():
             iv_skew = round(pe_iv - ce_iv, 2)
             deriv_score = "8/10 BULLISH" if (oi_chg > 5.0 and pcr > 1.0) else "5/10 NEUTRAL"
 
-            # CONFLUENCE SIGNAL LOGIC
             if chg_pct > 0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp > vwap:
                 vcp_signal, buildup, strength = "🔥 VCP BULLISH BREAKOUT", "LONG BUILDUP", "⭐ SUPER BUY"
             elif chg_pct < -0.8 and vol_mult >= 1.5 and oi_chg > 5.0 and ltp < vwap:
@@ -187,7 +177,6 @@ def run_fno_screener():
 
             sector_name = "INDEX" if sym == "NIFTY_50" else "AUTO/FINANCE/IT"
 
-            # 1. APPEND DATA_CASH (23 COLUMNS)
             rows_cash.append([
                 str(sym), str(ltp), str(open_p), str(high_p), str(low_p), str(prev_close), 
                 f"{chg_pct}%", str(avg_vol_5d), str(today_vol), str(vol_mult), str(vol_spike_str), 
@@ -195,7 +184,6 @@ def run_fno_screener():
                 str(h52), str(l52), f"{dist_52w}%", str(rs_nifty), str(candle_pat), str(atm_strike), str(curr_time)
             ])
 
-            # 2. APPEND DATA_DERIVATIVES (25 COLUMNS)
             rows_deriv.append([
                 str(sym), str(ltp), str(fut_price), str(basis), str(total_oi), f"{oi_chg}%", 
                 str(buildup), str(total_ce_oi), str(total_pe_oi), str(pcr_vol), str(pcr), 
@@ -204,7 +192,6 @@ def run_fno_screener():
                 str(deriv_score), str(strength), str(curr_time)
             ])
 
-            # 3. APPEND MASTER_DASHBOARD (23 COLUMNS - SIGNAL STRENGTH BEFORE LAST UPDATED)
             if strength in ["⭐ SUPER BUY", "⚠️ SUPER SELL", "⚡ WATCH"]:
                 rows_master.append([
                     str(sym), str(sector_name), str(ltp), f"{chg_pct}%", str(vol_mult), 
@@ -217,7 +204,6 @@ def run_fno_screener():
         except Exception:
             continue
 
-    # SORT MASTER DASHBOARD BY SIGNAL PRIORITY
     df_m = pd.DataFrame(rows_master, columns=headers_master) if rows_master else pd.DataFrame(columns=headers_master)
     if not df_m.empty:
         p_map = {"⭐ SUPER BUY": 0, "⚠️ SUPER SELL": 1, "⚡ WATCH": 2}
@@ -231,12 +217,46 @@ def run_fno_screener():
     payload_cash = [headers_cash] + rows_cash
     payload_deriv = [headers_deriv] + rows_deriv
 
-    # EXECUTE WRITES TO GOOGLE SHEETS
     safe_update_worksheet(ws_master, payload_master, TAB_MASTER)
     safe_update_worksheet(ws_cash, payload_cash, TAB_CASH)
     safe_update_worksheet(ws_deriv, payload_deriv, TAB_DERIVATIVES)
 
-    print(f"🚀 Full Multi-Column FNO Screener executed successfully at {curr_time} IST!")
+    print(f"🚀 Master Screener executed successfully at {curr_time} IST!")
+
+def start_15min_automation():
+    ist = pytz.timezone('Asia/Kolkata')
+    print("🚀 F&O Auto-Scanner (update_master_fno.py) Started...")
+    
+    # Check for single execution command (GitHub Actions)
+    if "--once" in sys.argv:
+        print("⚡ Executing Single Run Mode...")
+        run_fno_screener()
+        return
+
+    while True:
+        now = datetime.now(ist)
+        # Check Monday (0) to Friday (4) between 9:15 AM & 3:30 PM IST
+        is_market_open = (
+            now.weekday() < 5 and 
+            (
+                (now.hour == 9 and now.minute >= 15) or 
+                (10 <= now.hour < 15) or 
+                (now.hour == 15 and now.minute <= 30)
+            )
+        )
+        
+        if is_market_open:
+            print(f"🔄 [{now.strftime('%H:%M:%S')}] Triggering 15-Minute Market Refresh...")
+            try:
+                run_fno_screener()
+            except Exception as e:
+                print(f"⚠️ Error during update execution: {e}")
+            
+            # Sleep 15 Minutes = 900 Seconds
+            time.sleep(900)
+        else:
+            print(f"😴 [{now.strftime('%H:%M:%S')}] Outside Market Hours. Retrying in 15 minutes...")
+            time.sleep(900)
 
 if __name__ == "__main__":
-    run_fno_screener()
+    start_15min_automation()
