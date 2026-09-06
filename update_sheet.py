@@ -11,7 +11,8 @@ from gspread.exceptions import APIError
 # ==========================================
 # CONFIGURATION & CONSTANTS
 # ==========================================
-SHEET_ID = os.environ.get("SHEET_ID", "YOUR_GOOGLE_SHEET_ID_HERE")
+# Exact Native Google Sheet ID hardcoded as default
+SHEET_ID = os.environ.get("SHEET_ID", "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg")
 BULLISH_TAB_NAME = "BULLISH_CASH_BREAKOUTS"
 CREDENTIALS_FILE = "credentials.json"
 
@@ -25,21 +26,18 @@ CASH_STOCKS = [
 def clean_and_parse_json(raw_str):
     """
     Cleans raw string inputs and safely parses JSON content.
-    Handles escaped quotes and double-escaped newlines commonly encountered
-    in environment variables/secrets.
+    Handles escaped quotes and double-escaped newlines.
     """
     if not raw_str:
         raise ValueError("Provided JSON string is empty.")
         
     cleaned_str = raw_str.strip()
     
-    # Try direct JSON parsing
     try:
         return json.loads(cleaned_str)
     except json.JSONDecodeError:
         pass
 
-    # Clean double escaped newlines or quotes if raw string pasting broke lines
     cleaned_str = cleaned_str.replace('\\n', '\n')
     try:
         return json.loads(cleaned_str)
@@ -219,8 +217,7 @@ def run_live_cash_sync(max_retries=3, delay=5):
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
-            if not target_sheet_id or target_sheet_id == "YOUR_GOOGLE_SHEET_ID_HERE":
-                raise ValueError("SHEET_ID is missing! Please set the SHEET_ID secret or environment variable.")
+            print(f"📌 Using Sheet ID: {target_sheet_id}")
 
             sheet = client.open_by_key(target_sheet_id)
 
