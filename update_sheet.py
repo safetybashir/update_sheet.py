@@ -18,12 +18,14 @@ BULLISH_TAB_NAME = "LIVE_BULLISH_CASH_DASHBOARD"
 def get_gspread_client():
     creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    
     if creds_json:
-        return gspread.authorize(gspread.auth.Credentials.from_service_account_info(json.loads(creds_json), scopes=scopes))
+        creds_dict = json.loads(creds_json)
+        return gspread.service_account_from_dict(creds_dict, scopes=scopes)
     elif os.path.exists("credentials.json"):
-        return gspread.service_account(filename="credentials.json")
+        return gspread.service_account(filename="credentials.json", scopes=scopes)
     else:
-        raise FileNotFoundError("❌ Credentials not found!")
+        raise FileNotFoundError("❌ Credentials not found in Environment Secrets or local credentials.json!")
 
 def setup_dashboard_formatting(worksheet, num_rows):
     print("🎨 Applying Professional Dynamic Formatting...")
