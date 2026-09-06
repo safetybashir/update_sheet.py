@@ -1,32 +1,32 @@
-name: 🎯 Cash Multi-Month VCP Breakout Scanner
+name: Run Live Cash Sync
 
 on:
   schedule:
-    # Monday to Friday ko 09:45 UTC par (3:15 PM IST - Market Closing Scan)
-    - cron: '45 9 * * 1-5'
-  workflow_dispatch: # Actions tab se manual Trigger karne ke liye
+    - cron: '*/15 3-10 * * 1-5' # Mon-Fri IST market hours (9:15 AM - 3:30 PM)
+  workflow_dispatch:
 
 jobs:
-  run-cash-vcp-scanner:
+  sync:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository Code
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Set up Python Environment
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install Cash Scanner Dependencies
+      - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install yfinance pandas numpy gspread gspread-formatting pytz
+          pip install yfinance gspread google-auth pytz
 
-      - name: Execute Cash VCP Breakout Engine
-        env:
-          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-          GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDS }}
+      # 🔑 DYNAMIC CREDENTIALS CREATION (MATCHING YOUR SECRET NAME)
+      - name: Create credentials.json from GitHub Secret
         run: |
-          python update_sheet.py
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > credentials.json
+
+      - name: Execute Cash Sync Script
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python update_sheet.py
