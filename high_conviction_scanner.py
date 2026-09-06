@@ -14,7 +14,6 @@ from google.oauth2.service_account import Credentials
 SHEET_ID = "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo"
 NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
 
-# Targeted High-Momentum Universe
 LARGECAP_SYMBOLS = [
     "ULTRACEMCO.NS", "RELIANCE.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "INFY.NS", 
     "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", 
@@ -28,12 +27,8 @@ MIDCAP_SYMBOLS = [
 FNO_SYMBOLS = list(set(LARGECAP_SYMBOLS + MIDCAP_SYMBOLS))
 
 def get_gspread_client():
-    """Authenticates using Environment variable or local credentials file."""
     creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets", 
-        "https://www.googleapis.com/auth/drive"
-    ]
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if creds_json:
         creds_dict = json.loads(creds_json)
         return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
@@ -43,7 +38,6 @@ def get_gspread_client():
         raise FileNotFoundError("❌ Google Cloud Credentials not found!")
 
 def get_or_create_worksheet(spreadsheet, title):
-    """Fetches target worksheet or creates a clean one if missing."""
     try:
         for ws in spreadsheet.worksheets():
             if ws.title.strip().upper() == title.strip().upper():
@@ -53,7 +47,7 @@ def get_or_create_worksheet(spreadsheet, title):
         return spreadsheet.sheet1
 
 # ==========================================
-# MAIN TRADING ENGINE & SCANNER
+# MAIN DUAL-DIRECTIONAL SCANNER (CE + PE)
 # ==========================================
 def run_final_sensibule_scanner():
     client = get_gspread_client()
@@ -65,7 +59,7 @@ def run_final_sensibule_scanner():
 
     rule_headers = [
         "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: ABSOLUTE MOMENTUM & BREAKOUT SCANNER", 
+        "BACKEND: DUAL-DIRECTIONAL (CE / PE / SPREADS) SCANNER", 
         "", "", "", "", 
         f"LAST UPDATED: {curr_time} IST"
     ]
@@ -90,7 +84,6 @@ def run_final_sensibule_scanner():
             if len(df) < 20:
                 continue
 
-            # Multi-Index Column Flattening
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
@@ -103,15 +96,18 @@ def run_final_sensibule_scanner():
             day_low = float(df['Low'].iloc[-1])
             day_range = day_high - day_low
             
-            close_pos = (ltp - day_low) / day_range if day_range > 0 else 0
+            close_pos = (ltp - day_low) / day_range if day_range > 0 else 0.5
 
             vol_curr = float(df['Volume'].iloc[-1])
             vol_avg = float(df['Volume'].iloc[-20:-1].mean())
             vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
 
-            # Correct 5-Day Breakout (Excluding Today's Bar)
+            # 5-Day High and Low (Excluding Today)
             five_day_high = float(df['High'].iloc[-6:-1].max())
+            five_day_low = float(df['Low'].iloc[-6:-1].min())
+            
             is_bullish_breakout = ltp >= five_day_high
+            is_bearish_breakdown = ltp <= five_day_low
 
             clean_ticker = sym.replace(".NS", "")
             is_largecap = sym in LARGECAP_SYMBOLS
@@ -120,28 +116,47 @@ def run_final_sensibule_scanner():
             trend_status = ""
             strategy = ""
 
-            # Revised Strategy Rules
-            if is_largecap:
-                # Case 1: LargeCap High Point Accumulation (ULTRACEMCO)
-                if (is_bullish_breakout or chg_pct >= 2.5) and close_pos >= 0.60:
-                    detected = True
-                    trend_status = "🔥 LARGECAP ACCUMULATION"
-                    strategy = "BULL CALL SPREAD"
-            else:
-                # Case 2: High Beta Fast Breakout (BSE, KAYNES)
-                if (chg_pct >= 3.0 or (is_bullish_breakout and vol_mult >= 1.1)) and close_pos >= 0.65:
-                    detected = True
-                    trend_status = "🚀 MOMENTUM BREAKOUT"
-                    strategy = "BUY CALL OPTION (CE)"
+            # -------------------------------------------------------------
+            # DUAL-DIRECTIONAL SELECTION ENGINE (BULLISH & BEARISH)
+            # -------------------------------------------------------------
+            # 1. BULLISH SCENARIOS (CE / BULL CALL SPREAD)
+            if chg_pct > 0:
+                if is_largecap:
+                    if (is_bullish_breakout or chg_pct >= 2.5) and close_pos >= 0.60:
+                        detected = True
+                        trend_status = "🔥 LARGECAP ACCUMULATION"
+                        strategy = "BULL CALL SPREAD"
+                else:
+                    if (chg_pct >= 3.0 or (is_bullish_breakout and vol_mult >= 1.1)) and close_pos >= 0.65:
+                        detected = True
+                        trend_status = "🚀 MOMENTUM BREAKOUT"
+                        strategy = "BUY CALL OPTION (CE)"
 
-            # Scoring Engine
-            if detected and chg_pct > 0:
-                breakeven = round(ltp * 1.012, 2)
-                sl = round(ltp * 0.985, 2)
+            # 2. BEARISH SCENARIOS (PE / BEAR PUT SPREAD)
+            elif chg_pct < 0:
+                if is_largecap:
+                    if (is_bearish_breakdown or chg_pct <= -2.5) and close_pos <= 0.40:
+                        detected = True
+                        trend_status = "🔻 LARGECAP DISTRIBUTION"
+                        strategy = "BEAR PUT SPREAD"
+                else:
+                    if (chg_pct <= -3.0 or (is_bearish_breakdown and vol_mult >= 1.1)) and close_pos <= 0.35:
+                        detected = True
+                        trend_status = "💥 BEARISH BREAKDOWN"
+                        strategy = "BUY PUT OPTION (PE)"
 
-                # Balanced High-Momentum Priority Weightage
-                breakout_bonus = 15.0 if is_bullish_breakout else 0.0
-                score = (chg_pct * 6.0) + (point_move * 0.5) + (vol_mult * 2.0) + breakout_bonus
+            # Dynamic Target & StopLoss Calculation
+            if detected:
+                if "CALL" in strategy or "CE" in strategy:
+                    breakeven = round(ltp * 1.012, 2)
+                    sl = round(ltp * 0.985, 2)
+                else:  # PUT / PE Strategies
+                    breakeven = round(ltp * 0.988, 2)
+                    sl = round(ltp * 1.015, 2)
+
+                # Unified Absolute Score Calculation
+                breakout_bonus = 15.0 if (is_bullish_breakout or is_bearish_breakdown) else 0.0
+                score = (abs(chg_pct) * 6.0) + (point_move * 0.5) + (vol_mult * 2.0) + breakout_bonus
 
                 raw_signals.append({
                     "TICKER": clean_ticker, 
@@ -154,10 +169,10 @@ def run_final_sensibule_scanner():
                 })
 
         except Exception as e:
-            print(f"Error executing {sym}: {e}")
+            print(f"Error processing {sym}: {e}")
             continue
 
-    # Sorting & Payload Preparation
+    # Write Payload to Sheet
     if raw_signals:
         df_raw = pd.DataFrame(raw_signals)
         df_raw = df_raw.sort_values(by="SCORE", ascending=False)
@@ -177,13 +192,8 @@ def run_final_sensibule_scanner():
 
         payload = [rule_headers, column_headers] + final_rows
     else:
-        payload = [
-            rule_headers, 
-            column_headers, 
-            ["NO STRONG BREAKOUT MATCHED CURRENTLY"] + [""] * 6
-        ]
+        payload = [rule_headers, column_headers, ["NO ACTIVE BREAKOUT OR BREAKDOWN MATCHED"] + [""] * 6]
 
-    # Write to Google Sheet
     try:
         ws.clear()
         ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
