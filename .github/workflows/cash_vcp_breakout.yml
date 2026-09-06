@@ -1,15 +1,17 @@
-name: Run Live Cash Sync
+name: Update cash reakout wf
 
 on:
   schedule:
-    - cron: '*/15 3-10 * * 1-5' # Mon-Fri IST market hours (9:15 AM - 3:30 PM)
+    # Runs every 15 minutes during Indian Market Hours (Mon-Fri)
+    - cron: '*/15 3-10 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  sync:
+  run-scanner:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -19,14 +21,11 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install yfinance gspread google-auth pytz
 
-      # 🔑 DYNAMIC CREDENTIALS CREATION (MATCHING YOUR SECRET NAME)
-      - name: Create credentials.json from GitHub Secret
-        run: |
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > credentials.json
-
-      - name: Execute Cash Sync Script
+      - name: Run Market Scanner Script
         env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python update_sheet.py
