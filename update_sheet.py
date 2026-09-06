@@ -11,7 +11,6 @@ from gspread.exceptions import APIError
 # ==========================================
 # CONFIGURATION & CONSTANTS
 # ==========================================
-# GitHub Secrets se SHEET_ID uthayega, fallback ke liye niche apni ID daal sakte hain
 SHEET_ID = os.environ.get("SHEET_ID", "YOUR_GOOGLE_SHEET_ID_HERE")
 BULLISH_TAB_NAME = "BULLISH_CASH_BREAKOUTS"
 CREDENTIALS_FILE = "credentials.json"
@@ -23,12 +22,38 @@ CASH_STOCKS = [
 ]
 
 
+def clean_and_parse_json(raw_str):
+    """
+    Cleans raw string inputs and safely parses JSON content.
+    Handles escaped quotes and double-escaped newlines commonly encountered
+    in environment variables/secrets.
+    """
+    if not raw_str:
+        raise ValueError("Provided JSON string is empty.")
+        
+    cleaned_str = raw_str.strip()
+    
+    # Try direct JSON parsing
+    try:
+        return json.loads(cleaned_str)
+    except json.JSONDecodeError:
+        pass
+
+    # Clean double escaped newlines or quotes if raw string pasting broke lines
+    cleaned_str = cleaned_str.replace('\\n', '\n')
+    try:
+        return json.loads(cleaned_str)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Failed to parse JSON string. Ensure keys are enclosed in double quotes.\nDetails: {e}"
+        )
+
+
 def get_gspread_client():
     """
     Authenticate and return gspread client handling:
     1. GitHub Actions ENV Variable ('GCP_CREDENTIALS_JSON')
     2. Local file fallback ('credentials.json')
-    3. Proper JSON Syntax Error Catching
     """
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -39,26 +64,26 @@ def get_gspread_client():
     if "GCP_CREDENTIALS_JSON" in os.environ and os.environ["GCP_CREDENTIALS_JSON"].strip():
         raw_json = os.environ["GCP_CREDENTIALS_JSON"].strip()
         try:
-            creds_dict = json.loads(raw_json)
+            creds_dict = clean_and_parse_json(raw_json)
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
             return gspread.authorize(creds)
-        except json.JSONDecodeError as e:
+        except Exception as e:
             raise ValueError(
-                f"❌ Invalid JSON in GitHub Secret 'GCP_CREDENTIALS_JSON'. "
-                f"Please re-copy your GCP service account JSON key into GitHub Secrets.\nError details: {e}"
+                f"❌ Error in GitHub Secret 'GCP_CREDENTIALS_JSON'. "
+                f"Please verify secret content in GitHub Repository Settings.\n{e}"
             )
             
     # 2. Local File Fallback
     elif os.path.exists(CREDENTIALS_FILE):
         try:
             with open(CREDENTIALS_FILE, "r", encoding="utf-8") as f:
-                creds_dict = json.load(f)
+                content = f.read()
+            creds_dict = clean_and_parse_json(content)
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
             return gspread.authorize(creds)
-        except json.JSONDecodeError as e:
+        except Exception as e:
             raise ValueError(
-                f"❌ Invalid JSON format inside local '{CREDENTIALS_FILE}'. "
-                f"Check for missing quotes or trailing commas.\nError details: {e}"
+                f"❌ Invalid JSON format inside local '{CREDENTIALS_FILE}'.\n{e}"
             )
             
     else:
@@ -193,10 +218,11 @@ def run_live_cash_sync(max_retries=3, delay=5):
             print(f"🔄 Attempt {attempt}/{max_retries}: Connecting to Google Sheets...")
             client = get_gspread_client()
             
-            if not SHEET_ID or SHEET_ID == "YOUR_GOOGLE_SHEET_ID_HERE":
+            target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
+            if not target_sheet_id or target_sheet_id == "YOUR_GOOGLE_SHEET_ID_HERE":
                 raise ValueError("SHEET_ID is missing! Please set the SHEET_ID secret or environment variable.")
 
-            sheet = client.open_by_key(SHEET_ID)
+            sheet = client.open_by_key(target_sheet_id)
 
             try:
                 worksheet = sheet.worksheet(BULLISH_TAB_NAME)
