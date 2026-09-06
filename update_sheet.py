@@ -1,3 +1,5 @@
+import os
+import json
 import time
 from datetime import datetime
 import pytz
@@ -9,9 +11,10 @@ from gspread.exceptions import APIError
 # ==========================================
 # CONFIGURATION & CONSTANTS
 # ==========================================
-SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"  # Apni Google Sheet ID yahan daalein
+# GitHub Secrets se SHEET_ID uthayega, fallback ke liye niche apni ID daal sakte hain
+SHEET_ID = os.environ.get("SHEET_ID", "YOUR_GOOGLE_SHEET_ID_HERE")
 BULLISH_TAB_NAME = "BULLISH_CASH_BREAKOUTS"
-CREDENTIALS_FILE = "credentials.json"  # Service Account JSON path
+CREDENTIALS_FILE = "credentials.json"
 
 # Scanned Cash Tickers List
 CASH_STOCKS = [
@@ -20,12 +23,33 @@ CASH_STOCKS = [
 ]
 
 def get_gspread_client():
-    """Authenticate and return gspread client."""
+    """
+    Authenticate and return gspread client handling:
+    1. GitHub Actions ENV Variable ('GCP_CREDENTIALS_JSON')
+    2. Local file fallback ('credentials.json')
+    """
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
+    
+    # 1. Direct ENV handling for GitHub Actions
+    if "GCP_CREDENTIALS_JSON" in os.environ and os.environ["GCP_CREDENTIALS_JSON"].strip():
+        try:
+            creds_dict = json.loads(os.environ["GCP_CREDENTIALS_JSON"])
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        except Exception as e:
+            raise ValueError(f"Error parsing 'GCP_CREDENTIALS_JSON' ENV secret: {e}")
+            
+    # 2. Local File Fallback
+    elif os.path.exists(CREDENTIALS_FILE):
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
+        
+    else:
+        raise FileNotFoundError(
+            "Neither 'GCP_CREDENTIALS_JSON' secret env nor 'credentials.json' file was found."
+        )
+        
     return gspread.authorize(creds)
 
 
@@ -43,7 +67,7 @@ def analyze_cash_breakouts():
     data = yf.download(tickers, period="60d", interval="1d", group_by="ticker", progress=False)
     
     ist = pytz.timezone("Asia/Kolkata")
-    time_str = datetime.now(ist).strftime("%H:%M:%S")
+    time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
     results = []
 
     for sym in CASH_STOCKS:
@@ -154,6 +178,10 @@ def run_live_cash_sync(max_retries=3, delay=5):
         try:
             print(f"🔄 Attempt {attempt}/{max_retries}: Connecting to Google Sheets...")
             client = get_gspread_client()
+            
+            if not SHEET_ID or SHEET_ID == "YOUR_GOOGLE_SHEET_ID_HERE":
+                raise ValueError("SHEET_ID is missing! Please set the SHEET_ID secret or environment variable.")
+
             sheet = client.open_by_key(SHEET_ID)
 
             try:
