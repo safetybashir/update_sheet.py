@@ -67,6 +67,7 @@ def run_final_sensibule_scanner():
         "TICKER", 
         "LTP", 
         "TREND STATUS", 
+        "STRATEAGY",
         "BREAKEVEN POINT", 
         "STRICT SL (1.5%)", 
         "SENSIBULE TRIGGER"
