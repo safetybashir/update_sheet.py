@@ -12,10 +12,10 @@ from gspread.exceptions import APIError
 # CONFIGURATION & CONSTANTS
 # ==========================================
 SHEET_ID = os.environ.get("SHEET_ID", "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg")
-BULLISH_TAB_NAME = "BULLISH_CASH_BREAKOUTS"
+BULLISH_TAB_NAME = "LIVE_BULLISH_CASH_DASHBOARD"
 CREDENTIALS_FILE = "credentials.json"
 
-# Master Cash Tickers List (NIFTY 50 Index excluded - individual equities only)
+# Master Cash Tickers List
 CASH_STOCKS = [
     "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
@@ -190,9 +190,10 @@ def analyze_cash_breakouts():
 
 def run_live_cash_sync(max_retries=3, delay=5):
     scanned_data = analyze_cash_breakouts()
+    # Exact original columns restored
     headers = [
         "STOCK TICKER", "CASH LTP", "DAY CHANGE %", "WEEKLY HIGH BREAKOUT",
-        "DAY RANGE POS %", "VOLUME MULTIPLIER", "VOLUME SPIKE STATUS", "VWAP PROXY",
+        "DAY RANGE POS %", "VOLUME MULTIPLIER", "VOLUME SPIKE STATUS", "VWAP",
         "PRICE vs VWAP", "TARGET PRICE (+3%)", "STOP LOSS (-1.5%)", 
         "CASH BREAKOUT SETUP", "SIGNAL STRENGTH", "ACTION TRIGGER", "LAST UPDATED"
     ]
@@ -214,7 +215,7 @@ def run_live_cash_sync(max_retries=3, delay=5):
 
             worksheet.clear()
             worksheet.update(values=[headers] + scanned_data, range_name="A1")
-            print(f"✅ Successfully Updated {len(scanned_data)} Institutional Stock Signals!")
+            print(f"✅ Successfully Updated {len(scanned_data)} Institutional Stock Signals to '{BULLISH_TAB_NAME}'!")
             break
 
         except APIError as e:
