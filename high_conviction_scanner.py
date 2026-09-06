@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 SHEET_ID = "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo"
 NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
 
-# Focus Universe containing Heavyweights and High-Beta Momentum Leaders
+# High Conviction Ticker Universe
 LARGECAP_SYMBOLS = [
     "ULTRACEMCO.NS", "RELIANCE.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "INFY.NS", 
     "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", 
@@ -90,9 +90,9 @@ def run_final_sensibule_scanner():
             if len(df) < 20:
                 continue
 
-            # Flatten multi-index columns if returned by yfinance
+            # Multi-Index Column Flattening (Fixes yfinance parsing drops)
             if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [col[0] for col in df.columns]
+                df.columns = df.columns.get_level_values(0)
 
             ltp = round(float(df['Close'].iloc[-1]), 2)
             prev_close = float(df['Close'].iloc[-2])
@@ -103,48 +103,44 @@ def run_final_sensibule_scanner():
             day_low = float(df['Low'].iloc[-1])
             day_range = day_high - day_low
             
-            # Candle Close Position (0.0 to 1.0)
             close_pos = (ltp - day_low) / day_range if day_range > 0 else 0
 
-            # Dynamic Volume Multiplier
             vol_curr = float(df['Volume'].iloc[-1])
             vol_avg = float(df['Volume'].iloc[-20:-1].mean())
             vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
 
-            # 5-Day Range Breakout
             five_day_high = float(df['High'].tail(6).iloc[:-1].max())
             is_bullish_breakout = ltp > five_day_high
 
             clean_ticker = sym.replace(".NS", "")
             is_largecap = sym in LARGECAP_SYMBOLS
 
-            # -------------------------------------------------------------
-            # CASE-BASED SELECTION LOGIC FOR BREAKOUT STOCKS
-            # -------------------------------------------------------------
             detected = False
             trend_status = ""
             strategy = ""
 
+            # Strategy Selection Logic
             if is_largecap:
-                # Case A: LargeCap Steady Heavyweight Accumulation (ULTRACEMCO)
-                if vol_mult >= 1.15 and close_pos >= 0.65 and is_bullish_breakout:
+                # Case 1: LargeCap Steady Accumulation (e.g. ULTRACEMCO)
+                if vol_mult >= 1.10 and close_pos >= 0.60 and is_bullish_breakout:
                     detected = True
                     trend_status = "🔥 LARGECAP ACCUMULATION"
-                    strategy = "BULL CALL SPREAD"  # Protective Strategy for Heavyweights
+                    strategy = "BULL CALL SPREAD"
             else:
-                # Case B: MidCap Fast Momentum Expansion (KAYNES & BSE)
-                if (vol_mult >= 1.40 or is_bullish_breakout) and close_pos >= 0.70 and chg_pct >= 2.0:
+                # Case 2: High-Beta Momentum Breakout (e.g. BSE, KAYNES)
+                if (vol_mult >= 1.30 or is_bullish_breakout) and close_pos >= 0.65 and chg_pct >= 2.0:
                     detected = True
                     trend_status = "🚀 MOMENTUM BREAKOUT"
-                    strategy = "BUY CALL OPTION (CE)"  # Direct Momentum Strategy
+                    strategy = "BUY CALL OPTION (CE)"
 
+            # Filter for Pure Positive Breakouts & Calculate Weighted Ranking
             if detected and chg_pct > 0:
                 breakeven = round(ltp * 1.012, 2)
                 sl = round(ltp * 0.985, 2)
 
-                # Combined Weighted Ranking Score (Point Move + % Gain + Vol Spurt + Breakout Bonus)
-                breakout_bonus = 5.0 if is_bullish_breakout else 0.0
-                score = (chg_pct * 3.0) + (point_move * 0.04) + (vol_mult * 1.5) + breakout_bonus
+                # Adjusted Scoring: Point Move + % Gain + Breakout Bonus
+                breakout_bonus = 10.0 if is_bullish_breakout else 0.0
+                score = (chg_pct * 5.0) + (point_move * 0.1) + (vol_mult * 2.0) + breakout_bonus
 
                 raw_signals.append({
                     "TICKER": clean_ticker, 
@@ -160,7 +156,7 @@ def run_final_sensibule_scanner():
             print(f"Error processing {sym}: {e}")
             continue
 
-    # Process and Render Top Ranked Signals to Google Sheet
+    # Process and Write Top Ranked Signals to Google Sheet
     if raw_signals:
         df_raw = pd.DataFrame(raw_signals)
         df_raw = df_raw.sort_values(by="SCORE", ascending=False)
@@ -186,7 +182,7 @@ def run_final_sensibule_scanner():
             ["NO STRONG BREAKOUT MATCHED CURRENTLY"] + [""] * 6
         ]
 
-    # Write Payload to Google Sheet
+    # Write Payload to Target Sheet Tab
     try:
         ws.clear()
         ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
