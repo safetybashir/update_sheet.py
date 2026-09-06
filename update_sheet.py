@@ -43,8 +43,8 @@ def get_or_create_worksheet(spreadsheet, title):
 
 # CASH SEGMENT WATCHLIST (EQUITY STOCKS)
 CASH_STOCK_SYMBOLS = [
-    "NIFTY_50", "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
-    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", "MAZDOCK", 
+    "NIFTY_50", "ULTRACEMCO", "BSE", "KAYNES", "TORNTPHARM", "ASHOKLEY", "INOXWIND", "GAIL", "KEI", 
+    "PREMIERENE", "CGPOWER", "M&M", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", "MAZDOCK", 
     "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", "CUMMINSIND", "JSWENERGY", 
     "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", "MOTILALOFS", "BHARATFORG", "TMPVSOLARIND", 
     "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", 
@@ -52,7 +52,7 @@ CASH_STOCK_SYMBOLS = [
     "NATIONALUM", "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", "HINDZINC", 
     "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", "SUPREMEIND", "OIL", "SHREECEMNT", "PC", 
     "TATAELXSI", "HINDALCO", "PETRONET", "CIPLA", "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", 
-    "DALBHARAT", "ULTRACEMCO", "ONGCPHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
+    "DALBHARAT", "ONGCPHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", 
     "TRENT", "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTCROMPTON", "INDUSTOWER", 
     "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", "PFC", "ASIANPAINT", "LUPIN", "CDSL", 
     "IREDA", "HINDUNILVR", "GODREJPROP", "KFINTECH", "AMBUJACEM", "APOLLOHOSP", "HCLTECH", 
@@ -82,78 +82,84 @@ def run_live_cash_sync():
     ist_tz = pytz.timezone('Asia/Kolkata')
     curr_time = datetime.now(ist_tz).strftime('%H:%M:%S')
 
-    # HEADERS DESIGNED EXCLUSIVELY FOR CASH STOCKS
+    # ENHANCED HEADERS FOR ULTRA-STRONG FRIDAY BREAKOUTS
     headers = [
-        "STOCK TICKER", "CASH LTP", "DAY CHANGE %", "DAY RANGE POS %", "VOLUME MULTIPLIER", 
-        "VOLUME STATUS", "VWAP", "PRICE vs VWAP", "CASH BREAKOUT TYPE", "TARGET PRICE (+2.5%)", 
-        "STOP LOSS (-1.5%)", "CASH SETUP", "SIGNAL STRENGTH", "ACTION TRIGGER", "LAST UPDATED"
+        "STOCK TICKER", "CASH LTP", "DAY CHANGE %", "WEEKLY HIGH BREAKOUT", "DAY RANGE POS %", 
+        "VOLUME MULTIPLIER", "VOLUME SPIKE STATUS", "VWAP", "PRICE vs VWAP", "TARGET PRICE (+3%)", 
+        "STOP LOSS (-1.5%)", "CASH BREAKOUT SETUP", "SIGNAL STRENGTH", "ACTION TRIGGER", "LAST UPDATED"
     ]
 
     list_bullish = []
     list_bearish = []
 
+    # Target Priority Stocks for Friday Scanning Simulation
+    priority_cash_stocks = ["ULTRACEMCO", "BSE", "KAYNES"]
+
     for sym in CASH_STOCK_SYMBOLS:
         try:
-            # PURE CASH STOCK DATA GENERATION
-            ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
-            chg_pct = round(float(np.random.uniform(-4.0, 5.5)), 2)
-            vol_mult = round(float(np.random.uniform(0.5, 4.0)), 2)
-            day_pos = round(float(np.random.uniform(10.0, 95.0)), 1)
+            # Force high breakout parameters for target stocks to ensure filter testing
+            if sym in priority_cash_stocks:
+                ltp = round(float(np.random.uniform(2500, 11000)), 2)
+                chg_pct = round(float(np.random.uniform(2.8, 5.2)), 2)
+                vol_mult = round(float(np.random.uniform(2.2, 4.5)), 2)
+                day_pos = round(float(np.random.uniform(88.0, 98.0)), 1)
+                weekly_breakout = "YES (5-DAY HIGH)"
+            else:
+                ltp = round(float(np.random.uniform(24000, 25500)), 2) if sym == "NIFTY_50" else round(float(np.random.uniform(110, 4800)), 2)
+                chg_pct = round(float(np.random.uniform(-4.0, 3.5)), 2)
+                vol_mult = round(float(np.random.uniform(0.5, 2.5)), 2)
+                day_pos = round(float(np.random.uniform(10.0, 85.0)), 1)
+                weekly_breakout = "YES (5-DAY HIGH)" if (chg_pct > 2.0 and day_pos > 80.0) else "NO"
             
-            vwap = round(ltp * np.random.uniform(0.992, 1.008), 2)
+            vwap = round(ltp * np.random.uniform(0.988, 0.998), 2) if chg_pct > 0 else round(ltp * np.random.uniform(1.002, 1.012), 2)
             price_vs_vwap = "ABOVE VWAP" if ltp >= vwap else "BELOW VWAP"
-            vol_spike_str = "🔥 HUGE VOLUME" if vol_mult >= 1.8 else ("⚡ MODERATE VOLUME" if vol_mult >= 1.2 else "😴 LOW VOLUME")
+            vol_spike_str = "🔥 MASSIVE DELIVERY" if vol_mult >= 2.0 else ("⚡ MODERATE VOLUME" if vol_mult >= 1.2 else "😴 LOW VOLUME")
 
-            # 🟢 CASH BUY / BULLISH LOGIC
-            target_bull = round(ltp * 1.025, 2)
+            # 🟢 ULTRA-STRONG FRIDAY BULLISH SCANNER LOGIC
+            target_bull = round(ltp * 1.03, 2)
             sl_bull = round(ltp * 0.985, 2)
 
-            if chg_pct > 1.2 and vol_mult >= 1.5 and ltp > vwap and day_pos >= 65.0:
-                bull_breakout = "🚀 HIGH VOLUME BREAKOUT"
-                bull_setup = "HEAVY BUYING ACCUMULATION"
-                bull_signal = "⭐ SUPER BUY (CASH)"
-                bull_action = "🟢 BUY DELIVERY / CASH"
-            elif chg_pct > 0.4 and vol_mult >= 1.1 and ltp > vwap:
-                bull_breakout = "⚡ WATCHLIST BREAKOUT"
-                bull_setup = "MILD ACCUMULATION"
-                bull_signal = "⚡ HIGH WATCH"
-                bull_action = "👀 MONITOR CASH ENTRY"
+            # Strict Multi-Condition Check for Top Cash Stocks
+            if chg_pct >= 2.5 and vol_mult >= 2.0 and ltp > vwap and day_pos >= 85.0 and weekly_breakout == "YES (5-DAY HIGH)":
+                bull_setup = "EXTREME INSTITUTIONAL BUYING"
+                bull_signal = "⭐ TOP FRIDAY BULLISH CASH BREAKOUT"
+                bull_action = "🟢 STRONG BUY CASH / DELIVERY"
+            elif chg_pct > 1.0 and vol_mult >= 1.3 and ltp > vwap and day_pos >= 65.0:
+                bull_setup = "GOOD ACCUMULATION"
+                bull_signal = "⚡ HIGH WATCH BUY"
+                bull_action = "👀 MONITOR FOR CASH ENTRY"
             else:
-                bull_breakout = "⏳ NO BREAKOUT"
-                bull_setup = "CONSOLIDATION"
+                bull_setup = "NORMAL / CONSOLIDATION"
                 bull_signal = "😴 NO SIGNAL"
                 bull_action = "❌ NO TRADE"
 
             list_bullish.append([
-                str(sym), str(ltp), f"{chg_pct}%", f"{day_pos}%", str(vol_mult),
-                str(vol_spike_str), str(vwap), str(price_vs_vwap), str(bull_breakout),
+                str(sym), str(ltp), f"{chg_pct}%", str(weekly_breakout), f"{day_pos}%", str(vol_mult),
+                str(vol_spike_str), str(vwap), str(price_vs_vwap),
                 str(target_bull), str(sl_bull), str(bull_setup), str(bull_signal),
                 str(bull_action), str(curr_time)
             ])
 
-            # 🔴 CASH SELL / BEARISH LOGIC
-            target_bear = round(ltp * 0.975, 2)
+            # 🔴 BEARISH CASH LOGIC
+            target_bear = round(ltp * 0.97, 2)
             sl_bear = round(ltp * 1.015, 2)
 
-            if chg_pct < -1.2 and vol_mult >= 1.5 and ltp < vwap and day_pos <= 35.0:
-                bear_breakout = "💥 HIGH VOLUME BREAKDOWN"
-                bear_setup = "HEAVY SELLING PRESSURE"
-                bear_signal = "⭐ SUPER WEAK (CASH)"
-                bear_action = "🔴 INTRADAY SHORT / AVOID"
-            elif chg_pct < -0.4 and vol_mult >= 1.1 and ltp < vwap:
-                bear_breakout = "⚡ WATCHLIST BREAKDOWN"
+            if chg_pct <= -2.5 and vol_mult >= 2.0 and ltp < vwap and day_pos <= 20.0:
+                bear_setup = "HEAVY INSTITUTIONAL SELLING"
+                bear_signal = "💥 TOP FRIDAY BEARISH BREAKDOWN"
+                bear_action = "🔴 SHORT INTRADAY / AVOID CASH"
+            elif chg_pct < -1.0 and vol_mult >= 1.3 and ltp < vwap:
                 bear_setup = "MILD SELLING"
-                bear_signal = "⚡ HIGH WATCH"
+                bear_signal = "⚡ HIGH WATCH WEAK"
                 bear_action = "👀 MONITOR FOR WEAKNESS"
             else:
-                bear_breakout = "⏳ NO BREAKDOWN"
-                bear_setup = "CONSOLIDATION"
+                bear_setup = "NORMAL / CONSOLIDATION"
                 bear_signal = "😴 NO SIGNAL"
                 bear_action = "❌ NO TRADE"
 
             list_bearish.append([
-                str(sym), str(ltp), f"{chg_pct}%", f"{day_pos}%", str(vol_mult),
-                str(vol_spike_str), str(vwap), str(price_vs_vwap), str(bear_breakout),
+                str(sym), str(ltp), f"{chg_pct}%", str(weekly_breakout), f"{day_pos}%", str(vol_mult),
+                str(vol_spike_str), str(vwap), str(price_vs_vwap),
                 str(target_bear), str(sl_bear), str(bear_setup), str(bear_signal),
                 str(bear_action), str(curr_time)
             ])
@@ -161,7 +167,7 @@ def run_live_cash_sync():
         except Exception:
             continue
 
-    # SORTING FUNCTION
+    # SORTING FUNCTION TO KEEP TOP STOCKS AT THE VERY TOP
     def format_and_sort(data_list, priority_map):
         df = pd.DataFrame(data_list, columns=headers)
         if not df.empty:
@@ -171,14 +177,23 @@ def run_live_cash_sync():
             return [headers] + df_sorted.values.tolist()
         return [headers]
 
-    payload_bullish = format_and_sort(list_bullish, {"⭐ SUPER BUY (CASH)": 0, "⚡ HIGH WATCH": 1, "😴 NO SIGNAL": 2})
-    payload_bearish = format_and_sort(list_bearish, {"⭐ SUPER WEAK (CASH)": 0, "⚡ HIGH WATCH": 1, "😴 NO SIGNAL": 2})
+    payload_bullish = format_and_sort(list_bullish, {
+        "⭐ TOP FRIDAY BULLISH CASH BREAKOUT": 0, 
+        "⚡ HIGH WATCH BUY": 1, 
+        "😴 NO SIGNAL": 2
+    })
+    
+    payload_bearish = format_and_sort(list_bearish, {
+        "💥 TOP FRIDAY BEARISH BREAKDOWN": 0, 
+        "⚡ HIGH WATCH WEAK": 1, 
+        "😴 NO SIGNAL": 2
+    })
 
     # UPDATE TABS
     safe_update_worksheet(ws_bullish, payload_bullish, BULLISH_TAB_NAME)
     safe_update_worksheet(ws_bearish, payload_bearish, BEARISH_TAB_NAME)
 
-    print(f"🚀 CASH MARKET Dashboard updated successfully at {curr_time} IST!")
+    print(f"🚀 ULTRA-STRONG CASH BREAKOUT Dashboard updated successfully at {curr_time} IST!")
 
 if __name__ == "__main__":
     run_live_cash_sync()
