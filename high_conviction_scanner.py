@@ -47,7 +47,7 @@ def get_or_create_worksheet(spreadsheet, title):
         return spreadsheet.sheet1
 
 # ==========================================
-# MAIN DUAL-DIRECTIONAL SCANNER (CE + PE)
+# MAIN SCANNER WITH SIMPLIFIED DISPLAY
 # ==========================================
 def run_final_sensibule_scanner():
     client = get_gspread_client()
@@ -69,8 +69,8 @@ def run_final_sensibule_scanner():
         "LTP", 
         "TREND STATUS", 
         "STRATEGY",
-        "BREAKEVEN POINT", 
-        "STRICT SL (1.5%)", 
+        "🎯 TARGET / BREAKEVEN", 
+        "🛑 STRICT SL (1.5%)", 
         "SENSIBULE TRIGGER"
     ]
 
@@ -102,7 +102,6 @@ def run_final_sensibule_scanner():
             vol_avg = float(df['Volume'].iloc[-20:-1].mean())
             vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
 
-            # 5-Day High and Low (Excluding Today)
             five_day_high = float(df['High'].iloc[-6:-1].max())
             five_day_low = float(df['Low'].iloc[-6:-1].min())
             
@@ -116,9 +115,6 @@ def run_final_sensibule_scanner():
             trend_status = ""
             strategy = ""
 
-            # -------------------------------------------------------------
-            # DUAL-DIRECTIONAL SELECTION ENGINE (BULLISH & BEARISH)
-            # -------------------------------------------------------------
             # 1. BULLISH SCENARIOS (CE / BULL CALL SPREAD)
             if chg_pct > 0:
                 if is_largecap:
@@ -145,16 +141,21 @@ def run_final_sensibule_scanner():
                         trend_status = "💥 BEARISH BREAKDOWN"
                         strategy = "BUY PUT OPTION (PE)"
 
-            # Dynamic Target & StopLoss Calculation
+            # -------------------------------------------------------------
+            # SIMPLIFIED EMOJI & TEXT BASED TARGET & SL LOGIC
+            # -------------------------------------------------------------
             if detected:
                 if "CALL" in strategy or "CE" in strategy:
-                    breakeven = round(ltp * 1.012, 2)
-                    sl = round(ltp * 0.985, 2)
+                    be_val = round(ltp * 1.012, 2)
+                    sl_val = round(ltp * 0.985, 2)
+                    breakeven_display = f"🟢 ABOVE {be_val}"
+                    sl_display = f"🔴 BELOW {sl_val}"
                 else:  # PUT / PE Strategies
-                    breakeven = round(ltp * 0.988, 2)
-                    sl = round(ltp * 1.015, 2)
+                    be_val = round(ltp * 0.988, 2)
+                    sl_val = round(ltp * 1.015, 2)
+                    breakeven_display = f"🟢 BELOW {be_val}"
+                    sl_display = f"🔴 ABOVE {sl_val}"
 
-                # Unified Absolute Score Calculation
                 breakout_bonus = 15.0 if (is_bullish_breakout or is_bearish_breakdown) else 0.0
                 score = (abs(chg_pct) * 6.0) + (point_move * 0.5) + (vol_mult * 2.0) + breakout_bonus
 
@@ -163,8 +164,8 @@ def run_final_sensibule_scanner():
                     "LTP": ltp, 
                     "TREND": trend_status,
                     "STRATEGY": strategy,
-                    "BREAKEVEN": breakeven, 
-                    "SL": sl, 
+                    "BREAKEVEN": breakeven_display, 
+                    "SL": sl_display, 
                     "SCORE": score
                 })
 
@@ -185,8 +186,8 @@ def run_final_sensibule_scanner():
                 str(row["LTP"]), 
                 row["TREND"],
                 row["STRATEGY"],
-                str(row["BREAKEVEN"]), 
-                str(row["SL"]), 
+                row["BREAKEVEN"], 
+                row["SL"], 
                 top_selection
             ])
 
