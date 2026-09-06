@@ -127,25 +127,50 @@ def analyze_cash_breakouts():
     
     return [item["data"] for item in sorted_results]
 
-def run_live_cash_sync():
-    client = get_gspread_client()
-    sheet = client.open_by_key(SHEET_ID)
-    try:
-        worksheet = sheet.worksheet(BULLISH_TAB_NAME)
-    except Exception:
-        worksheet = sheet.add_worksheet(title=BULLISH_TAB_NAME, rows="100", cols="20")
+import time
+from gspread.exceptions import APIError
 
+def run_live_cash_sync(max_retries=3, delay=5):
+    """
+    Updates the Google Sheet with scanned cash breakout data.
+    Includes auto-retry logic to handle transient Google API (503/500) errors.
+    """
+    scanned_data = analyze_cash_breakouts()
     headers = [
         "STOCK TICKER", "CASH LTP", "DAY CHANGE %", "WEEKLY HIGH BREAKOUT",
         "DAY RANGE POS %", "VOLUME MULTIPLIER", "VOLUME SPIKE STATUS", "VWAP",
         "PRICE vs VWAP", "TARGET PRICE (+3%)", "STOP LOSS (-1.5%)", 
         "CASH BREAKOUT SETUP", "SIGNAL STRENGTH", "ACTION TRIGGER", "LAST UPDATED"
     ]
-    
-    scanned_data = analyze_cash_breakouts()
-    worksheet.clear()
-    worksheet.update(values=[headers] + scanned_data, range_name="A1")
-    print(f"✅ Successfully Updated {len(scanned_data)} Restored Friday Signals!")
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"🔄 Attempt {attempt}/{max_retries}: Connecting to Google Sheets...")
+            client = get_gspread_client()
+            sheet = client.open_by_key(SHEET_ID)
+
+            try:
+                worksheet = sheet.worksheet(BULLISH_TAB_NAME)
+            except Exception:
+                worksheet = sheet.add_worksheet(title=BULLISH_TAB_NAME, rows="100", cols="20")
+
+            worksheet.clear()
+            worksheet.update(values=[headers] + scanned_data, range_name="A1")
+            print(f"✅ Successfully Updated {len(scanned_data)} Restored Friday Signals!")
+            break  # Successful execution, break retry loop
+
+        except APIError as e:
+            print(f"⚠️ Google API Error on attempt {attempt}: {e}")
+            if attempt < max_retries:
+                print(f"⏳ Waiting {delay} seconds before retrying...")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff (5s, 10s...)
+            else:
+                print("❌ Max retries reached. Google Sheets API remains unavailable.")
+                raise e
+        except Exception as e:
+            print(f"❌ Unexpected Error: {e}")
+            raise e
 
 if __name__ == "__main__":
     run_live_cash_sync()
