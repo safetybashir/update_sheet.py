@@ -16,23 +16,23 @@ NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
 
 # 1. LARGECAP F&O STOCKS (~50 Heavyweights)
 LARGECAP_SYMBOLS = [
-    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", 
-    "BHARTIARTL.NS", "LTIM.NS", "LT.NS", "ITC.NS", 
-    "HINDUNILVR.NS", "M&M.NS", "MARUTI.NS", 
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", 
+    "BHARTIARTL.NS", "SBIN.NS", "LTIM.NS", "LT.NS", "ITC.NS", 
+    "HINDUNILVR.NS", "AXISBANK.NS", "KOTAKBANK.NS", "M&M.NS", "MARUTI.NS", 
     "SUNPHARMA.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "NTPC.NS", "POWERGRID.NS", 
-    "ULTRACEMCO.NS", "TITAN.NS", 
-    "COALINDIA.NS", "ONGC.NS", "GRASIM.NS", "JSWSTEEL.NS", 
+    "ULTRACEMCO.NS", "TITAN.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "ADANIENT.NS", 
+    "ADANIPORTS.NS", "COALINDIA.NS", "ONGC.NS", "GRASIM.NS", "JSWSTEEL.NS", 
     "HCLTECH.NS", "TECHM.NS", "WIPRO.NS", "ASIANPAINT.NS", "NESTLEIND.NS", 
     "DLF.NS", "IOC.NS", "BPCL.NS", "GAIL.NS", "REC.NS", 
     "PFC.NS", "HAL.NS", "BEL.NS", "SIEMENS.NS", "ABB.NS", 
-    "PIDILITIND.NS", "INDIGO.NS"
+    "HDFCLIFE.NS", "SBILIFE.NS", "ICICIPRULI.NS", "PIDILITIND.NS", "INDIGO.NS"
 ]
 
 # 2. MIDCAP / HIGH-BETA F&O STOCKS (~130+ Active Movers)
 MIDCAP_SYMBOLS = [
     "BSE.NS", "KAYNES.NS", "POLYCAB.NS", "DIXON.NS", "PERSISTENT.NS", 
-    "COFORGE.NS", "MCX.NS", "TRENT.NS", 
-    "AUROPHARMA.NS", "LUPIN.NS", "BIOCON.NS", "DRREDDY.NS", 
+    "COFORGE.NS", "MCX.NS", "TRENT.NS", "MUTHOOTFIN.NS", "CHOLAFIN.NS", 
+    "MANAPPURAM.NS", "AUROPHARMA.NS", "LUPIN.NS", "BIOCON.NS", "DRREDDY.NS", 
     "CIPLA.NS", "GLENMARK.NS", "TORNTPHARM.NS", "DIVISLAB.NS", "SYNGENE.NS", 
     "APOLLOHOSP.NS", "MAXHEALTH.NS", "FORTIS.NS", "ABBOTINDIA.NS", "IPCALAB.NS", 
     "VOLTAS.NS", "BLUESTARCO.NS", "HAVELLS.NS", "CUMMINSIND.NS", "ASTRAL.NS", 
@@ -40,17 +40,22 @@ MIDCAP_SYMBOLS = [
     "ATUL.NS", "DEEPAKNTR.NS", "NAVINFLUOR.NS", "CHEMICALS.NS", "CONCOR.NS", 
     "EXIDEIND.NS", "AMARAJABAT.NS", "BOSCHLTD.NS", "BHARATFORG.NS", "BALKRISIND.NS", 
     "TIINDIA.NS", "ASHOKLEY.NS", "EICHERMOT.NS", "HEROMOTOCO.NS", "TVSMOTOR.NS", 
-    "ESCORTS.NS", "MRF.NS", "MOTHERSON.NS", "APOLLOTYRE.NS", "ANGELONE.NS", 
-    "CDSL.NS", "CAMS.NS", "NIFTYBEES.NS", "OBEROIRTY.NS", 
+    "ESCORTS.NS", "MRF.NS", "MOTHERSON.NS", "APOLLOTYRE.NS", "CANBK.NS", 
+    "UNIONBANK.NS", "BANKBARODA.NS", "PNB.NS", "IDFCFIRSTB.NS", "FEDERALBNK.NS", 
+    "BANDHANBNK.NS", "AUBANK.NS", "INDUSINDBK.NS", "RBLBANK.NS", "MFSL.NS", 
+    "LICHSGFIN.NS", "PEL.NS", "L&TFH.NS", "SHRIRAMFIN.NS", "PIRAMAL.NS", 
+    "M&MFIN.NS", "CREDITACC.NS", "ISEC.NS", "ANGELONE.NS", 
+    "CDSL.NS", "CAMS.NS", "OBEROIRTY.NS", 
     "GODREJPROP.NS", "PHOENIXLTD.NS", "LODHA.NS", "PRESTIGE.NS", "SOBHA.NS", 
     "NATIONALUM.NS", "HINDALCO.NS", "VEDL.NS", "NMDC.NS", "SAIL.NS", 
     "JINDALSTEL.NS", "HINDCOPPER.NS", "APLAPOLLO.NS", "RATNAMANI.NS", "IRCTC.NS", 
     "IRFC.NS", "RVNL.NS", "RAILTEL.NS", "TITAGARH.NS", "BHEL.NS", 
-    "COALINDIA.NS", "NHPC.NS", "SJVN.NS", "NLCINDIA.NS", "TORNTPOWER.NS", 
-    "TATAPOWER.NS",  "CESC.NS", "SUZLON.NS", 
+    "NHPC.NS", "SJVN.NS", "NLCINDIA.NS", "TORNTPOWER.NS", 
+    "TATAPOWER.NS", "ADANIPOWER.NS", "ADANIGREEN.NS", "CESC.NS", "SUZLON.NS", 
     "INOXWIND.NS", "ZOMATO.NS", "PAYTM.NS", "POLICYBZR.NS", "NYKAA.NS", 
     "DELHIVERY.NS", "NAUKRI.NS", "INDAMART.NS", "JUSTDIAL.NS", "MAPMYINDIA.NS", 
-    "DEVYANI.NS", "JUBLFOOD.NS", "WESTLIFE.NS", "TATACONSUM.NS", 
+    "PVRINOX.NS", "DEVYANI.NS", "JUBLFOOD.NS", "WESTLIFE.NS", "TATACONSUM.NS", 
+    "VBL.NS", "UBL.NS", "MCDOWELL-N.NS", "RADICO.NS", "COLPAL.NS", 
     "DABUR.NS", "MARICO.NS", "GODREJCP.NS", "BRITANNIA.NS", "BALRAMCHIN.NS"
 ]
 
@@ -78,7 +83,7 @@ def get_or_create_worksheet(spreadsheet, title):
         return spreadsheet.sheet1
 
 # ==========================================
-# MAIN FULL-MARKET SCANNER (CE + PE)
+# MAIN SCANNER (TOP 5 EXECUTION SELECTION)
 # ==========================================
 def run_final_sensibule_scanner():
     client = get_gspread_client()
@@ -90,7 +95,7 @@ def run_final_sensibule_scanner():
 
     rule_headers = [
         "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: FULL F&O UNIVERSE SCANNER (~180+ STOCKS)", 
+        "BACKEND: DUAL-DIRECTIONAL SCANNER (TOP 5 HIGHEST CONVICTION)", 
         "", "", "", "", 
         f"LAST UPDATED: {curr_time} IST"
     ]
@@ -167,7 +172,7 @@ def run_final_sensibule_scanner():
                         trend_status = "🔻 LARGECAP DISTRIBUTION"
                         strategy = "BEAR PUT SPREAD"
                 else:
-                    if (chg_pct <= -3.0 or (is_bearish_breakdown or vol_mult >= 1.1)) and close_pos <= 0.35:
+                    if (chg_pct <= -3.0 or (is_bearish_breakdown and vol_mult >= 1.1)) and close_pos <= 0.35:
                         detected = True
                         trend_status = "💥 BEARISH BREAKDOWN"
                         strategy = "BUY PUT OPTION (PE)"
@@ -208,7 +213,8 @@ def run_final_sensibule_scanner():
 
         final_rows = []
         for idx, row in df_raw.reset_index(drop=True).iterrows():
-            top_selection = "🔥 EXECUTE" if idx < 3 else "WATCHLIST SIGNAL"
+            # TOP 5 TRADES ARE SET TO "🔥 EXECUTE IN SENSIBULE"
+            top_selection = "🔥 EXECUTE IN SENSIBULE" if idx < 5 else "WATCHLIST SIGNAL"
             final_rows.append([
                 row["TICKER"], 
                 str(row["LTP"]), 
@@ -226,7 +232,7 @@ def run_final_sensibule_scanner():
     try:
         ws.clear()
         ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
-        print(f"✅ Executed Successfully for ALL F&O Stocks at {curr_time} IST!")
+        print(f"✅ Executed Successfully for TOP 5 Trades at {curr_time} IST!")
     except Exception as e:
         print(f"❌ Sheet Update Failed: {str(e)}")
 
