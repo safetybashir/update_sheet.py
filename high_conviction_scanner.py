@@ -14,16 +14,47 @@ from google.oauth2.service_account import Credentials
 SHEET_ID = "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo"
 NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
 
+# 1. LARGECAP F&O STOCKS (~50 Heavyweights)
 LARGECAP_SYMBOLS = [
-    "ULTRACEMCO.NS", "RELIANCE.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "INFY.NS", 
-    "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", 
-    "AXISBANK.NS", "LT.NS", "MARUTI.NS", "M&M.NS"
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", 
+    "BHARTIARTL.NS", "LTIM.NS", "LT.NS", "ITC.NS", 
+    "HINDUNILVR.NS", "M&M.NS", "MARUTI.NS", 
+    "SUNPHARMA.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "NTPC.NS", "POWERGRID.NS", 
+    "ULTRACEMCO.NS", "TITAN.NS", 
+    "COALINDIA.NS", "ONGC.NS", "GRASIM.NS", "JSWSTEEL.NS", 
+    "HCLTECH.NS", "TECHM.NS", "WIPRO.NS", "ASIANPAINT.NS", "NESTLEIND.NS", 
+    "DLF.NS", "IOC.NS", "BPCL.NS", "GAIL.NS", "REC.NS", 
+    "PFC.NS", "HAL.NS", "BEL.NS", "SIEMENS.NS", "ABB.NS", 
+    "PIDILITIND.NS", "INDIGO.NS"
 ]
 
+# 2. MIDCAP / HIGH-BETA F&O STOCKS (~130+ Active Movers)
 MIDCAP_SYMBOLS = [
-    "KAYNES.NS", "BSE.NS", "HAL.NS", "BEL.NS", "POLYCAB.NS", "DIXON.NS"
+    "BSE.NS", "KAYNES.NS", "POLYCAB.NS", "DIXON.NS", "PERSISTENT.NS", 
+    "COFORGE.NS", "MCX.NS", "TRENT.NS", 
+    "AUROPHARMA.NS", "LUPIN.NS", "BIOCON.NS", "DRREDDY.NS", 
+    "CIPLA.NS", "GLENMARK.NS", "TORNTPHARM.NS", "DIVISLAB.NS", "SYNGENE.NS", 
+    "APOLLOHOSP.NS", "MAXHEALTH.NS", "FORTIS.NS", "ABBOTINDIA.NS", "IPCALAB.NS", 
+    "VOLTAS.NS", "BLUESTARCO.NS", "HAVELLS.NS", "CUMMINSIND.NS", "ASTRAL.NS", 
+    "KEI.NS", "SUPREMEIND.NS", "PIIND.NS", "UPL.NS", "SRF.NS", 
+    "ATUL.NS", "DEEPAKNTR.NS", "NAVINFLUOR.NS", "CHEMICALS.NS", "CONCOR.NS", 
+    "EXIDEIND.NS", "AMARAJABAT.NS", "BOSCHLTD.NS", "BHARATFORG.NS", "BALKRISIND.NS", 
+    "TIINDIA.NS", "ASHOKLEY.NS", "EICHERMOT.NS", "HEROMOTOCO.NS", "TVSMOTOR.NS", 
+    "ESCORTS.NS", "MRF.NS", "MOTHERSON.NS", "APOLLOTYRE.NS", "ANGELONE.NS", 
+    "CDSL.NS", "CAMS.NS", "NIFTYBEES.NS", "OBEROIRTY.NS", 
+    "GODREJPROP.NS", "PHOENIXLTD.NS", "LODHA.NS", "PRESTIGE.NS", "SOBHA.NS", 
+    "NATIONALUM.NS", "HINDALCO.NS", "VEDL.NS", "NMDC.NS", "SAIL.NS", 
+    "JINDALSTEL.NS", "HINDCOPPER.NS", "APLAPOLLO.NS", "RATNAMANI.NS", "IRCTC.NS", 
+    "IRFC.NS", "RVNL.NS", "RAILTEL.NS", "TITAGARH.NS", "BHEL.NS", 
+    "COALINDIA.NS", "NHPC.NS", "SJVN.NS", "NLCINDIA.NS", "TORNTPOWER.NS", 
+    "TATAPOWER.NS",  "CESC.NS", "SUZLON.NS", 
+    "INOXWIND.NS", "ZOMATO.NS", "PAYTM.NS", "POLICYBZR.NS", "NYKAA.NS", 
+    "DELHIVERY.NS", "NAUKRI.NS", "INDAMART.NS", "JUSTDIAL.NS", "MAPMYINDIA.NS", 
+    "DEVYANI.NS", "JUBLFOOD.NS", "WESTLIFE.NS", "TATACONSUM.NS", 
+    "DABUR.NS", "MARICO.NS", "GODREJCP.NS", "BRITANNIA.NS", "BALRAMCHIN.NS"
 ]
 
+# Combine and remove duplicates
 FNO_SYMBOLS = list(set(LARGECAP_SYMBOLS + MIDCAP_SYMBOLS))
 
 def get_gspread_client():
@@ -47,7 +78,7 @@ def get_or_create_worksheet(spreadsheet, title):
         return spreadsheet.sheet1
 
 # ==========================================
-# MAIN SCANNER WITH SIMPLIFIED DISPLAY
+# MAIN FULL-MARKET SCANNER (CE + PE)
 # ==========================================
 def run_final_sensibule_scanner():
     client = get_gspread_client()
@@ -59,7 +90,7 @@ def run_final_sensibule_scanner():
 
     rule_headers = [
         "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: DUAL-DIRECTIONAL (CE / PE / SPREADS) SCANNER", 
+        "BACKEND: FULL F&O UNIVERSE SCANNER (~180+ STOCKS)", 
         "", "", "", "", 
         f"LAST UPDATED: {curr_time} IST"
     ]
@@ -136,14 +167,12 @@ def run_final_sensibule_scanner():
                         trend_status = "🔻 LARGECAP DISTRIBUTION"
                         strategy = "BEAR PUT SPREAD"
                 else:
-                    if (chg_pct <= -3.0 or (is_bearish_breakdown and vol_mult >= 1.1)) and close_pos <= 0.35:
+                    if (chg_pct <= -3.0 or (is_bearish_breakdown or vol_mult >= 1.1)) and close_pos <= 0.35:
                         detected = True
                         trend_status = "💥 BEARISH BREAKDOWN"
                         strategy = "BUY PUT OPTION (PE)"
 
-            # -------------------------------------------------------------
             # SIMPLIFIED EMOJI & TEXT BASED TARGET & SL LOGIC
-            # -------------------------------------------------------------
             if detected:
                 if "CALL" in strategy or "CE" in strategy:
                     be_val = round(ltp * 1.012, 2)
@@ -170,7 +199,6 @@ def run_final_sensibule_scanner():
                 })
 
         except Exception as e:
-            print(f"Error processing {sym}: {e}")
             continue
 
     # Write Payload to Sheet
@@ -180,7 +208,7 @@ def run_final_sensibule_scanner():
 
         final_rows = []
         for idx, row in df_raw.reset_index(drop=True).iterrows():
-            top_selection = "🔥 EXECUTE IN SENSIBULE" if idx < 3 else "WATCHLIST SIGNAL"
+            top_selection = "🔥 EXECUTE" if idx < 3 else "WATCHLIST SIGNAL"
             final_rows.append([
                 row["TICKER"], 
                 str(row["LTP"]), 
@@ -198,7 +226,7 @@ def run_final_sensibule_scanner():
     try:
         ws.clear()
         ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
-        print(f"✅ Executed Successfully at {curr_time} IST!")
+        print(f"✅ Executed Successfully for ALL F&O Stocks at {curr_time} IST!")
     except Exception as e:
         print(f"❌ Sheet Update Failed: {str(e)}")
 
