@@ -22,11 +22,13 @@ CASH_STOCKS = [
     "KAYNES", "ULTRACEMCO", "DIXON", "POLYCAB", "TRENT"
 ]
 
+
 def get_gspread_client():
     """
     Authenticate and return gspread client handling:
     1. GitHub Actions ENV Variable ('GCP_CREDENTIALS_JSON')
     2. Local file fallback ('credentials.json')
+    3. Proper JSON Syntax Error Catching
     """
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -35,22 +37,34 @@ def get_gspread_client():
     
     # 1. Direct ENV handling for GitHub Actions
     if "GCP_CREDENTIALS_JSON" in os.environ and os.environ["GCP_CREDENTIALS_JSON"].strip():
+        raw_json = os.environ["GCP_CREDENTIALS_JSON"].strip()
         try:
-            creds_dict = json.loads(os.environ["GCP_CREDENTIALS_JSON"])
+            creds_dict = json.loads(raw_json)
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        except Exception as e:
-            raise ValueError(f"Error parsing 'GCP_CREDENTIALS_JSON' ENV secret: {e}")
+            return gspread.authorize(creds)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"❌ Invalid JSON in GitHub Secret 'GCP_CREDENTIALS_JSON'. "
+                f"Please re-copy your GCP service account JSON key into GitHub Secrets.\nError details: {e}"
+            )
             
     # 2. Local File Fallback
     elif os.path.exists(CREDENTIALS_FILE):
-        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scope)
-        
+        try:
+            with open(CREDENTIALS_FILE, "r", encoding="utf-8") as f:
+                creds_dict = json.load(f)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+            return gspread.authorize(creds)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"❌ Invalid JSON format inside local '{CREDENTIALS_FILE}'. "
+                f"Check for missing quotes or trailing commas.\nError details: {e}"
+            )
+            
     else:
         raise FileNotFoundError(
             "Neither 'GCP_CREDENTIALS_JSON' secret env nor 'credentials.json' file was found."
         )
-        
-    return gspread.authorize(creds)
 
 
 def analyze_cash_breakouts():
@@ -111,13 +125,13 @@ def analyze_cash_breakouts():
                 setup = "ULTRA INSTITUTIONAL BUYING"
                 strength = "🔥 TOP GRADE-A+ BREAKOUT"
                 action = "🟢 STRONG BUY CASH / DELIVERY"
-                setup_rank = 5  # TOP PRIORITY (BSE, KAYNES STYLE)
+                setup_rank = 5
 
             elif is_breakout and day_pos_pct >= 80.0 and vol_mult >= 1.8 and is_above_vwap:
                 setup = "STRONG INSTITUTIONAL BUYING"
                 strength = "⭐ TOP GRADE-A BREAKOUT"
                 action = "🟢 STRONG BUY CASH"
-                setup_rank = 4  # SECONDARY HIGH PRIORITY (ULTRACEMCO STYLE)
+                setup_rank = 4
 
             elif is_breakout and day_pos_pct >= 70.0 and is_above_vwap:
                 setup = "BREAKOUT CONFIRMED"
