@@ -9,8 +9,6 @@ from datetime import datetime
 import pytz
 from gspread_formatting import *
 
-warnings.filterwarnings("ignore")
-
 # 🎯 TARGET MASTER SPREADSHEET ID
 SHEET_ID = "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg"
 BULLISH_TAB_NAME = "LIVE_BULLISH_CASH_DASHBOARD"
