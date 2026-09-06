@@ -14,19 +14,17 @@ from google.oauth2.service_account import Credentials
 SHEET_ID = "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo"
 NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
 
-# Nifty 50 Heavyweights (LargeCap Rule Set)
+# Focus Universe containing Heavyweights and High-Beta Momentum Leaders
 LARGECAP_SYMBOLS = [
     "ULTRACEMCO.NS", "RELIANCE.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "INFY.NS", 
     "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", 
     "AXISBANK.NS", "LT.NS", "MARUTI.NS", "M&M.NS"
 ]
 
-# MidCap & High-Beta Momentum Focus
 MIDCAP_SYMBOLS = [
     "KAYNES.NS", "BSE.NS", "HAL.NS", "BEL.NS", "POLYCAB.NS", "DIXON.NS"
 ]
 
-# Combined Tickers Universe
 FNO_SYMBOLS = list(set(LARGECAP_SYMBOLS + MIDCAP_SYMBOLS))
 
 def get_gspread_client():
@@ -67,7 +65,7 @@ def run_final_sensibule_scanner():
 
     rule_headers = [
         "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: DIRECT CE (CALL) & PE (PUT) OPTION SIGNALS", 
+        "BACKEND: ABSOLUTE MOMENTUM & BREAKOUT SCANNER", 
         "", "", "", "", 
         f"LAST UPDATED: {curr_time} IST"
     ]
@@ -99,6 +97,7 @@ def run_final_sensibule_scanner():
             ltp = round(float(df['Close'].iloc[-1]), 2)
             prev_close = float(df['Close'].iloc[-2])
             chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
+            point_move = abs(ltp - prev_close)
 
             day_high = float(df['High'].iloc[-1])
             day_low = float(df['Low'].iloc[-1])
@@ -112,58 +111,40 @@ def run_final_sensibule_scanner():
             vol_avg = float(df['Volume'].iloc[-20:-1].mean())
             vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
 
-            # 5-Day Range Breakout / Breakdown
+            # 5-Day Range Breakout
             five_day_high = float(df['High'].tail(6).iloc[:-1].max())
-            five_day_low = float(df['Low'].tail(6).iloc[:-1].min())
-            
             is_bullish_breakout = ltp > five_day_high
-            is_bearish_breakdown = ltp < five_day_low
 
             clean_ticker = sym.replace(".NS", "")
             is_largecap = sym in LARGECAP_SYMBOLS
 
             # -------------------------------------------------------------
-            # BACKEND ENGINE LOGIC: DYNAMIC CALL (CE) & PUT (PE) SIGNALS
+            # CASE-BASED SELECTION LOGIC FOR BREAKOUT STOCKS
             # -------------------------------------------------------------
             detected = False
             trend_status = ""
             strategy = ""
-            breakeven = 0.0
-            sl = 0.0
 
             if is_largecap:
-                # Rule 1A: LargeCap Bullish (ULTRACEMCO logic)
-                if vol_mult >= 1.20 and close_pos >= 0.65 and is_bullish_breakout:
+                # Case A: LargeCap Steady Heavyweight Accumulation (ULTRACEMCO)
+                if vol_mult >= 1.15 and close_pos >= 0.65 and is_bullish_breakout:
                     detected = True
                     trend_status = "🔥 LARGECAP ACCUMULATION"
-                    strategy = "BUY CALL OPTION (CE)"
-                    breakeven = round(ltp * 1.012, 2)
-                    sl = round(ltp * 0.985, 2)
-                # Rule 1B: LargeCap Bearish Distribution
-                elif vol_mult >= 1.20 and close_pos <= 0.35 and is_bearish_breakdown:
-                    detected = True
-                    trend_status = "📉 LARGECAP DISTRIBUTION"
-                    strategy = "BUY PUT OPTION (PE)"
-                    breakeven = round(ltp * 0.988, 2)
-                    sl = round(ltp * 1.015, 2)
+                    strategy = "BULL CALL SPREAD"  # Protective Strategy for Heavyweights
             else:
-                # Rule 2A: MidCap Bullish Momentum (KAYNES & BSE logic)
-                if (vol_mult >= 1.60 or is_bullish_breakout) and close_pos >= 0.70 and chg_pct >= 2.0:
+                # Case B: MidCap Fast Momentum Expansion (KAYNES & BSE)
+                if (vol_mult >= 1.40 or is_bullish_breakout) and close_pos >= 0.70 and chg_pct >= 2.0:
                     detected = True
                     trend_status = "🚀 MOMENTUM BREAKOUT"
-                    strategy = "BUY CALL OPTION (CE)"
-                    breakeven = round(ltp * 1.012, 2)
-                    sl = round(ltp * 0.985, 2)
-                # Rule 2B: MidCap Bearish Breakdown
-                elif (vol_mult >= 1.60 or is_bearish_breakdown) and close_pos <= 0.30 and chg_pct <= -2.0:
-                    detected = True
-                    trend_status = "🚨 MOMENTUM BREAKDOWN"
-                    strategy = "BUY PUT OPTION (PE)"
-                    breakeven = round(ltp * 0.988, 2)
-                    sl = round(ltp * 1.015, 2)
+                    strategy = "BUY CALL OPTION (CE)"  # Direct Momentum Strategy
 
-            if detected:
-                score = vol_mult + abs(chg_pct)
+            if detected and chg_pct > 0:
+                breakeven = round(ltp * 1.012, 2)
+                sl = round(ltp * 0.985, 2)
+
+                # Combined Weighted Ranking Score (Point Move + % Gain + Vol Spurt + Breakout Bonus)
+                breakout_bonus = 5.0 if is_bullish_breakout else 0.0
+                score = (chg_pct * 3.0) + (point_move * 0.04) + (vol_mult * 1.5) + breakout_bonus
 
                 raw_signals.append({
                     "TICKER": clean_ticker, 
@@ -179,7 +160,7 @@ def run_final_sensibule_scanner():
             print(f"Error processing {sym}: {e}")
             continue
 
-    # Process and Render Signals to Google Sheet
+    # Process and Render Top Ranked Signals to Google Sheet
     if raw_signals:
         df_raw = pd.DataFrame(raw_signals)
         df_raw = df_raw.sort_values(by="SCORE", ascending=False)
@@ -202,7 +183,7 @@ def run_final_sensibule_scanner():
         payload = [
             rule_headers, 
             column_headers, 
-            ["NO STRONG CALL OR PUT BREAKOUT MATCHED CURRENTLY"] + [""] * 6
+            ["NO STRONG BREAKOUT MATCHED CURRENTLY"] + [""] * 6
         ]
 
     # Write Payload to Google Sheet
