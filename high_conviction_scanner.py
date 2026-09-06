@@ -67,7 +67,7 @@ def run_final_sensibule_scanner():
 
     rule_headers = [
         "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: DYNAMIC MULTI-TIER BREAKOUT LOGIC", 
+        "BACKEND: DIRECT CE (CALL) & PE (PUT) OPTION SIGNALS", 
         "", "", "", "", 
         f"LAST UPDATED: {curr_time} IST"
     ]
@@ -112,36 +112,57 @@ def run_final_sensibule_scanner():
             vol_avg = float(df['Volume'].iloc[-20:-1].mean())
             vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
 
-            # 5-Day Range Breakout
+            # 5-Day Range Breakout / Breakdown
             five_day_high = float(df['High'].tail(6).iloc[:-1].max())
-            is_breakout = ltp > five_day_high
+            five_day_low = float(df['Low'].tail(6).iloc[:-1].min())
+            
+            is_bullish_breakout = ltp > five_day_high
+            is_bearish_breakdown = ltp < five_day_low
 
             clean_ticker = sym.replace(".NS", "")
             is_largecap = sym in LARGECAP_SYMBOLS
 
             # -------------------------------------------------------------
-            # BACKEND ENGINE LOGIC: MULTI-TIER BREAKOUT DETECTION
+            # BACKEND ENGINE LOGIC: DYNAMIC CALL (CE) & PUT (PE) SIGNALS
             # -------------------------------------------------------------
             detected = False
             trend_status = ""
             strategy = ""
+            breakeven = 0.0
+            sl = 0.0
 
             if is_largecap:
-                # Rule 1: LargeCap Institutional Accumulation (ULTRACEMCO logic)
-                if vol_mult >= 1.25 and close_pos >= 0.70 and is_breakout:
+                # Rule 1A: LargeCap Bullish (ULTRACEMCO logic)
+                if vol_mult >= 1.20 and close_pos >= 0.65 and is_bullish_breakout:
                     detected = True
                     trend_status = "🔥 LARGECAP ACCUMULATION"
-                    strategy = "LONG CALL / BULL SPREAD"
+                    strategy = "BUY CALL OPTION (CE)"
+                    breakeven = round(ltp * 1.012, 2)
+                    sl = round(ltp * 0.985, 2)
+                # Rule 1B: LargeCap Bearish Distribution
+                elif vol_mult >= 1.20 and close_pos <= 0.35 and is_bearish_breakdown:
+                    detected = True
+                    trend_status = "📉 LARGECAP DISTRIBUTION"
+                    strategy = "BUY PUT OPTION (PE)"
+                    breakeven = round(ltp * 0.988, 2)
+                    sl = round(ltp * 1.015, 2)
             else:
-                # Rule 2: MidCap / High-Beta Volatility Expansion (KAYNES & BSE logic)
-                if (vol_mult >= 1.75 or is_breakout) and close_pos >= 0.75 and chg_pct >= 2.5:
+                # Rule 2A: MidCap Bullish Momentum (KAYNES & BSE logic)
+                if (vol_mult >= 1.60 or is_bullish_breakout) and close_pos >= 0.70 and chg_pct >= 2.0:
                     detected = True
                     trend_status = "🚀 MOMENTUM BREAKOUT"
-                    strategy = "MOMENTUM BUY / CALL OPTION"
+                    strategy = "BUY CALL OPTION (CE)"
+                    breakeven = round(ltp * 1.012, 2)
+                    sl = round(ltp * 0.985, 2)
+                # Rule 2B: MidCap Bearish Breakdown
+                elif (vol_mult >= 1.60 or is_bearish_breakdown) and close_pos <= 0.30 and chg_pct <= -2.0:
+                    detected = True
+                    trend_status = "🚨 MOMENTUM BREAKDOWN"
+                    strategy = "BUY PUT OPTION (PE)"
+                    breakeven = round(ltp * 0.988, 2)
+                    sl = round(ltp * 1.015, 2)
 
             if detected:
-                breakeven = round(ltp * 1.012, 2)  # 1.2% buffer for option premium cost
-                sl = round(ltp * 0.985, 2)         # 1.5% Strict SL
                 score = vol_mult + abs(chg_pct)
 
                 raw_signals.append({
@@ -158,15 +179,14 @@ def run_final_sensibule_scanner():
             print(f"Error processing {sym}: {e}")
             continue
 
-    # Filter Top 3 Super-Conviction Trades
+    # Process and Render Signals to Google Sheet
     if raw_signals:
         df_raw = pd.DataFrame(raw_signals)
         df_raw = df_raw.sort_values(by="SCORE", ascending=False)
-        top_3_tickers = list(df_raw.head(3)["TICKER"])
 
         final_rows = []
-        for idx, row in df_raw.iterrows():
-            top_selection = "🔥 EXECUTE IN SENSIBULE" if row["TICKER"] in top_3_tickers else "WATCHLIST"
+        for idx, row in df_raw.reset_index(drop=True).iterrows():
+            top_selection = "🔥 EXECUTE IN SENSIBULE" if idx < 3 else "WATCHLIST SIGNAL"
             final_rows.append([
                 row["TICKER"], 
                 str(row["LTP"]), 
@@ -182,7 +202,7 @@ def run_final_sensibule_scanner():
         payload = [
             rule_headers, 
             column_headers, 
-            ["NO STRONG BREAKOUT MATCHED CURRENTLY"] + [""] * 6
+            ["NO STRONG CALL OR PUT BREAKOUT MATCHED CURRENTLY"] + [""] * 6
         ]
 
     # Write Payload to Google Sheet
