@@ -88,7 +88,7 @@ def get_gspread_client():
 
 
 def analyze_market_data():
-    print(f"⏳ Running Institutional Dual Scan (Bullish & Bearish) across {len(CASH_STOCKS)} Cash Stocks...")
+    print(f"⏳ Running Institutional Dual Scan with Entry Confirmations across {len(CASH_STOCKS)} Cash Stocks...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in CASH_STOCKS]
     data = yf.download(tickers, period="60d", interval="1d", group_by="ticker", progress=False)
@@ -129,7 +129,7 @@ def analyze_market_data():
             is_bearish_breakdown = ltp <= five_day_low
             bearish_weekly_status = "YES (5-DAY LOW)" if is_bearish_breakdown else "NO"
             
-            # Day Range Position % Calculation
+            # Day Range Position %
             day_range = high_day - low_day
             day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
             
@@ -145,27 +145,27 @@ def analyze_market_data():
             price_vs_vwap = "ABOVE VWAP" if is_above_vwap else "BELOW VWAP"
 
             # ==========================
-            # 🟢 BULLISH EVALUATION
+            # 🟢 BULLISH EVALUATION (With Confirmation Filters)
             # ==========================
             if is_breakout and day_pos_pct >= 85.0 and vol_mult >= 2.0 and is_above_vwap:
                 b_setup = "ULTRA INSTITUTIONAL BUYING"
                 b_strength = "🔥 TOP GRADE-A+ BREAKOUT"
-                b_action = "🟢 STRONG BUY CASH / DELIVERY"
+                b_action = "🟢 STRONG BUY (CONFIRMED)"
                 b_rank = 5
             elif is_breakout and day_pos_pct >= 80.0 and vol_mult >= 1.5 and is_above_vwap:
                 b_setup = "STRONG INSTITUTIONAL BUYING"
                 b_strength = "⭐ TOP GRADE-A BREAKOUT"
-                b_action = "🟢 BUY CASH"
+                b_action = "🟢 BUY CASH (CONFIRMED)"
                 b_rank = 4
-            elif is_breakout and day_pos_pct >= 70.0 and is_above_vwap:
-                b_setup = "BREAKOUT CONFIRMED"
+            elif is_breakout and day_pos_pct >= 65.0 and is_above_vwap:
+                b_setup = "BREAKOUT WITH DIP PULLBACK"
                 b_strength = "⚡ HIGH WATCH BUY"
-                b_action = "🟢 BUY ON DIP"
+                b_action = "🟢 BUY ON DIP (WAIT FOR 5-MIN GREEN CANDLE)"
                 b_rank = 3
             elif (day_change_pct >= 1.0 or is_breakout) and vol_mult >= 1.2:
                 b_setup = "GOOD ACCUMULATION"
                 b_strength = "⚡ HIGH WATCH BUY"
-                b_action = "👀 MONITOR FOR CASH ENTRY"
+                b_action = "👀 MONITOR FOR DIP ENTRY & CONFIRMATION"
                 b_rank = 2
             else:
                 b_setup = "CONSOLIDATION"
@@ -173,7 +173,7 @@ def analyze_market_data():
                 b_action = "HOLD / WAIT"
                 b_rank = 1
 
-            if b_rank > 1:  # Only add qualified or active bullish setups
+            if b_rank > 1:
                 target_price = round(ltp * 1.03, 2)
                 stop_loss = round(ltp * 0.985, 2)
                 bullish_results.append({
@@ -186,27 +186,27 @@ def analyze_market_data():
                 })
 
             # ==========================
-            # 🔴 BEARISH EVALUATION
+            # 🔴 BEARISH EVALUATION (With Confirmation Filters)
             # ==========================
             if is_bearish_breakdown and day_pos_pct <= 15.0 and vol_mult >= 2.0 and not is_above_vwap:
                 bear_setup = "ULTRA INSTITUTIONAL SELLING"
                 bear_strength = "🔥 TOP GRADE-A+ BREAKDOWN"
-                bear_action = "🔴 STRONG SHORT / EXIT CASH"
+                bear_action = "🔴 STRONG SHORT (CONFIRMED)"
                 bear_rank = 5
             elif is_bearish_breakdown and day_pos_pct <= 20.0 and vol_mult >= 1.5 and not is_above_vwap:
                 bear_setup = "HEAVY DISTRIBUTION"
                 bear_strength = "⭐ TOP GRADE-A BREAKDOWN"
-                bear_action = "🔴 SHORT / SELL"
+                bear_action = "🔴 SHORT / SELL (CONFIRMED)"
                 bear_rank = 4
-            elif is_bearish_breakdown and day_pos_pct <= 30.0 and not is_above_vwap:
-                bear_setup = "BREAKDOWN CONFIRMED"
+            elif is_bearish_breakdown and day_pos_pct <= 35.0 and not is_above_vwap:
+                bear_setup = "BREAKDOWN WITH RALLY PULLBACK"
                 bear_strength = "⚡ HIGH WATCH SHORT"
-                bear_action = "🔴 SELL ON RALLY"
+                bear_action = "🔴 SELL ON RALLY (WAIT FOR RED CANDLE)"
                 bear_rank = 3
             elif (day_change_pct <= -1.0 or is_bearish_breakdown) and vol_mult >= 1.2:
                 bear_setup = "WEAKNESS / UNLOADING"
                 bear_strength = "⚡ HIGH WATCH SHORT"
-                bear_action = "👀 MONITOR FOR SHORT ENTRY"
+                bear_action = "👀 MONITOR FOR RALLY SHORT & CONFIRMATION"
                 bear_rank = 2
             else:
                 bear_setup = "CONSOLIDATION"
@@ -214,7 +214,7 @@ def analyze_market_data():
                 bear_action = "HOLD / WAIT"
                 bear_rank = 1
 
-            if bear_rank > 1:  # Only add qualified bearish setups
+            if bear_rank > 1:
                 target_down = round(ltp * 0.97, 2)
                 stop_loss_up = round(ltp * 1.015, 2)
                 bearish_results.append({
