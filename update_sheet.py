@@ -57,36 +57,48 @@ def analyze_cash_breakouts():
             low_day = float(df['Low'].iloc[-1])
             vol_today = float(df['Volume'].iloc[-1])
             
+            # 5-Day High Check
             five_day_high = float(df['High'].iloc[-6:-1].max())
-            weekly_breakout = "YES (5-DAY HIGH)" if ltp >= five_day_high else "NO"
+            is_breakout = ltp >= five_day_high
+            weekly_breakout = "YES (5-DAY HIGH)" if is_breakout else "NO"
             
+            # Day Range Pos
             day_range = high_day - low_day
             day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
             
+            # Volume Multiplier
             vol_avg_10 = float(df['Volume'].iloc[-11:-1].mean())
             vol_mult = round(vol_today / vol_avg_10, 2) if vol_avg_10 > 0 else 1.0
             
-            vol_status = "🔥 MASSIVE DELIVERY" if vol_mult >= 2.0 else "⚡ MODERATE VOLUME"
+            vol_status = "🔥 MASSIVE DELIVERY" if vol_mult >= 2.0 else ("⚡ MODERATE VOLUME" if vol_mult >= 1.3 else "NORMAL VOLUME")
             vwap = round((high_day + low_day + ltp) / 3, 2)
-            price_vs_vwap = "ABOVE VWAP" if ltp >= vwap else "BELOW VWAP"
+            is_above_vwap = ltp >= vwap
+            price_vs_vwap = "ABOVE VWAP" if is_above_vwap else "BELOW VWAP"
             
             target_price = round(ltp * 1.03, 2)
             stop_loss = round(ltp * 0.985, 2)
 
-            # 🎯 STRICT FRIDAY BREAKOUT CRITERIA RESTORATION
-            setup_rank = 1
-            if weekly_breakout.startswith("YES") and vol_mult >= 2.0 and day_pos_pct >= 85.0 and price_vs_vwap == "ABOVE VWAP":
+            # 🎯 STRICT PRIORITY RANKING LOGIC
+            if is_breakout and day_pos_pct >= 65.0 and vol_mult >= 1.4 and is_above_vwap:
                 setup = "EXTREME INSTITUTIONAL BUYING"
                 strength = "⭐ TOP FRIDAY BULLISH CASH BREAKOUT"
                 action = "🟢 STRONG BUY CASH / DELIVERY"
-                setup_rank = 3  # HIGHEST PRIORITY
-            elif day_change_pct >= 1.5 and vol_mult >= 1.3:
+                setup_rank = 4  # ABSOLUTE TOP PRIORITY
+            elif is_breakout and vol_mult >= 1.3:
+                setup = "BREAKOUT CONFIRMED"
+                strength = "⚡ HIGH WATCH BUY"
+                action = "🟢 BUY ON DIP"
+                setup_rank = 3
+            elif day_change_pct >= 1.0 and vol_mult >= 1.2:
                 setup = "GOOD ACCUMULATION"
                 strength = "⚡ HIGH WATCH BUY"
                 action = "👀 MONITOR FOR CASH ENTRY"
                 setup_rank = 2
             else:
-                continue # Ignore non-quality setups
+                setup = "CONSOLIDATION"
+                strength = "NEUTRAL"
+                action = "HOLD / WAIT"
+                setup_rank = 1
 
             results.append({
                 "data": [
@@ -95,14 +107,24 @@ def analyze_cash_breakouts():
                     setup, strength, action, time_str
                 ],
                 "rank": setup_rank,
-                "breakout": 1 if weekly_breakout.startswith("YES") else 0,
+                "is_breakout": 1 if is_breakout else 0,
+                "day_pos": day_pos_pct,
                 "vol": vol_mult
             })
         except Exception:
             continue
 
-    # Strict Sorting: 1. Setup Rank (TOP Friday Breakout First) -> 2. Weekly Breakout YES -> 3. Volume Multiplier
-    sorted_results = sorted(results, key=lambda x: (x["rank"], x["breakout"], x["vol"]), reverse=True)
+    # Strict Multi-Level Sorting:
+    # 1. Setup Rank (Top Friday Breakout First)
+    # 2. Is Breakout (1 vs 0)
+    # 3. Day Range Position % (Higher closing strength first)
+    # 4. Volume Multiplier
+    sorted_results = sorted(
+        results, 
+        key=lambda x: (x["rank"], x["is_breakout"], x["day_pos"], x["vol"]), 
+        reverse=True
+    )
+    
     return [item["data"] for item in sorted_results]
 
 def run_live_cash_sync():
@@ -110,7 +132,7 @@ def run_live_cash_sync():
     sheet = client.open_by_key(SHEET_ID)
     try:
         worksheet = sheet.worksheet(BULLISH_TAB_NAME)
-    except:
+    except Exception:
         worksheet = sheet.add_worksheet(title=BULLISH_TAB_NAME, rows="100", cols="20")
 
     headers = [
