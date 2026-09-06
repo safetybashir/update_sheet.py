@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 import pytz
 import pandas as pd
+import numpy as np
 import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
@@ -13,12 +14,20 @@ from google.oauth2.service_account import Credentials
 SHEET_ID = "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo"
 NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
 
-# Highly Liquid F&O Tickers
-FNO_SYMBOLS = [
-    "RELIANCE.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "INFY.NS", "TCS.NS", 
-    "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", "AXISBANK.NS",
-    "LT.NS", "MARUTI.NS", "M&M.NS", "HAL.NS", "BEL.NS", "POLYCAB.NS"
+# Nifty 50 Heavyweights (LargeCap Rule Set)
+LARGECAP_SYMBOLS = [
+    "ULTRACEMCO.NS", "RELIANCE.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "INFY.NS", 
+    "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", 
+    "AXISBANK.NS", "LT.NS", "MARUTI.NS", "M&M.NS"
 ]
+
+# MidCap & High-Beta Momentum Focus
+MIDCAP_SYMBOLS = [
+    "KAYNES.NS", "BSE.NS", "HAL.NS", "BEL.NS", "POLYCAB.NS", "DIXON.NS"
+]
+
+# Combined Tickers Universe
+FNO_SYMBOLS = list(set(LARGECAP_SYMBOLS + MIDCAP_SYMBOLS))
 
 def get_gspread_client():
     """Authenticates using Environment variable or local credentials file."""
@@ -58,16 +67,16 @@ def run_final_sensibule_scanner():
 
     rule_headers = [
         "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: OI BUILDUP / SHORT COVERING + MOMENTUM", 
-        "", "", "", 
-        "EXECUTION: ZERODHA GTT TSL READY"
+        "BACKEND: DYNAMIC MULTI-TIER BREAKOUT LOGIC", 
+        "", "", "", "", 
+        f"LAST UPDATED: {curr_time} IST"
     ]
 
     column_headers = [
         "TICKER", 
         "LTP", 
         "TREND STATUS", 
-        "STRATEAGY",
+        "STRATEGY",
         "BREAKEVEN POINT", 
         "STRICT SL (1.5%)", 
         "SENSIBULE TRIGGER"
@@ -83,63 +92,70 @@ def run_final_sensibule_scanner():
             if len(df) < 20:
                 continue
 
-            # Moving Averages Calculation
-            df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
-            df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
+            # Flatten multi-index columns if returned by yfinance
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [col[0] for col in df.columns]
 
             ltp = round(float(df['Close'].iloc[-1]), 2)
             prev_close = float(df['Close'].iloc[-2])
             chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
 
-            ema20 = float(df['EMA_20'].iloc[-1])
-            ema50 = float(df['EMA_50'].iloc[-1])
+            day_high = float(df['High'].iloc[-1])
+            day_low = float(df['Low'].iloc[-1])
+            day_range = day_high - day_low
+            
+            # Candle Close Position (0.0 to 1.0)
+            close_pos = (ltp - day_low) / day_range if day_range > 0 else 0
 
-            # Volume Expansion Multiplier
+            # Dynamic Volume Multiplier
             vol_curr = float(df['Volume'].iloc[-1])
             vol_avg = float(df['Volume'].iloc[-20:-1].mean())
             vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
 
+            # 5-Day Range Breakout
+            five_day_high = float(df['High'].tail(6).iloc[:-1].max())
+            is_breakout = ltp > five_day_high
+
             clean_ticker = sym.replace(".NS", "")
+            is_largecap = sym in LARGECAP_SYMBOLS
 
             # -------------------------------------------------------------
-            # BACKEND ENGINE LOGIC:
-            # UPTREND:  Price > EMA20 > EMA50 + Gain >= 1.0% + Vol >= 1.5x
-            # DOWNTREND: Price < EMA20 < EMA50 + Cut <= -1.0% + Vol >= 1.5x
+            # BACKEND ENGINE LOGIC: MULTI-TIER BREAKOUT DETECTION
             # -------------------------------------------------------------
-            is_strong_uptrend = (ltp > ema20) and (ema20 > ema50) and (chg_pct >= 1.0) and (vol_mult >= 1.5)
-            is_strong_downtrend = (ltp < ema20) and (ema20 < ema50) and (chg_pct <= -1.0) and (vol_mult >= 1.5)
+            detected = False
+            trend_status = ""
+            strategy = ""
 
-            if is_strong_uptrend:
-                trend_status = "🔥 STRONG UPTREND"
+            if is_largecap:
+                # Rule 1: LargeCap Institutional Accumulation (ULTRACEMCO logic)
+                if vol_mult >= 1.25 and close_pos >= 0.70 and is_breakout:
+                    detected = True
+                    trend_status = "🔥 LARGECAP ACCUMULATION"
+                    strategy = "LONG CALL / BULL SPREAD"
+            else:
+                # Rule 2: MidCap / High-Beta Volatility Expansion (KAYNES & BSE logic)
+                if (vol_mult >= 1.75 or is_breakout) and close_pos >= 0.75 and chg_pct >= 2.5:
+                    detected = True
+                    trend_status = "🚀 MOMENTUM BREAKOUT"
+                    strategy = "MOMENTUM BUY / CALL OPTION"
+
+            if detected:
                 breakeven = round(ltp * 1.012, 2)  # 1.2% buffer for option premium cost
-                sl = round(ltp * 0.985, 2)        # 1.5% Strict SL
-                score = vol_mult + chg_pct
-
-                raw_signals.append({
-                    "TICKER": clean_ticker, 
-                    "LTP": ltp, 
-                    "TREND": trend_status,
-                    "BREAKEVEN": breakeven, 
-                    "SL": sl, 
-                    "SCORE": score
-                })
-
-            elif is_strong_downtrend:
-                trend_status = "📉 STRONG DOWNTREND"
-                breakeven = round(ltp * 0.988, 2)  # 1.2% downside buffer
-                sl = round(ltp * 1.015, 2)        # 1.5% Strict SL
+                sl = round(ltp * 0.985, 2)         # 1.5% Strict SL
                 score = vol_mult + abs(chg_pct)
 
                 raw_signals.append({
                     "TICKER": clean_ticker, 
                     "LTP": ltp, 
                     "TREND": trend_status,
+                    "STRATEGY": strategy,
                     "BREAKEVEN": breakeven, 
                     "SL": sl, 
                     "SCORE": score
                 })
 
-        except Exception:
+        except Exception as e:
+            print(f"Error processing {sym}: {e}")
             continue
 
     # Filter Top 3 Super-Conviction Trades
@@ -155,6 +171,7 @@ def run_final_sensibule_scanner():
                 row["TICKER"], 
                 str(row["LTP"]), 
                 row["TREND"],
+                row["STRATEGY"],
                 str(row["BREAKEVEN"]), 
                 str(row["SL"]), 
                 top_selection
@@ -165,7 +182,7 @@ def run_final_sensibule_scanner():
         payload = [
             rule_headers, 
             column_headers, 
-            ["NO STRONG CONTINUATION TREND MATCHED CURRENTLY"] + [""] * 5
+            ["NO STRONG BREAKOUT MATCHED CURRENTLY"] + [""] * 6
         ]
 
     # Write Payload to Google Sheet
