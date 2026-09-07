@@ -1,240 +1,212 @@
 import os
 import json
+import time
 from datetime import datetime
 import pytz
-import pandas as pd
-import numpy as np
 import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
+from gspread.exceptions import APIError
 
 # ==========================================
-# CONFIGURATION & GOOGLE SHEETS SETUP
+# CONFIGURATION & CONSTANTS
 # ==========================================
-SHEET_ID = "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo"
-NEW_TAB_NAME = "SUPER_CONVICTION_TRADES"
+SHEET_ID = os.environ.get("SHEET_ID", "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg")
+SENSIBULE_TAB_NAME = "SENSIBULE_EXECUTION_ENGINE"
+CREDENTIALS_FILE = "credentials.json"
 
-# 1. LARGECAP F&O STOCKS (~50 Heavyweights)
-LARGECAP_SYMBOLS = [
-    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", 
-    "BHARTIARTL.NS", "SBIN.NS", "LTIM.NS", "LT.NS", "ITC.NS", 
-    "HINDUNILVR.NS", "AXISBANK.NS", "KOTAKBANK.NS", "M&M.NS", "MARUTI.NS", 
-    "SUNPHARMA.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "NTPC.NS", "POWERGRID.NS", 
-    "ULTRACEMCO.NS", "TITAN.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "ADANIENT.NS", 
-    "ADANIPORTS.NS", "COALINDIA.NS", "ONGC.NS", "GRASIM.NS", "JSWSTEEL.NS", 
-    "HCLTECH.NS", "TECHM.NS", "WIPRO.NS", "ASIANPAINT.NS", "NESTLEIND.NS", 
-    "DLF.NS", "IOC.NS", "BPCL.NS", "GAIL.NS", "REC.NS", 
-    "PFC.NS", "HAL.NS", "BEL.NS", "SIEMENS.NS", "ABB.NS", 
-    "HDFCLIFE.NS", "SBILIFE.NS", "ICICIPRULI.NS", "PIDILITIND.NS", "INDIGO.NS"
+# Master Cash Tickers List
+CASH_STOCKS = [
+    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
+    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
+    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
+    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
+    "BHARATFORG", "TMPV", "SOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
+    "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "HEROMOTOCO", 
+    "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", "NATIONALUM", 
+    "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", 
+    "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", "SUPREMEIND", 
+    "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", "CIPLA", 
+    "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", "ULTRACEMCO", 
+    "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", "TRENT", 
+    "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", "CROMPTON", 
+    "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", "PFC", 
+    "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", "KFINTECH", 
+    "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", "GODREJCP", 
+    "FORTIS", "PGEL", "ABB", "COALINDIA", "SUNPHARMA", "MPHASIS", "PIIND", 
+    "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", "INDIGO", 
+    "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", "NAUKRI", 
+    "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALL", "LTMM", "MARICO", "PAGEIND", 
+    "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
+    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO", "MCX"
 ]
 
-# 2. MIDCAP / HIGH-BETA F&O STOCKS (~130+ Active Movers)
-MIDCAP_SYMBOLS = [
-    "BSE.NS", "KAYNES.NS", "POLYCAB.NS", "DIXON.NS", "PERSISTENT.NS", 
-    "COFORGE.NS", "MCX.NS", "TRENT.NS", "MUTHOOTFIN.NS", "CHOLAFIN.NS", 
-    "MANAPPURAM.NS", "AUROPHARMA.NS", "LUPIN.NS", "BIOCON.NS", "DRREDDY.NS", 
-    "CIPLA.NS", "GLENMARK.NS", "TORNTPHARM.NS", "DIVISLAB.NS", "SYNGENE.NS", 
-    "APOLLOHOSP.NS", "MAXHEALTH.NS", "FORTIS.NS", "ABBOTINDIA.NS", "IPCALAB.NS", 
-    "VOLTAS.NS", "BLUESTARCO.NS", "HAVELLS.NS", "CUMMINSIND.NS", "ASTRAL.NS", 
-    "KEI.NS", "SUPREMEIND.NS", "PIIND.NS", "UPL.NS", "SRF.NS", 
-    "ATUL.NS", "DEEPAKNTR.NS", "NAVINFLUOR.NS", "CHEMICALS.NS", "CONCOR.NS", 
-    "EXIDEIND.NS", "AMARAJABAT.NS", "BOSCHLTD.NS", "BHARATFORG.NS", "BALKRISIND.NS", 
-    "TIINDIA.NS", "ASHOKLEY.NS", "EICHERMOT.NS", "HEROMOTOCO.NS", "TVSMOTOR.NS", 
-    "ESCORTS.NS", "MRF.NS", "MOTHERSON.NS", "APOLLOTYRE.NS", "CANBK.NS", 
-    "UNIONBANK.NS", "BANKBARODA.NS", "PNB.NS", "IDFCFIRSTB.NS", "FEDERALBNK.NS", 
-    "BANDHANBNK.NS", "AUBANK.NS", "INDUSINDBK.NS", "RBLBANK.NS", "MFSL.NS", 
-    "LICHSGFIN.NS", "PEL.NS", "L&TFH.NS", "SHRIRAMFIN.NS", "PIRAMAL.NS", 
-    "M&MFIN.NS", "CREDITACC.NS", "ISEC.NS", "ANGELONE.NS", 
-    "CDSL.NS", "CAMS.NS", "OBEROIRTY.NS", 
-    "GODREJPROP.NS", "PHOENIXLTD.NS", "LODHA.NS", "PRESTIGE.NS", "SOBHA.NS", 
-    "NATIONALUM.NS", "HINDALCO.NS", "VEDL.NS", "NMDC.NS", "SAIL.NS", 
-    "JINDALSTEL.NS", "HINDCOPPER.NS", "APLAPOLLO.NS", "RATNAMANI.NS", "IRCTC.NS", 
-    "IRFC.NS", "RVNL.NS", "RAILTEL.NS", "TITAGARH.NS", "BHEL.NS", 
-    "NHPC.NS", "SJVN.NS", "NLCINDIA.NS", "TORNTPOWER.NS", 
-    "TATAPOWER.NS", "ADANIPOWER.NS", "ADANIGREEN.NS", "CESC.NS", "SUZLON.NS", 
-    "INOXWIND.NS", "ZOMATO.NS", "PAYTM.NS", "POLICYBZR.NS", "NYKAA.NS", 
-    "DELHIVERY.NS", "NAUKRI.NS", "INDAMART.NS", "JUSTDIAL.NS", "MAPMYINDIA.NS", 
-    "PVRINOX.NS", "DEVYANI.NS", "JUBLFOOD.NS", "WESTLIFE.NS", "TATACONSUM.NS", 
-    "VBL.NS", "UBL.NS", "MCDOWELL-N.NS", "RADICO.NS", "COLPAL.NS", 
-    "DABUR.NS", "MARICO.NS", "GODREJCP.NS", "BRITANNIA.NS", "BALRAMCHIN.NS"
-]
 
-# Combine and remove duplicates
-FNO_SYMBOLS = list(set(LARGECAP_SYMBOLS + MIDCAP_SYMBOLS))
+def clean_and_parse_json(raw_str):
+    if not raw_str:
+        raise ValueError("Provided JSON string is empty.")
+    cleaned_str = raw_str.strip()
+    try:
+        return json.loads(cleaned_str)
+    except json.JSONDecodeError:
+        pass
+    cleaned_str = cleaned_str.replace('\\n', '\n')
+    try:
+        return json.loads(cleaned_str)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse JSON string: {e}")
+
 
 def get_gspread_client():
-    creds_json = os.environ.get("GCP_CREDENTIALS_JSON") or os.environ.get("GOOGLE_CREDS")
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    if creds_json:
-        creds_dict = json.loads(creds_json)
-        return gspread.authorize(Credentials.from_service_account_info(creds_dict, scopes=scopes))
-    elif os.path.exists("credentials.json"):
-        return gspread.service_account(filename="credentials.json")
-    else:
-        raise FileNotFoundError("❌ Google Cloud Credentials not found!")
-
-def get_or_create_worksheet(spreadsheet, title):
-    try:
-        for ws in spreadsheet.worksheets():
-            if ws.title.strip().upper() == title.strip().upper():
-                return ws
-        return spreadsheet.add_worksheet(title=title, rows="300", cols="10")
-    except Exception:
-        return spreadsheet.sheet1
-
-# ==========================================
-# MAIN SCANNER (TOP 5 EXECUTION SELECTION)
-# ==========================================
-def run_final_sensibule_scanner():
-    client = get_gspread_client()
-    spreadsheet = client.open_by_key(SHEET_ID)
-    ws = get_or_create_worksheet(spreadsheet, NEW_TAB_NAME)
-
-    ist_tz = pytz.timezone('Asia/Kolkata')
-    curr_time = datetime.now(ist_tz).strftime('%Y-%m-%d %H:%M:%S')
-
-    rule_headers = [
-        "SENSIBULE EXECUTION ENGINE", 
-        "BACKEND: DUAL-DIRECTIONAL SCANNER (TOP 5 HIGHEST CONVICTION)", 
-        "", "", "", "", 
-        f"LAST UPDATED: {curr_time} IST"
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
     ]
-
-    column_headers = [
-        "TICKER", 
-        "LTP", 
-        "TREND STATUS", 
-        "STRATEGY",
-        "🎯 TARGET / BREAKEVEN", 
-        "🛑 STRICT SL (1.5%)", 
-        "SENSIBULE TRIGGER"
-    ]
-
-    raw_signals = []
-
-    for sym in FNO_SYMBOLS:
+    
+    if "GCP_CREDENTIALS_JSON" in os.environ and os.environ["GCP_CREDENTIALS_JSON"].strip():
+        raw_json = os.environ["GCP_CREDENTIALS_JSON"].strip()
         try:
-            ticker = yf.Ticker(sym)
-            df = ticker.history(period="30d", interval="1d")
+            creds_dict = clean_and_parse_json(raw_json)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+            return gspread.authorize(creds)
+        except Exception as e:
+            raise ValueError(f"❌ Error in 'GCP_CREDENTIALS_JSON' secret: {e}")
             
+    elif os.path.exists(CREDENTIALS_FILE):
+        try:
+            with open(CREDENTIALS_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+            creds_dict = clean_and_parse_json(content)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+            return gspread.authorize(creds)
+        except Exception as e:
+            raise ValueError(f"❌ Invalid JSON in local '{CREDENTIALS_FILE}': {e}")
+            
+    else:
+        raise FileNotFoundError("Neither 'GCP_CREDENTIALS_JSON' secret nor 'credentials.json' found.")
+
+
+def analyze_sensibule_options():
+    print(f"⏳ Running Priority Sensibule Options Scan across {len(CASH_STOCKS)} Stocks...")
+    
+    tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in CASH_STOCKS]
+    data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
+    
+    ist = pytz.timezone("Asia/Kolkata")
+    time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
+    
+    signals_list = []
+
+    for sym in CASH_STOCKS:
+        try:
+            raw_sym = sym.strip()
+            t_str = f"{raw_sym.replace('&', '%26')}.NS"
+            
+            if t_str not in data or data[t_str].empty:
+                continue
+
+            df = data[t_str].dropna()
             if len(df) < 20:
                 continue
 
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-
             ltp = round(float(df['Close'].iloc[-1]), 2)
-            prev_close = float(df['Close'].iloc[-2])
-            chg_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
-            point_move = abs(ltp - prev_close)
-
-            day_high = float(df['High'].iloc[-1])
-            day_low = float(df['Low'].iloc[-1])
-            day_range = day_high - day_low
+            prev_close = float(df['Close'].iloc[-50]) if len(df) >= 50 else float(df['Close'].iloc[0])
+            day_change_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
             
-            close_pos = (ltp - day_low) / day_range if day_range > 0 else 0.5
-
-            vol_curr = float(df['Volume'].iloc[-1])
-            vol_avg = float(df['Volume'].iloc[-20:-1].mean())
-            vol_mult = vol_curr / vol_avg if vol_avg > 0 else 1.0
-
-            five_day_high = float(df['High'].iloc[-6:-1].max())
-            five_day_low = float(df['Low'].iloc[-6:-1].min())
+            recent_session_df = df.iloc[-75:] if len(df) >= 75 else df
+            high_day = float(recent_session_df['High'].max())
+            low_day = float(recent_session_df['Low'].min())
             
-            is_bullish_breakout = ltp >= five_day_high
-            is_bearish_breakdown = ltp <= five_day_low
+            day_range = high_day - low_day
+            day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
-            clean_ticker = sym.replace(".NS", "")
-            is_largecap = sym in LARGECAP_SYMBOLS
+            # ==========================
+            # 🚀 CALL OPTION (CE) - PRIORITY MOMENTUM
+            # ==========================
+            if day_change_pct >= 0.8 and day_pos_pct >= 60.0:
+                breakeven_trigger = round(high_day * 1.002, 2)
+                strict_sl = round(ltp * 0.985, 2)
+                
+                # Priority weight booster for heavyweights like BOSCHLTD, SUPREMEIND, DIVISLAB
+                priority_boost = 5.0 if raw_sym in ["BOSCHLTD", "SUPREMEIND", "DIVISLAB", "POWERINDIA"] else 0.0
+                total_score = day_change_pct + priority_boost
 
-            detected = False
-            trend_status = ""
-            strategy = ""
+                signals_list.append({
+                    "data": [
+                        raw_sym, ltp, "🚀 MOMENTUM BREAKOUT", "BUY CALL OPTION (CE)",
+                        f"🟢 ABOVE {breakeven_trigger}", f"🔴 BELOW {strict_sl}", "🔥 EXECUTE IN SENSIBULE"
+                    ],
+                    "score": total_score, "type": "CE"
+                })
 
-            # 1. BULLISH SCENARIOS (CE / BULL CALL SPREAD)
-            if chg_pct > 0:
-                if is_largecap:
-                    if (is_bullish_breakout or chg_pct >= 2.5) and close_pos >= 0.60:
-                        detected = True
-                        trend_status = "🔥 LARGECAP ACCUMULATION"
-                        strategy = "BULL CALL SPREAD"
-                else:
-                    if (chg_pct >= 3.0 or (is_bullish_breakout and vol_mult >= 1.1)) and close_pos >= 0.65:
-                        detected = True
-                        trend_status = "🚀 MOMENTUM BREAKOUT"
-                        strategy = "BUY CALL OPTION (CE)"
+            # ==========================
+            # 💥 PUT OPTION (PE) - PRIORITY BREAKDOWN
+            # ==========================
+            elif day_change_pct <= -0.8 and day_pos_pct <= 40.0:
+                breakeven_trigger = round(low_day * 0.998, 2)
+                strict_sl = round(ltp * 1.015, 2)
+                total_score = abs(day_change_pct)
 
-            # 2. BEARISH SCENARIOS (PE / BEAR PUT SPREAD)
-            elif chg_pct < 0:
-                if is_largecap:
-                    if (is_bearish_breakdown or chg_pct <= -2.5) and close_pos <= 0.40:
-                        detected = True
-                        trend_status = "🔻 LARGECAP DISTRIBUTION"
-                        strategy = "BEAR PUT SPREAD"
-                else:
-                    if (chg_pct <= -3.0 or (is_bearish_breakdown and vol_mult >= 1.1)) and close_pos <= 0.35:
-                        detected = True
-                        trend_status = "💥 BEARISH BREAKDOWN"
-                        strategy = "BUY PUT OPTION (PE)"
-
-            # SIMPLIFIED EMOJI & TEXT BASED TARGET & SL LOGIC
-            if detected:
-                if "CALL" in strategy or "CE" in strategy:
-                    be_val = round(ltp * 1.012, 2)
-                    sl_val = round(ltp * 0.985, 2)
-                    breakeven_display = f"🟢 ABOVE {be_val}"
-                    sl_display = f"🔴 BELOW {sl_val}"
-                else:  # PUT / PE Strategies
-                    be_val = round(ltp * 0.988, 2)
-                    sl_val = round(ltp * 1.015, 2)
-                    breakeven_display = f"🟢 BELOW {be_val}"
-                    sl_display = f"🔴 ABOVE {sl_val}"
-
-                breakout_bonus = 15.0 if (is_bullish_breakout or is_bearish_breakdown) else 0.0
-                score = (abs(chg_pct) * 6.0) + (point_move * 0.5) + (vol_mult * 2.0) + breakout_bonus
-
-                raw_signals.append({
-                    "TICKER": clean_ticker, 
-                    "LTP": ltp, 
-                    "TREND": trend_status,
-                    "STRATEGY": strategy,
-                    "BREAKEVEN": breakeven_display, 
-                    "SL": sl_display, 
-                    "SCORE": score
+                signals_list.append({
+                    "data": [
+                        raw_sym, ltp, "💥 BEARISH BREAKDOWN", "BUY PUT OPTION (PE)",
+                        f"🟢 BELOW {breakeven_trigger}", f"🔴 ABOVE {strict_sl}", "🔥 EXECUTE IN SENSIBULE"
+                    ],
+                    "score": total_score, "type": "PE"
                 })
 
         except Exception as e:
             continue
 
-    # Write Payload to Sheet
-    if raw_signals:
-        df_raw = pd.DataFrame(raw_signals)
-        df_raw = df_raw.sort_values(by="SCORE", ascending=False)
+    # Sort strictly by highest score so top-performing momentum stocks appear at the very top
+    sorted_signals = sorted(signals_list, key=lambda x: x["score"], reverse=True)[:10]
+    return [item["data"] for item in sorted_signals], time_str
 
-        final_rows = []
-        for idx, row in df_raw.reset_index(drop=True).iterrows():
-            # TOP 5 TRADES ARE SET TO "🔥 EXECUTE IN SENSIBULE"
-            top_selection = "🔥 EXECUTE IN SENSIBULE" if idx < 5 else "WATCHLIST SIGNAL"
-            final_rows.append([
-                row["TICKER"], 
-                str(row["LTP"]), 
-                row["TREND"],
-                row["STRATEGY"],
-                row["BREAKEVEN"], 
-                row["SL"], 
-                top_selection
-            ])
 
-        payload = [rule_headers, column_headers] + final_rows
-    else:
-        payload = [rule_headers, column_headers, ["NO ACTIVE BREAKOUT OR BREAKDOWN MATCHED"] + [""] * 6]
+def run_sensibule_sync(max_retries=3, delay=5):
+    signals_data, time_str = analyze_sensibule_options()
+    
+    header_info = [
+        ["SENSIBULE EXECUTION ENGINE"],
+        ["BACKEND: DUAL-DIRECTIONAL SCANNER (TOP HIGHEST CONVICTION)"],
+        [f"LAST UPDATED: {time_str}"],
+        []
+    ]
+    
+    headers = [
+        "TICKER", "LTP", "TREND STATUS", "STRATEGY", 
+        "🎯 TARGET / BREAKEVEN", "🛑 STRICT SL (1.5%)", "SENSIBULE TRIGGER"
+    ]
 
-    try:
-        ws.clear()
-        ws.update(values=payload, range_name="A1", value_input_option="USER_ENTERED")
-        print(f"✅ Executed Successfully for TOP 5 Trades at {curr_time} IST!")
-    except Exception as e:
-        print(f"❌ Sheet Update Failed: {str(e)}")
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"🔄 Attempt {attempt}/{max_retries}: Connecting to Google Sheets for Sensibule Engine...")
+            client = get_gspread_client()
+            
+            target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
+            sheet = client.open_by_key(target_sheet_id)
+
+            try:
+                ws = sheet.worksheet(SENSIBULE_TAB_NAME)
+            except Exception:
+                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="10")
+
+            ws.clear()
+            ws.update(values=header_info + [headers] + signals_data, range_name="A1")
+            print(f"✅ Successfully updated top priority option triggers to '{SENSIBULE_TAB_NAME}'!")
+            break
+
+        except APIError as e:
+            print(f"⚠️ Google API Error on attempt {attempt}: {e}")
+            if attempt < max_retries:
+                time.sleep(delay)
+                delay *= 2
+            else:
+                raise e
+        except Exception as e:
+            print(f"❌ Unexpected Error: {e}")
+            raise e
+
 
 if __name__ == "__main__":
-    run_final_sensibule_scanner()
+    run_sensibule_sync()
