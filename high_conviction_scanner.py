@@ -11,8 +11,8 @@ from gspread.exceptions import APIError
 # ==========================================
 # CONFIGURATION & CONSTANTS
 # ==========================================
-SHEET_ID = os.environ.get("SHEET_ID", "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg")
-SENSIBULE_TAB_NAME = "SENSIBULE_EXECUTION_ENGINE"
+SHEET_ID = os.environ.get("SHEET_ID", "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAwUBo")
+SENSIBULE_TAB_NAME = "SUPER_CONVICTION_TRADES"
 CREDENTIALS_FILE = "credentials.json"
 
 # Master Cash Tickers List
