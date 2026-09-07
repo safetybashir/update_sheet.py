@@ -189,7 +189,7 @@ def run_sensibule_sync(max_retries=3, delay=5):
                 ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="10")
 
             ws.clear()
-            ws.update(values=header_info + [headers] + signals_data, range_name="A1")
+            ws.update(values=[headers] + signals_data, range_name="A1")
             print(f"✅ Successfully pushed {len(signals_data)} option triggers with timestamps to '{SENSIBULE_TAB_NAME}'!")
             break
 
