@@ -170,13 +170,6 @@ def analyze_sensibule_options():
 def run_sensibule_sync(max_retries=3, delay=5):
     signals_data, full_timestamp_str = analyze_sensibule_options()
     
-    header_info = [
-        ["SENSIBULE EXECUTION ENGINE"],
-        ["BACKEND: DUAL-DIRECTIONAL SCANNER (TOP HIGHEST CONVICTION)"],
-        [f"LAST UPDATED: {full_timestamp_str}"],
-        []
-    ]
-    
     headers = [
         "TICKER", "LTP", "TREND STATUS", "STRATEGY", 
         "🎯 TARGET / BREAKEVEN", "🛑 STRICT SL (1.5%)", "SENSIBULE TRIGGER", "LAST UPDATED"
