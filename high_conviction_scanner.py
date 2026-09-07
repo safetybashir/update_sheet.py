@@ -21,7 +21,7 @@ CASH_STOCKS = [
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
     "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
     "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "BHARATFORG", "TMPV", "SOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
+    "BHARATFORG", "TMPVSOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
     "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "HEROMOTOCO", 
     "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", "NATIONALUM", 
     "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", 
@@ -87,13 +87,15 @@ def get_gspread_client():
 
 
 def analyze_sensibule_options():
-    print(f"⏳ Running Priority Sensibule Options Scan across {len(CASH_STOCKS)} Stocks...")
+    print(f"⏳ Running Live Sensibule Options Scan across {len(CASH_STOCKS)} Stocks...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in CASH_STOCKS]
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
     
     ist = pytz.timezone("Asia/Kolkata")
-    time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S IST")
+    now_dt = datetime.now(ist)
+    time_str = now_dt.strftime("%H:%M:%S")
+    full_timestamp_str = now_dt.strftime("%Y-%m-%d %H:%M:%S IST")
     
     signals_list = []
 
@@ -121,26 +123,27 @@ def analyze_sensibule_options():
             day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
             # ==========================
-            # 🚀 CALL OPTION (CE) - PRIORITY MOMENTUM
+            # 🚀 CALL OPTION (CE) - HIGH MOMENTUM
             # ==========================
             if day_change_pct >= 0.8 and day_pos_pct >= 60.0:
                 breakeven_trigger = round(high_day * 1.002, 2)
                 strict_sl = round(ltp * 0.985, 2)
                 
-                # Priority weight booster for heavyweights like BOSCHLTD, SUPREMEIND, DIVISLAB
-                priority_boost = 5.0 if raw_sym in ["BOSCHLTD", "SUPREMEIND", "DIVISLAB", "POWERINDIA"] else 0.0
+                # Heavyweight booster to push top momentum tickers (Bosch, Supremeind, Divislab) to top
+                priority_boost = 10.0 if raw_sym in ["BOSCHLTD", "SUPREMEIND", "DIVISLAB", "ANGELONE"] else 0.0
                 total_score = day_change_pct + priority_boost
 
                 signals_list.append({
                     "data": [
                         raw_sym, ltp, "🚀 MOMENTUM BREAKOUT", "BUY CALL OPTION (CE)",
-                        f"🟢 ABOVE {breakeven_trigger}", f"🔴 BELOW {strict_sl}", "🔥 EXECUTE IN SENSIBULE"
+                        f"🟢 ABOVE {breakeven_trigger}", f"🔴 BELOW {strict_sl}", 
+                        "🔥 EXECUTE IN SENSIBULE", time_str
                     ],
-                    "score": total_score, "type": "CE"
+                    "score": total_score
                 })
 
             # ==========================
-            # 💥 PUT OPTION (PE) - PRIORITY BREAKDOWN
+            # 💥 PUT OPTION (PE) - HEAVY DISTRIBUTION
             # ==========================
             elif day_change_pct <= -0.8 and day_pos_pct <= 40.0:
                 breakeven_trigger = round(low_day * 0.998, 2)
@@ -150,37 +153,38 @@ def analyze_sensibule_options():
                 signals_list.append({
                     "data": [
                         raw_sym, ltp, "💥 BEARISH BREAKDOWN", "BUY PUT OPTION (PE)",
-                        f"🟢 BELOW {breakeven_trigger}", f"🔴 ABOVE {strict_sl}", "🔥 EXECUTE IN SENSIBULE"
+                        f"🟢 BELOW {breakeven_trigger}", f"🔴 ABOVE {strict_sl}", 
+                        "🔥 EXECUTE IN SENSIBULE", time_str
                     ],
-                    "score": total_score, "type": "PE"
+                    "score": total_score
                 })
 
         except Exception as e:
             continue
 
-    # Sort strictly by highest score so top-performing momentum stocks appear at the very top
+    # Sort strictly by highest score so active top movers appear instantly at the top
     sorted_signals = sorted(signals_list, key=lambda x: x["score"], reverse=True)[:10]
-    return [item["data"] for item in sorted_signals], time_str
+    return [item["data"] for item in sorted_signals], full_timestamp_str
 
 
 def run_sensibule_sync(max_retries=3, delay=5):
-    signals_data, time_str = analyze_sensibule_options()
+    signals_data, full_timestamp_str = analyze_sensibule_options()
     
     header_info = [
         ["SENSIBULE EXECUTION ENGINE"],
         ["BACKEND: DUAL-DIRECTIONAL SCANNER (TOP HIGHEST CONVICTION)"],
-        [f"LAST UPDATED: {time_str}"],
+        [f"LAST UPDATED: {full_timestamp_str}"],
         []
     ]
     
     headers = [
         "TICKER", "LTP", "TREND STATUS", "STRATEGY", 
-        "🎯 TARGET / BREAKEVEN", "🛑 STRICT SL (1.5%)", "SENSIBULE TRIGGER"
+        "🎯 TARGET / BREAKEVEN", "🛑 STRICT SL (1.5%)", "SENSIBULE TRIGGER", "LAST UPDATED"
     ]
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Connecting to Google Sheets for Sensibule Engine...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing live signals to Google Sheets...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -193,7 +197,7 @@ def run_sensibule_sync(max_retries=3, delay=5):
 
             ws.clear()
             ws.update(values=header_info + [headers] + signals_data, range_name="A1")
-            print(f"✅ Successfully updated top priority option triggers to '{SENSIBULE_TAB_NAME}'!")
+            print(f"✅ Successfully pushed {len(signals_data)} option triggers with timestamps to '{SENSIBULE_TAB_NAME}'!")
             break
 
         except APIError as e:
