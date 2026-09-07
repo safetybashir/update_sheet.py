@@ -22,10 +22,10 @@ CASH_STOCKS = [
     "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
     "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
     "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "BHARATFORG", "TMPVSOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
+    "BHARATFORG", "TMPV", "SOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
     "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "HEROMOTOCO", 
     "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", "NATIONALUM", 
-    "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", 
+    "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", "BOSCHLTD",
     "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", "SUPREMEIND", 
     "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", "CIPLA", 
     "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", "ULTRACEMCO", 
@@ -88,10 +88,12 @@ def get_gspread_client():
 
 
 def analyze_market_data():
-    print(f"⏳ Running Institutional Dual Scan with Entry Confirmations across {len(CASH_STOCKS)} Cash Stocks...")
+    print(f"⏳ Running Live Intraday 5-Min Scan across {len(CASH_STOCKS)} Cash Stocks...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in CASH_STOCKS]
-    data = yf.download(tickers, period="60d", interval="1d", group_by="ticker", progress=False)
+    
+    # FETCH 5-MINUTE INTRADAY DATA FOR LIVE CAPTURE (period="5d", interval="5m")
+    data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
     
     ist = pytz.timezone("Asia/Kolkata")
     time_str = datetime.now(ist).strftime("%H:%M:%S")  # Sirf Exact Time (HH:MM:SS)
@@ -108,61 +110,64 @@ def analyze_market_data():
                 continue
 
             df = data[t_str].dropna()
-            if len(df) < 15:
+            if len(df) < 20:
                 continue
 
             ltp = round(float(df['Close'].iloc[-1]), 2)
-            prev_close = float(df['Close'].iloc[-2])
+            prev_close = float(df['Close'].iloc[-50]) if len(df) >= 50 else float(df['Close'].iloc[0])
             day_change_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
             
-            high_day = float(df['High'].iloc[-1])
-            low_day = float(df['Low'].iloc[-1])
-            vol_today = float(df['Volume'].iloc[-1])
+            # Intraday High & Low from recent session
+            recent_session_df = df.iloc[-75:] if len(df) >= 75 else df
+            high_day = float(recent_session_df['High'].max())
+            low_day = float(recent_session_df['Low'].min())
+            vol_today = float(recent_session_df['Volume'].sum())
             
-            # 5-Day High / Low Baselines
-            five_day_high = float(df['High'].iloc[-6:-1].max())
-            five_day_low = float(df['Low'].iloc[-6:-1].min())
+            # Baselines for breakout check
+            five_day_high = float(df['High'].max()) * 0.995 # Dynamic intraday threshold proxy
+            five_day_low = float(df['Low'].min()) * 1.005
             
-            is_breakout = ltp >= five_day_high
-            weekly_breakout = "YES (5-DAY HIGH)" if is_breakout else "NO"
+            is_breakout = ltp >= (high_day * 0.99) or day_change_pct >= 1.5
+            weekly_breakout = "YES (MOMENTUM HIGH)" if is_breakout else "NO"
 
-            is_bearish_breakdown = ltp <= five_day_low
-            bearish_weekly_status = "YES (5-DAY LOW)" if is_bearish_breakdown else "NO"
+            is_bearish_breakdown = ltp <= (low_day * 1.01) or day_change_pct <= -1.5
+            bearish_weekly_status = "YES (MOMENTUM LOW)" if is_bearish_breakdown else "NO"
             
             # Day Range Position %
             day_range = high_day - low_day
             day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
             
-            # Volume Baseline 10-Day Average
-            vol_avg_10 = float(df['Volume'].iloc[-11:-1].mean())
-            vol_mult = round(vol_today / vol_avg_10, 2) if vol_avg_10 > 0 else 1.0
+            # Volume Multiplier against average 5m candle volume
+            vol_avg_5m = float(recent_session_df['Volume'].mean())
+            vol_mult = round(vol_today / (vol_avg_5m * 20), 2) if vol_avg_5m > 0 else 1.0
+            if vol_mult < 0.5: vol_mult = 1.1 # Baseline safeguard
             
             vol_status = "🔥 MASSIVE DELIVERY" if vol_mult >= 2.0 else ("⚡ MODERATE VOLUME" if vol_mult >= 1.3 else "NORMAL VOLUME")
             
-            # VWAP Proxy
+            # VWAP Proxy calculation from 5m data
             typical_price = round((high_day + low_day + ltp) / 3, 2)
             is_above_vwap = ltp >= typical_price
             price_vs_vwap = "ABOVE VWAP" if is_above_vwap else "BELOW VWAP"
 
             # ==========================
-            # 🟢 BULLISH EVALUATION (With Confirmation Filters)
+            # 🟢 BULLISH EVALUATION
             # ==========================
-            if is_breakout and day_pos_pct >= 85.0 and vol_mult >= 2.0 and is_above_vwap:
-                b_setup = "ULTRA INSTITUTIONAL BUYING"
+            if day_change_pct >= 2.0 and day_pos_pct >= 80.0 and is_above_vwap:
+                b_setup = "STRONG INTRADAY MOMENTUM"
                 b_strength = "🔥 TOP GRADE-A+ BREAKOUT"
                 b_action = "🟢 STRONG BUY (CONFIRMED)"
                 b_rank = 5
-            elif is_breakout and day_pos_pct >= 80.0 and vol_mult >= 1.5 and is_above_vwap:
-                b_setup = "STRONG INSTITUTIONAL BUYING"
+            elif day_change_pct >= 1.0 and day_pos_pct >= 70.0 and is_above_vwap:
+                b_setup = "MOMENTUM CONTINUATION"
                 b_strength = "⭐ TOP GRADE-A BREAKOUT"
                 b_action = "🟢 BUY CASH (CONFIRMED)"
                 b_rank = 4
-            elif is_breakout and day_pos_pct >= 65.0 and is_above_vwap:
+            elif day_change_pct >= 0.5 and day_pos_pct >= 60.0 and is_above_vwap:
                 b_setup = "BREAKOUT WITH DIP PULLBACK"
                 b_strength = "⚡ HIGH WATCH BUY"
                 b_action = "🟢 BUY ON DIP (WAIT FOR 5-MIN GREEN CANDLE)"
                 b_rank = 3
-            elif (day_change_pct >= 1.0 or is_breakout) and vol_mult >= 1.2:
+            elif day_change_pct > 0:
                 b_setup = "GOOD ACCUMULATION"
                 b_strength = "⚡ HIGH WATCH BUY"
                 b_action = "👀 MONITOR FOR DIP ENTRY & CONFIRMATION"
@@ -186,24 +191,24 @@ def analyze_market_data():
                 })
 
             # ==========================
-            # 🔴 BEARISH EVALUATION (With Confirmation Filters)
+            # 🔴 BEARISH EVALUATION
             # ==========================
-            if is_bearish_breakdown and day_pos_pct <= 15.0 and vol_mult >= 2.0 and not is_above_vwap:
-                bear_setup = "ULTRA INSTITUTIONAL SELLING"
+            if day_change_pct <= -2.0 and day_pos_pct <= 20.0 and not is_above_vwap:
+                bear_setup = "STRONG INTRADAY SELLING"
                 bear_strength = "🔥 TOP GRADE-A+ BREAKDOWN"
                 bear_action = "🔴 STRONG SHORT (CONFIRMED)"
                 bear_rank = 5
-            elif is_bearish_breakdown and day_pos_pct <= 20.0 and vol_mult >= 1.5 and not is_above_vwap:
+            elif day_change_pct <= -1.0 and day_pos_pct <= 30.0 and not is_above_vwap:
                 bear_setup = "HEAVY DISTRIBUTION"
                 bear_strength = "⭐ TOP GRADE-A BREAKDOWN"
                 bear_action = "🔴 SHORT / SELL (CONFIRMED)"
                 bear_rank = 4
-            elif is_bearish_breakdown and day_pos_pct <= 35.0 and not is_above_vwap:
+            elif day_change_pct <= -0.5 and day_pos_pct <= 40.0 and not is_above_vwap:
                 bear_setup = "BREAKDOWN WITH RALLY PULLBACK"
                 bear_strength = "⚡ HIGH WATCH SHORT"
                 bear_action = "🔴 SELL ON RALLY (WAIT FOR RED CANDLE)"
                 bear_rank = 3
-            elif (day_change_pct <= -1.0 or is_bearish_breakdown) and vol_mult >= 1.2:
+            elif day_change_pct < 0:
                 bear_setup = "WEAKNESS / UNLOADING"
                 bear_strength = "⚡ HIGH WATCH SHORT"
                 bear_action = "👀 MONITOR FOR RALLY SHORT & CONFIRMATION"
