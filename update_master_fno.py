@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Advanced Sniper Engine with Universal Column Search
+# 2. Advanced Sniper Engine with Separate Buy & Sell Columns
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -48,7 +48,6 @@ def fetch_bhavcopy_for_date(date_obj):
                     high_col = 'HIGHPRIC' if 'HIGHPRIC' in df.columns else ('HIGH' if 'HIGH' in df.columns else None)
                     low_col = 'LOWPRIC' if 'LOWPRIC' in df.columns else ('LOW' if 'LOW' in df.columns else None)
                     
-                    # Universal Flexible Previous Close Search
                     prev_close_col = None
                     for col in df.columns:
                         if 'PRV' in col or 'PVS' in col or ('PREV' in col and 'CLS' in col):
@@ -73,14 +72,11 @@ def fetch_bhavcopy_for_date(date_obj):
                     filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ'
                     df = df[~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)]
                     
-                    # Strict Sector Exclusion (Banks, Finance, Liquor, Tobacco, etc.)
                     exclude_sectors = 'BANK|FIN|HOUSING|CIG|TOBACCO|INSUR|MUTUAL|CAPITAL|FINSERV|CREDIT|INVEST|BREW|SPIRIT|ALCOHOL|LIQUOR'
                     df = df[~df[sym_col].astype(str).str.contains(exclude_sectors, case=False, na=False)]
                     
-                    # Price Filter (>= ₹150)
                     df = df[df[close_col].astype(float) >= 150.0]
                     
-                    # Calculations
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
                     
                     if prev_close_col and prev_close_col in df.columns:
@@ -101,32 +97,25 @@ def fetch_bhavcopy_for_date(date_obj):
                         low_p = float(row[low_col]) if low_col and low_col in df.columns else close_p
                         prev_c = float(row[prev_close_col]) if prev_close_col and prev_close_col in df.columns else close_p
                         
-                        # Col E: Action Signal
+                        # --- Col E: BUY & ROCKET RADAR ---
+                        buy_signal = "—"
                         if turnover_cr >= 500 and change_pct >= 2.0:
-                            action = "🟢 ROCKET BLAST (UP BREAKOUT)"
-                        elif turnover_cr >= 500 and change_pct <= -2.0:
-                            action = "🔴 SHARP DUMP (DOWN BREAKDOWN)"
+                            buy_signal = "🟢 ROCKET BLAST (BUY)"
+                        elif turnover_cr >= 400 and change_pct >= 1.5:
+                            buy_signal = "🎯 SNIPER BULL HIT (BUY)"
                         elif turnover_cr >= 1000 and (-0.6 <= change_pct <= 0.6):
-                            action = "⚡ COILED SPRING (READY TO BLAST)"
+                            buy_signal = "⚡ COILED SPRING (ACCUMULATION)"
                         elif change_pct > 0:
-                            action = "📈 MILD BULLISH"
-                        else:
-                            action = "📉 MILD BEARISH"
-                            
-                        # Col F: Sniper Hit Radar
-                        if turnover_cr >= 400 and change_pct >= 1.5:
-                            sniper_hit = "🎯 SNIPER BULL HIT (INSTI BUY)"
-                        elif turnover_cr >= 400 and change_pct <= -1.5:
-                            sniper_hit = "⚠️ SNIPER BEAR HIT (INSTI SELL)"
-                        elif turnover_cr >= 1000:
-                            if -0.6 <= change_pct <= 0.6:
-                                sniper_hit = "🔍 ACCUMULATION ZONE"
-                            else:
-                                sniper_hit = "⭐ MEGA VOLUME ZONE"
-                        else:
-                            sniper_hit = "—"
+                            buy_signal = "📈 MILD BULLISH"
 
-                        # Col G: Bull Trap & Fake Breakout Detector
+                        # --- Col F: SELL & DUMP RADAR ---
+                        sell_signal = "—"
+                        if turnover_cr >= 500 and change_pct <= -2.0:
+                            sell_signal = "🔴 SHARP DUMP (SELL/EXIT)"
+                        elif turnover_cr >= 400 and change_pct <= -1.5:
+                            sell_signal = "⚠️ SNIPER BEAR HIT (INSTI SELL)"
+
+                        # --- Col G: BULL TRAP DETECTOR ---
                         upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100 if prev_c > 0 else 0
                         
                         if turnover_cr >= 300 and upper_wick_pct >= 1.5 and change_pct < 1.0:
@@ -136,7 +125,7 @@ def fetch_bhavcopy_for_date(date_obj):
                         else:
                             bull_trap = "✅ CLEAN PRICE ACTION"
                             
-                        processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", action, sniper_hit, bull_trap])
+                        processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", buy_signal, sell_signal, bull_trap])
                         
                     return processed_data
         return None
@@ -163,15 +152,14 @@ for i in range(5):
 if data_to_insert:
     worksheet.clear()  
     
-    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "ACTION SIGNAL", "SNIPER HIT RADAR", "BULL TRAP ALERT (COL G)"]
+    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "🟢 BUY / ROCKET RADAR", "🔴 SELL / DUMP RADAR", "🚨 BULL TRAP ALERT"]
     worksheet.update('A1', [headers])
-    
     worksheet.update('A2', data_to_insert)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Flexible Previous Close Search!")
+    print("SUCCESS: Sheet Updated with Separate Buy & Sell Columns!")
 else:
     print("❌ Failed to fetch data.")
