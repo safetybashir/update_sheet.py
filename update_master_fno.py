@@ -125,9 +125,7 @@ def fetch_bhavcopy_for_date(date_obj):
                         else:
                             sniper_hit = "—"
 
-                        # --- Col G: BULL TRAP & FAKE BREAKOUT DETECTOR ---
-                        # Logic: Agar stock ka High din mein kaafi upar gaya tha (e.g., High was 2%+ above previous close) 
-                        # lekin close hote-hote price toot gaya ya flat ho gaya (Change < 0.5%), matlab upar maal fasa kar bech diya gaya.
+                        # Col G: Bull Trap & Fake Breakout Detector
                         upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100
                         
                         if turnover_cr >= 300 and upper_wick_pct >= 1.5 and change_pct < 1.0:
@@ -169,11 +167,11 @@ if data_to_insert:
     
     worksheet.update('A2', data_to_insert)
     
-    # Status Message moved safely to Column I1
+    # Status Message safely at I1 with proper closing brackets
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
-    worksheet.update('I1', [[status_msg]]
+    worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Column G Bull Trap Alert!")
+    print("SUCCESS: Sheet Updated Successfully!")
 else:
     print("❌ Failed to fetch data.")
