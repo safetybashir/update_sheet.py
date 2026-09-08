@@ -1,23 +1,27 @@
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import pandas as pd
-import requests
-import zipfile
-import io
-from datetime import datetime, timedelta
 import os
 import json
+import time
+from datetime import datetime, timedelta
+import io
+import zipfile
+import requests
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # 1. Credentials Setup
 creds_json = os.environ.get('GCP_CREDENTIALS')
+if not creds_json:
+    raise ValueError("❌ GCP_CREDENTIALS environment variable not found!")
+    
 creds_dict = json.loads(creds_json)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
-# अपनी गूगल शीट की ID यहाँ डालें (URL के बीच का हिस्सा)
+# Google Sheet ID & Worksheet Name Updated to LIVE_MASTER_DASHBOARD
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
-worksheet = client.open_by_key(spreadsheet_id).worksheet("Top 250 Stocks")
+worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
 # 2. NSE UDiFF Data Fetcher
 def fetch_bhavcopy_for_date(date_obj):
@@ -56,7 +60,8 @@ def fetch_bhavcopy_for_date(date_obj):
                     df_top = df.sort_values(by=vol_col, ascending=False).head(250)
                     return df_top[[sym_col, vol_col, close_col]].values.tolist()
         return None
-    except:
+    except Exception as e:
+        print(f"Error fetching data: {e}")
         return None
 
 # 3. Execution Logic
@@ -66,7 +71,8 @@ fetched_date_str = ""
 
 for i in range(5): 
     test_date = date - timedelta(days=i)
-    if test_date.weekday() >= 5: continue
+    if test_date.weekday() >= 5: 
+        continue
         
     data_to_insert = fetch_bhavcopy_for_date(test_date)
     if data_to_insert:
@@ -81,3 +87,5 @@ if data_to_insert:
     status_msg = f"Data Date: {fetched_date_str} | Last Update: {ist_now} (IST)"
     worksheet.update('K2', [[status_msg]])
     print("SUCCESS: Sheet Updated!")
+else:
+    print("❌ Failed to fetch Bhavcopy data for recent days.")
