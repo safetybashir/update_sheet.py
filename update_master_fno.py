@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Advanced Sniper Engine Sorted by Day Change % (Col D)
+# 2. Super-Charged Sniper Engine with Dynamic Thresholds
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -84,7 +84,6 @@ def fetch_bhavcopy_for_date(date_obj):
                     else:
                         df['DAY_CHANGE_PCT'] = 0.0
 
-                    # Pehle top turnover wale 150 stocks nikal lo taaki liquidity achhi ho
                     df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(150)
                     
                     processed_data = []
@@ -98,11 +97,11 @@ def fetch_bhavcopy_for_date(date_obj):
                         low_p = float(row[low_col]) if low_col and low_col in df.columns else close_p
                         prev_c = float(row[prev_close_col]) if prev_close_col and prev_close_col in df.columns else close_p
                         
-                        # --- Col E: BUY & ROCKET RADAR ---
+                        # --- Col E: DYNAMIC BUY & ROCKET RADAR ---
                         buy_signal = "—"
-                        if turnover_cr >= 500 and change_pct >= 2.0:
+                        if (turnover_cr >= 500 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 8.0):
                             buy_signal = "🟢 ROCKET BLAST (BUY)"
-                        elif turnover_cr >= 400 and change_pct >= 1.5:
+                        elif (turnover_cr >= 400 and change_pct >= 1.5) or (turnover_cr >= 200 and change_pct >= 5.0):
                             buy_signal = "🎯 SNIPER BULL HIT (BUY)"
                         elif turnover_cr >= 1000 and (-0.6 <= change_pct <= 0.6):
                             buy_signal = "⚡ COILED SPRING (ACCUMULATION)"
@@ -111,17 +110,17 @@ def fetch_bhavcopy_for_date(date_obj):
 
                         # --- Col F: SELL & DUMP RADAR ---
                         sell_signal = "—"
-                        if turnover_cr >= 500 and change_pct <= -2.0:
+                        if (turnover_cr >= 500 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -5.0):
                             sell_signal = "🔴 SHARP DUMP (SELL/EXIT)"
-                        elif turnover_cr >= 400 and change_pct <= -1.5:
+                        elif (turnover_cr >= 400 and change_pct <= -1.5) or (turnover_cr >= 200 and change_pct <= -3.0):
                             sell_signal = "⚠️ SNIPER BEAR HIT (INSTI SELL)"
 
                         # --- Col G: BULL TRAP DETECTOR ---
                         upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100 if prev_c > 0 else 0
                         
-                        if turnover_cr >= 300 and upper_wick_pct >= 1.5 and change_pct < 1.0:
+                        if turnover_cr >= 250 and upper_wick_pct >= 1.5 and change_pct < 1.0:
                             bull_trap = "🚨 BULL TRAP (TOP REJECTION)"
-                        elif turnover_cr >= 500 and change_pct <= -1.0:
+                        elif turnover_cr >= 400 and change_pct <= -1.0:
                             bull_trap = "⚠️ BEAR TRAP / DUMP ZONE"
                         else:
                             bull_trap = "✅ CLEAN PRICE ACTION"
@@ -137,7 +136,7 @@ def fetch_bhavcopy_for_date(date_obj):
                             'trap': bull_trap
                         })
                         
-                    # 🚀 MAIN SORTING CHANGE: Sort by Day Change % (Highest Gainers on Top)
+                    # Sort by Day Change % (Highest Gainers on Top)
                     processed_data.sort(key=lambda x: x['change_pct'], reverse=True)
                     
                     final_rows = [[item['symbol'], item['turnover'], item['close'], item['change_str'], item['buy'], item['sell'], item['trap']] for item in processed_data]
@@ -174,6 +173,6 @@ if data_to_insert:
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sheet Sorted by Day Change % (High to Low)! Market Momentum Leaderboard Ready.")
+    print("SUCCESS: Super-Charged Sheet Updated with Dynamic Rules!")
 else:
     print("❌ Failed to fetch data.")
