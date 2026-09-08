@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Advanced Sniper Strategy Engine
+# 2. Advanced Sniper Strategy Engine (Fixed Previous Close Match)
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -45,7 +45,14 @@ def fetch_bhavcopy_for_date(date_obj):
                     
                     sym_col = 'TCKRSYMB' if 'TCKRSYMB' in df.columns else 'SYMBOL'
                     close_col = 'CLSPRIC' if 'CLSPRIC' in df.columns else ('CLOSE' if 'CLOSE' in df.columns else None)
-                    prev_close_col = 'PVSCLSPRIC' if 'PVSCLSPRIC' in df.columns else ('PREVCLOSE' if 'PREVCLOSE' in df.columns else ('PRCLSPRIC' if 'PRCLSPRIC' in df.columns else None))
+                    
+                    # Exact Corrected Previous Close Column Mapping
+                    prev_close_col = None
+                    for c in ['PRVSCLSPRIC', 'PVSCLSPRIC', 'PREVCLOSE', 'PRCLSPRIC']:
+                        if c in df.columns:
+                            prev_close_col = c
+                            break
+                            
                     series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' if 'SERIES' in df.columns else None)
                     
                     vol_col = 'TTLTRADGVOL'
@@ -136,6 +143,6 @@ if data_to_insert:
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('G1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Sniper Blast & Coiled Spring Strategy!")
+    print("SUCCESS: Sheet Updated with Exact Percentage & Sniper Triggers!")
 else:
     print("❌ Failed to fetch data.")
