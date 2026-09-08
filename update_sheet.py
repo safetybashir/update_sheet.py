@@ -142,9 +142,9 @@ def analyze_market_data():
             # ==========================
             # 🟢 BULLISH EVALUATION
             # ==========================
-            if day_change_pct >= 2.0 and day_pos_pct >= 85.0 and is_above_vwap:
+            if day_change_pct >= 2.0 and day_pos_pct >= 75.0 and is_above_vwap:
                 b_setup, b_strength, b_action, b_rank = "STRONG INTRADAY MOMENTUM", "🔥 TOP GRADE-A+ BREAKOUT", "🟢 STRONG BUY (CONFIRMED)", 5
-            elif day_change_pct >= 1.0 and day_pos_pct >= 75.0 and is_above_vwap:
+            elif day_change_pct >= 1.0 and day_pos_pct >= 70.0 and is_above_vwap:
                 b_setup, b_strength, b_action, b_rank = "MOMENTUM CONTINUATION", "⭐ TOP GRADE-A BREAKOUT", "🟢 BUY CASH (CONFIRMED)", 4
             elif day_change_pct >= 0.5 and day_pos_pct >= 65.0 and is_above_vwap:
                 b_setup, b_strength, b_action, b_rank = "BREAKOUT WITH DIP PULLBACK", "⚡ HIGH WATCH BUY", "🟢 BUY ON DIP (WAIT FOR 5-MIN GREEN CANDLE)", 3
