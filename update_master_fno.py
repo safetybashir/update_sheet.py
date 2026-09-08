@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Advanced Sniper Engine with Separate Buy & Sell Columns
+# 2. Advanced Sniper Engine Sorted by Day Change % (Col D)
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -84,7 +84,8 @@ def fetch_bhavcopy_for_date(date_obj):
                     else:
                         df['DAY_CHANGE_PCT'] = 0.0
 
-                    df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(100)
+                    # Pehle top turnover wale 150 stocks nikal lo taaki liquidity achhi ho
+                    df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(150)
                     
                     processed_data = []
                     for _, row in df_top.iterrows():
@@ -125,9 +126,22 @@ def fetch_bhavcopy_for_date(date_obj):
                         else:
                             bull_trap = "✅ CLEAN PRICE ACTION"
                             
-                        processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", buy_signal, sell_signal, bull_trap])
+                        processed_data.append({
+                            'symbol': symbol,
+                            'turnover': turnover_cr,
+                            'close': close_p,
+                            'change_pct': change_pct,
+                            'change_str': f"{change_pct:+.2f}%",
+                            'buy': buy_signal,
+                            'sell': sell_signal,
+                            'trap': bull_trap
+                        })
                         
-                    return processed_data
+                    # 🚀 MAIN SORTING CHANGE: Sort by Day Change % (Highest Gainers on Top)
+                    processed_data.sort(key=lambda x: x['change_pct'], reverse=True)
+                    
+                    final_rows = [[item['symbol'], item['turnover'], item['close'], item['change_str'], item['buy'], item['sell'], item['trap']] for item in processed_data]
+                    return final_rows
         return None
     except Exception as e:
         print(f"Error: {e}")
@@ -148,7 +162,7 @@ for i in range(5):
         fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Sheet Output (Columns A to G)
+# 4. Sheet Output
 if data_to_insert:
     worksheet.clear()  
     
@@ -160,6 +174,6 @@ if data_to_insert:
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Separate Buy & Sell Columns!")
+    print("SUCCESS: Sheet Sorted by Day Change % (High to Low)! Market Momentum Leaderboard Ready.")
 else:
     print("❌ Failed to fetch data.")
