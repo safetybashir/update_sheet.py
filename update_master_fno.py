@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Background Processing & Data Engine
+# 2. Advanced Sniper Strategy Engine
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -41,7 +41,6 @@ def fetch_bhavcopy_for_date(date_obj):
                 with z.open(csv_filename) as f:
                     df = pd.read_csv(f)
                     
-                    # Background Column Normalization
                     df.columns = [col.strip().upper() for col in df.columns]
                     
                     sym_col = 'TCKRSYMB' if 'TCKRSYMB' in df.columns else 'SYMBOL'
@@ -58,23 +57,21 @@ def fetch_bhavcopy_for_date(date_obj):
                     if not sym_col or not close_col:
                         return None
 
-                    # --- BACKGROUND FILTERS ---
-                    # 1. EQ Series Filter
+                    # --- FILTERS ---
                     if series_col and series_col in df.columns:
                         df = df[df[series_col].astype(str).str.strip() == 'EQ']
                     
-                    # 2. ETF / Bees Removal
                     filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ'
                     df = df[~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)]
                     
-                    # 3. Sector & Unwanted Stock Exclusion (Banks, Finance, Liquor, Tobacco, etc.)
+                    # Strict Sector Exclusion (Banks, Finance, Liquor, Tobacco, etc.)
                     exclude_sectors = 'BANK|FIN|HOUSING|CIG|TOBACCO|INSUR|MUTUAL|CAPITAL|FINSERV|CREDIT|INVEST|BREW|SPIRIT|ALCOHOL|LIQUOR'
                     df = df[~df[sym_col].astype(str).str.contains(exclude_sectors, case=False, na=False)]
                     
-                    # 4. Price Filter (>= ₹150)
+                    # Price Filter (>= ₹150)
                     df = df[df[close_col].astype(float) >= 150.0]
                     
-                    # 5. Background Calculations (Turnover & Percentage)
+                    # Calculations
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
                     
                     if prev_close_col and prev_close_col in df.columns:
@@ -82,7 +79,6 @@ def fetch_bhavcopy_for_date(date_obj):
                     else:
                         df['DAY_CHANGE_PCT'] = 0.0
 
-                    # 6. Sorting Top 100 High Turnover Stocks
                     df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(100)
                     
                     processed_data = []
@@ -92,19 +88,18 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # Conviction Action Logic
+                        # --- SNIPER BLAST & COILED SPRING LOGIC ---
                         if turnover_cr >= 500 and change_pct >= 2.0:
-                            action = "🔥 HIGH CONVICTION BREAKOUT"
-                        elif change_pct >= 3.0:
-                            action = "🟢 MOMENTUM BUY"
-                        elif change_pct <= -2.5:
-                            action = "🔴 SHARP FALL / AVOID"
-                        elif turnover_cr >= 1000:
-                            action = "⭐ MEGA TURNOVER ZONE"
+                            action = "🟢 ROCKET BLAST (UP BREAKOUT)"
+                        elif turnover_cr >= 500 and change_pct <= -2.0:
+                            action = "🔴 SHARP DUMP (DOWN BREAKDOWN)"
+                        elif turnover_cr >= 1000 and (-0.6 <= change_pct <= 0.6):
+                            action = "⚡ COILED SPRING (READY TO BLAST)"
+                        elif change_pct > 0:
+                            action = "📈 MILD BULLISH"
                         else:
-                            action = "👀 WATCHLIST"
+                            action = "📉 MILD BEARISH"
                             
-                        # Only pushing the final clean columns to sheet output
                         processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", action])
                         
                     return processed_data
@@ -128,22 +123,19 @@ for i in range(5):
         fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Clean Sheet Output (No Clutter)
+# 4. Sheet Output
 if data_to_insert:
     worksheet.clear()  
     
-    # Clean 5 Headers (Columns A to E)
-    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "ACTION SIGNAL"]
+    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "SNIPER ACTION SIGNAL"]
     worksheet.update('A1', [headers])
     
-    # Insert Processed Data
     worksheet.update('A2', data_to_insert)
     
-    # Status Message placed neatly at G1 (Out of the main data table view)
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('G1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Clean Essential Columns Only!")
+    print("SUCCESS: Sheet Updated with Sniper Blast & Coiled Spring Strategy!")
 else:
     print("❌ Failed to fetch data.")
