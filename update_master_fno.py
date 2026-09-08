@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Advanced Sniper Strategy Engine (Fixed Previous Close Match)
+# 2. Advanced Sniper Strategy Engine with Column F Logic
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -46,7 +46,6 @@ def fetch_bhavcopy_for_date(date_obj):
                     sym_col = 'TCKRSYMB' if 'TCKRSYMB' in df.columns else 'SYMBOL'
                     close_col = 'CLSPRIC' if 'CLSPRIC' in df.columns else ('CLOSE' if 'CLOSE' in df.columns else None)
                     
-                    # Exact Corrected Previous Close Column Mapping
                     prev_close_col = None
                     for c in ['PRVSCLSPRIC', 'PVSCLSPRIC', 'PREVCLOSE', 'PRCLSPRIC']:
                         if c in df.columns:
@@ -95,7 +94,7 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # --- SNIPER BLAST & COILED SPRING LOGIC ---
+                        # Col E: Action Signal
                         if turnover_cr >= 500 and change_pct >= 2.0:
                             action = "🟢 ROCKET BLAST (UP BREAKOUT)"
                         elif turnover_cr >= 500 and change_pct <= -2.0:
@@ -107,7 +106,20 @@ def fetch_bhavcopy_for_date(date_obj):
                         else:
                             action = "📉 MILD BEARISH"
                             
-                        processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", action])
+                        # Col F: Dedicated Sniper Hit Radar (For stocks like HAL, Bosch, Divis Lab breaking out with high value)
+                        if turnover_cr >= 400 and change_pct >= 1.5:
+                            sniper_hit = "🎯 SNIPER BULL HIT (INSTI BUY)"
+                        elif turnover_cr >= 400 and change_pct <= -1.5:
+                            sniper_hit = "⚠️ SNIPER BEAR HIT (INSTI SELL)"
+                        elif turnover_cr >= 1000:
+                            if -0.6 <= change_pct <= 0.6:
+                                sniper_hit = "🔍 ACCUMULATION ZONE"
+                            else:
+                                sniper_hit = "⭐ MEGA VOLUME ZONE"
+                        else:
+                            sniper_hit = "—"
+                            
+                        processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", action, sniper_hit])
                         
                     return processed_data
         return None
@@ -130,19 +142,20 @@ for i in range(5):
         fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Sheet Output
+# 4. Sheet Output (Columns A to F)
 if data_to_insert:
     worksheet.clear()  
     
-    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "SNIPER ACTION SIGNAL"]
+    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "ACTION SIGNAL", "SNIPER HIT RADAR"]
     worksheet.update('A1', [headers])
     
     worksheet.update('A2', data_to_insert)
     
+    # Status Message moved safely to Column H1
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
-    worksheet.update('G1', [[status_msg]])
+    worksheet.update('H1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Exact Percentage & Sniper Triggers!")
+    print("SUCCESS: Sheet Updated with Column F Sniper Hit Radar!")
 else:
     print("❌ Failed to fetch data.")
