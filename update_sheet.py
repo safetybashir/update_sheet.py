@@ -24,7 +24,7 @@ CASH_STOCKS = [
     "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
     "BHARATFORG", "TMPV", "SOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
     "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "HEROMOTOCO", 
-    "KPITTECH", "RVNL", "RELIANCE", "ZYDUSLIFE", "BHEL", "NATIONALUM", "SOLARIND",
+    "KPITTECH", "RVNL", "RELIANCE", "ZYDUSLIFE", "BHEL", "NATIONALUM", 
     "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", 
     "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", "SUPREMEIND", 
     "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", "CIPLA", 
@@ -94,7 +94,7 @@ def analyze_market_data():
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
     
     ist = pytz.timezone("Asia/Kolkata")
-    time_str = datetime.now(ist).strftime("%H:%M:%S")  # Strict HH:MM:SS format
+    time_str = datetime.now(ist).strftime("%H:%M:%S")
     
     bullish_dict = {}
     bearish_dict = {}
@@ -156,13 +156,18 @@ def analyze_market_data():
             if b_rank > 1:
                 target_price = round(ltp * 1.03, 2)
                 stop_loss = round(ltp * 0.985, 2)
+                
+                # 🚀 Hero Priority Booster for Bosch, Solarind, and Divislab to force them to the top
+                hero_boost = 100.0 if raw_sym in ["BOSCHLTD", "SOLARIND", "DIVISLAB"] else 0.0
+                composite_score = (b_rank * 20) + day_change_pct + day_pos_pct + hero_boost
+
                 bullish_dict[raw_sym] = {
                     "data": [
                         raw_sym, ltp, f"{day_change_pct:.2f}%", weekly_breakout, f"{day_pos_pct:.2f}%",
                         vol_mult, vol_status, typical_price, price_vs_vwap, target_price, stop_loss,
                         b_setup, b_strength, b_action, time_str
                     ],
-                    "rank": b_rank, "day_pos": day_pos_pct, "vol": vol_mult, "day_change": day_change_pct
+                    "rank": b_rank, "day_pos": day_pos_pct, "vol": vol_mult, "day_change": day_change_pct, "score": composite_score
                 }
 
             # ==========================
@@ -194,8 +199,8 @@ def analyze_market_data():
         except Exception as e:
             continue
 
-    # De-duplication check: dictionary keys naturally ensure unique tickers per run
-    sorted_bullish = sorted(bullish_dict.values(), key=lambda x: (x["rank"], x["day_pos"], x["vol"], x["day_change"]), reverse=True)
+    # Sort strictly using the composite score so BOSCHLTD, SOLARIND, and DIVISLAB appear right at the top
+    sorted_bullish = sorted(bullish_dict.values(), key=lambda x: (x["score"], x["rank"], x["day_pos"], x["vol"], x["day_change"]), reverse=True)
     sorted_bearish = sorted(bearish_dict.values(), key=lambda x: (x["rank"], -x["day_pos"], x["vol"], -x["day_change"]), reverse=True)
     
     return [item["data"] for item in sorted_bullish], [item["data"] for item in sorted_bearish]
