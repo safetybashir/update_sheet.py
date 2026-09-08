@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Super-Charged Sniper Engine with Dynamic Thresholds
+# 2. Elite F&O & LargeMidcap 250 Focused Engine
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -54,7 +54,7 @@ def fetch_bhavcopy_for_date(date_obj):
                             prev_close_col = col
                             break
                             
-                    series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' if 'SERIES' in df.columns else None)
+                    series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' in df.columns and 'SERIES' or None)
                     
                     vol_col = 'TTLTRADGVOL'
                     for c in ['TTLTRADGVOL', 'TTLTRDQTY', 'TOTTRDQTY']:
@@ -65,26 +65,27 @@ def fetch_bhavcopy_for_date(date_obj):
                     if not sym_col or not close_col:
                         return None
 
-                    # --- FILTERS ---
+                    # --- STRICT UNIVERSE FILTERS (F&O / LargeMidcap Focus) ---
                     if series_col and series_col in df.columns:
                         df = df[df[series_col].astype(str).str.strip() == 'EQ']
                     
-                    filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ'
+                    # Remove ETFs, REITs, Indices, Bonds, SGBs
+                    filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ|NIFTY|SETF|NV20|CPSE'
                     df = df[~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)]
                     
-                    exclude_sectors = 'BANK|FIN|HOUSING|CIG|TOBACCO|INSUR|MUTUAL|CAPITAL|FINSERV|CREDIT|INVEST|BREW|SPIRIT|ALCOHOL|LIQUOR'
-                    df = df[~df[sym_col].astype(str).str.contains(exclude_sectors, case=False, na=False)]
-                    
-                    df = df[df[close_col].astype(float) >= 150.0]
-                    
+                    # Ensure high liquidity baseline to isolate genuine Large & Midcap / F&O counters
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
+                    
+                    # Minimum Turnover filter of 50 Cr to completely eliminate micro/small-cap noise
+                    df = df[df['TRADED_VALUE'] >= 500000000] 
                     
                     if prev_close_col and prev_close_col in df.columns:
                         df['DAY_CHANGE_PCT'] = ((df[close_col].astype(float) - df[prev_close_col].astype(float)) / df[prev_close_col].astype(float)) * 100
                     else:
                         df['DAY_CHANGE_PCT'] = 0.0
 
-                    df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(150)
+                    # Keep top liquid institutional candidates
+                    df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(200)
                     
                     processed_data = []
                     for _, row in df_top.iterrows():
@@ -99,31 +100,31 @@ def fetch_bhavcopy_for_date(date_obj):
                         
                         # --- Col E: DYNAMIC BUY & ROCKET RADAR ---
                         buy_signal = "—"
-                        if (turnover_cr >= 500 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 8.0):
+                        if (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
                             buy_signal = "🟢 ROCKET BLAST (BUY)"
-                        elif (turnover_cr >= 400 and change_pct >= 1.5) or (turnover_cr >= 200 and change_pct >= 5.0):
+                        elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
                             buy_signal = "🎯 SNIPER BULL HIT (BUY)"
-                        elif turnover_cr >= 1000 and (-0.6 <= change_pct <= 0.6):
+                        elif turnover_cr >= 800 and (-0.5 <= change_pct <= 0.5):
                             buy_signal = "⚡ COILED SPRING (ACCUMULATION)"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
 
                         # --- Col F: SELL & DUMP RADAR ---
                         sell_signal = "—"
-                        if (turnover_cr >= 500 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -5.0):
+                        if (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
                             sell_signal = "🔴 SHARP DUMP (SELL/EXIT)"
-                        elif (turnover_cr >= 400 and change_pct <= -1.5) or (turnover_cr >= 200 and change_pct <= -3.0):
+                        elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
                             sell_signal = "⚠️ SNIPER BEAR HIT (INSTI SELL)"
 
-                        # --- Col G: BULL TRAP DETECTOR ---
+                        # --- Col G: ORGANIC STOCKS / NO BULL TRAP ---
                         upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100 if prev_c > 0 else 0
                         
-                        if turnover_cr >= 250 and upper_wick_pct >= 1.5 and change_pct < 1.0:
-                            bull_trap = "🚨 BULL TRAP (TOP REJECTION)"
-                        elif turnover_cr >= 400 and change_pct <= -1.0:
-                            bull_trap = "⚠️ BEAR TRAP / DUMP ZONE"
+                        if turnover_cr >= 200 and upper_wick_pct >= 1.2 and change_pct < 0.8:
+                            organic_status = "🚨 TRAP / TOP REJECTION"
+                        elif turnover_cr >= 300 and change_pct <= -1.0:
+                            organic_status = "⚠️ BEAR TRAP / DUMP ZONE"
                         else:
-                            bull_trap = "✅ CLEAN PRICE ACTION"
+                            organic_status = "🌱 ORGANIC STOCK (NO TRAP)"
                             
                         processed_data.append({
                             'symbol': symbol,
@@ -133,13 +134,13 @@ def fetch_bhavcopy_for_date(date_obj):
                             'change_str': f"{change_pct:+.2f}%",
                             'buy': buy_signal,
                             'sell': sell_signal,
-                            'trap': bull_trap
+                            'organic': organic_status
                         })
                         
                     # Sort by Day Change % (Highest Gainers on Top)
                     processed_data.sort(key=lambda x: x['change_pct'], reverse=True)
                     
-                    final_rows = [[item['symbol'], item['turnover'], item['close'], item['change_str'], item['buy'], item['sell'], item['trap']] for item in processed_data]
+                    final_rows = [[item['symbol'], item['turnover'], item['close'], item['change_str'], item['buy'], item['sell'], item['organic']] for item in processed_data]
                     return final_rows
         return None
     except Exception as e:
@@ -165,14 +166,14 @@ for i in range(5):
 if data_to_insert:
     worksheet.clear()  
     
-    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "🟢 BUY / ROCKET RADAR", "🔴 SELL / DUMP RADAR", "🚨 BULL TRAP ALERT"]
+    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "🟢 BUY / ROCKET RADAR", "🔴 SELL / DUMP RADAR", "🌱 ORGANIC STOCKS / NO BULL TRAP"]
     worksheet.update('A1', [headers])
     worksheet.update('A2', data_to_insert)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
-    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
+    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [F&O/LargeMidcap Universe]"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Super-Charged Sheet Updated with Dynamic Rules!")
+    print("SUCCESS: Sheet restricted and sorted for F&O / LargeMidcap 250 Universe!")
 else:
     print("❌ Failed to fetch data.")
