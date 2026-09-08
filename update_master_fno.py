@@ -10,16 +10,16 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # 1. Credentials Setup
-creds_json = os.environ.get('GCP_CREDENTIALS')
+creds_json = os.environ.get('GCP_CREDENTIALS_JSON')
 if not creds_json:
-    raise ValueError("❌ GCP_CREDENTIALS environment variable not found!")
+    raise ValueError("❌ GCP_CREDENTIALS_JSON environment variable not found!")
     
 creds_dict = json.loads(creds_json)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
-# Google Sheet ID & Worksheet Name Updated to LIVE_MASTER_DASHBOARD
+# Google Sheet ID & Worksheet Name
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
@@ -79,13 +79,22 @@ for i in range(5):
         fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Update Sheet
+# 4. Update Sheet with Headers and Clean Layout
 if data_to_insert:
-    worksheet.batch_clear(['A2:C251'])
+    worksheet.clear()  # Clear sheet completely to avoid old residual data
+    
+    # Write Column Headers in Row 1
+    headers = ["STOCK SYMBOL", "TRADED VOLUME", "CLOSE PRICE"]
+    worksheet.update('A1', [headers])
+    
+    # Write Top 250 Stocks Data starting from Row 2
     worksheet.update('A2', data_to_insert)
+    
+    # Status Message placed neatly at E1 (eliminating the giant gap to K)
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     status_msg = f"Data Date: {fetched_date_str} | Last Update: {ist_now} (IST)"
-    worksheet.update('K2', [[status_msg]])
-    print("SUCCESS: Sheet Updated!")
+    worksheet.update('E1', [[status_msg]])
+    
+    print("SUCCESS: Sheet Updated with Headers and Clean Layout!")
 else:
     print("❌ Failed to fetch Bhavcopy data for recent days.")
