@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Advanced Sniper Engine with Bull Trap Detection
+# 2. Advanced Sniper Engine with Universal Column Search
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -43,15 +43,16 @@ def fetch_bhavcopy_for_date(date_obj):
                     
                     df.columns = [col.strip().upper() for col in df.columns]
                     
-                    sym_col = 'TCKRSYMB' if 'TCKRSYMB' in df.columns else 'SYMBOL'
+                    sym_col = 'TCKRSYMB' if 'TCKRSYMB' in df.columns else ('SYMBOL' if 'SYMBOL' in df.columns else None)
                     close_col = 'CLSPRIC' if 'CLSPRIC' in df.columns else ('CLOSE' if 'CLOSE' in df.columns else None)
                     high_col = 'HIGHPRIC' if 'HIGHPRIC' in df.columns else ('HIGH' if 'HIGH' in df.columns else None)
                     low_col = 'LOWPRIC' if 'LOWPRIC' in df.columns else ('LOW' if 'LOW' in df.columns else None)
                     
+                    # Universal Flexible Previous Close Search
                     prev_close_col = None
-                    for c in ['PRVSCLSPRIC', 'PVSCLSPRIC', 'PREVCLOSE', 'PRCLSPRIC']:
-                        if c in df.columns:
-                            prev_close_col = c
+                    for col in df.columns:
+                        if 'PRV' in col or 'PVS' in col or ('PREV' in col and 'CLS' in col):
+                            prev_close_col = col
                             break
                             
                     series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' if 'SERIES' in df.columns else None)
@@ -126,7 +127,7 @@ def fetch_bhavcopy_for_date(date_obj):
                             sniper_hit = "—"
 
                         # Col G: Bull Trap & Fake Breakout Detector
-                        upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100
+                        upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100 if prev_c > 0 else 0
                         
                         if turnover_cr >= 300 and upper_wick_pct >= 1.5 and change_pct < 1.0:
                             bull_trap = "🚨 BULL TRAP (TOP REJECTION)"
@@ -167,11 +168,10 @@ if data_to_insert:
     
     worksheet.update('A2', data_to_insert)
     
-    # Status Message safely at I1 with proper closing brackets
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated Successfully!")
+    print("SUCCESS: Sheet Updated with Flexible Previous Close Search!")
 else:
     print("❌ Failed to fetch data.")
