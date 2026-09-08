@@ -24,4 +24,4 @@ jobs:
       - name: Run Python Script
         env:
           GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
-        run: update_master_fno.py
+        run: python3 update_master_fno.py
