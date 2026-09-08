@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. NSE UDiFF Data Fetcher & Advanced Filtering
+# 2. Background Processing & Data Engine
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -41,42 +41,48 @@ def fetch_bhavcopy_for_date(date_obj):
                 with z.open(csv_filename) as f:
                     df = pd.read_csv(f)
                     
-                    sym_col = 'TckrSymb' if 'TckrSymb' in df.columns else 'SYMBOL'
-                    close_col = 'ClsPric' if 'ClsPric' in df.columns else 'CLOSE'
-                    series_col = 'SctySrs' if 'SctySrs' in df.columns else 'SERIES'
-                    prev_close_col = 'PvsClsPric' if 'PvsClsPric' in df.columns else ('PREVCLOSE' if 'PREVCLOSE' in df.columns else None)
+                    # Background Column Normalization
+                    df.columns = [col.strip().upper() for col in df.columns]
                     
-                    # Volume Column Findout
-                    vol_col = 'TtlTradgVol'
-                    for c in ['TtlTradgVol', 'TtlTrdQty', 'TotTrdQty', 'TOTTRDQTY']:
+                    sym_col = 'TCKRSYMB' if 'TCKRSYMB' in df.columns else 'SYMBOL'
+                    close_col = 'CLSPRIC' if 'CLSPRIC' in df.columns else ('CLOSE' if 'CLOSE' in df.columns else None)
+                    prev_close_col = 'PVSCLSPRIC' if 'PVSCLSPRIC' in df.columns else ('PREVCLOSE' if 'PREVCLOSE' in df.columns else ('PRCLSPRIC' if 'PRCLSPRIC' in df.columns else None))
+                    series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' if 'SERIES' in df.columns else None)
+                    
+                    vol_col = 'TTLTRADGVOL'
+                    for c in ['TTLTRADGVOL', 'TTLTRDQTY', 'TOTTRDQTY']:
                         if c in df.columns:
                             vol_col = c
                             break
                     
-                    # 1. Sirf EQ series aur ETFs/BEES ko bahar karna
-                    if series_col in df.columns:
+                    if not sym_col or not close_col:
+                        return None
+
+                    # --- BACKGROUND FILTERS ---
+                    # 1. EQ Series Filter
+                    if series_col and series_col in df.columns:
                         df = df[df[series_col].astype(str).str.strip() == 'EQ']
                     
+                    # 2. ETF / Bees Removal
                     filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ'
                     df = df[~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)]
                     
-                    # 2. Strict Exclusion: Banks, Finance, NBFCs, Insurance, Liquor, Tobacco etc.
+                    # 3. Sector & Unwanted Stock Exclusion (Banks, Finance, Liquor, Tobacco, etc.)
                     exclude_sectors = 'BANK|FIN|HOUSING|CIG|TOBACCO|INSUR|MUTUAL|CAPITAL|FINSERV|CREDIT|INVEST|BREW|SPIRIT|ALCOHOL|LIQUOR'
                     df = df[~df[sym_col].astype(str).str.contains(exclude_sectors, case=False, na=False)]
                     
-                    # 3. Price Filter: Sirf wahi stocks jinka price ₹150 ya usse upar ho (Penny stocks out)
+                    # 4. Price Filter (>= ₹150)
                     df = df[df[close_col].astype(float) >= 150.0]
                     
-                    # 4. Calculate Traded Value (Turnover = Volume * Close Price)
+                    # 5. Background Calculations (Turnover & Percentage)
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
                     
-                    # 5. Calculate Day Change % if previous close is available
                     if prev_close_col and prev_close_col in df.columns:
                         df['DAY_CHANGE_PCT'] = ((df[close_col].astype(float) - df[prev_close_col].astype(float)) / df[prev_close_col].astype(float)) * 100
                     else:
                         df['DAY_CHANGE_PCT'] = 0.0
 
-                    # 6. Sort by Traded Value (Highest Turnover first) and pick Top 100 solid stocks
+                    # 6. Sorting Top 100 High Turnover Stocks
                     df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(100)
                     
                     processed_data = []
@@ -86,25 +92,28 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # Action Trigger Logic (Kyu aur kahan entry lein)
-                        if change_pct >= 2.5:
-                            action = "🟢 STRONG BUY (MOMENTUM BREAKOUT)"
-                        elif change_pct >= 1.0:
-                            action = "🟢 BUY ON PULLBACK / DIP"
-                        elif change_pct <= -2.0:
-                            action = "🔴 AVOID / BEARISH PRESSURE"
+                        # Conviction Action Logic
+                        if turnover_cr >= 500 and change_pct >= 2.0:
+                            action = "🔥 HIGH CONVICTION BREAKOUT"
+                        elif change_pct >= 3.0:
+                            action = "🟢 MOMENTUM BUY"
+                        elif change_pct <= -2.5:
+                            action = "🔴 SHARP FALL / AVOID"
+                        elif turnover_cr >= 1000:
+                            action = "⭐ MEGA TURNOVER ZONE"
                         else:
-                            action = "👀 WATCHLIST (CONSOLIDATING)"
+                            action = "👀 WATCHLIST"
                             
+                        # Only pushing the final clean columns to sheet output
                         processed_data.append([symbol, turnover_cr, close_p, f"{change_pct:+.2f}%", action])
                         
                     return processed_data
         return None
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        print(f"Error: {e}")
         return None
 
-# 3. Execution Logic
+# 3. Execution Trigger
 date = datetime.now()
 data_to_insert = None
 fetched_date_str = ""
@@ -119,22 +128,22 @@ for i in range(5):
         fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Update Sheet with Professional Layout & Action Triggers
+# 4. Clean Sheet Output (No Clutter)
 if data_to_insert:
-    worksheet.clear()  # Clear sheet completely
+    worksheet.clear()  
     
-    # Write Column Headers in Row 1
-    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "ENTRY ACTION SIGNAL"]
+    # Clean 5 Headers (Columns A to E)
+    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "ACTION SIGNAL"]
     worksheet.update('A1', [headers])
     
-    # Write Filtered Clean Data starting from Row 2
+    # Insert Processed Data
     worksheet.update('A2', data_to_insert)
     
-    # Status Message at G1
+    # Status Message placed neatly at G1 (Out of the main data table view)
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
-    status_msg = f"Data Date: {fetched_date_str} | Last Update: {ist_now} (IST)"
+    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST)"
     worksheet.update('G1', [[status_msg]])
     
-    print("SUCCESS: Sheet Updated with Clean Filters & Action Signals!")
+    print("SUCCESS: Sheet Updated with Clean Essential Columns Only!")
 else:
-    print("❌ Failed to fetch Bhavcopy data for recent days.")
+    print("❌ Failed to fetch data.")
