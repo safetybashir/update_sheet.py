@@ -23,7 +23,7 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Elite F&O & LargeMidcap 250 Focused Engine
+# 2. Strict Shield Engine (Blocked Banks, Financials, Liquor, Tobacco, Insurance)
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -65,18 +65,20 @@ def fetch_bhavcopy_for_date(date_obj):
                     if not sym_col or not close_col:
                         return None
 
-                    # --- STRICT UNIVERSE FILTERS (F&O / LargeMidcap Focus) ---
+                    # --- 1. SERIES FILTER ---
                     if series_col and series_col in df.columns:
                         df = df[df[series_col].astype(str).str.strip() == 'EQ']
                     
-                    # Remove ETFs, REITs, Indices, Bonds, SGBs
+                    # --- 2. REMOVE ETFs, INDICES, REITs ---
                     filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ|NIFTY|SETF|NV20|CPSE'
                     df = df[~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)]
                     
-                    # Ensure high liquidity baseline to isolate genuine Large & Midcap / F&O counters
-                    df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
+                    # --- 3. STRICT SECTOR EXCLUSION BLOCK (BANKS, FIN, LIQUOR, TOBACCO, INSUR, LOANS) ---
+                    exclude_sectors = 'BANK|FIN|HOUSING|CIG|TOBACCO|INSUR|MUTUAL|CAPITAL|FINSERV|CREDIT|INVEST|BREW|SPIRIT|ALCOHOL|LIQUOR|LENDING|WEALTH|ASSET|NBFC'
+                    df = df[~df[sym_col].astype(str).str.contains(exclude_sectors, case=False, na=False)]
                     
-                    # Minimum Turnover filter of 50 Cr to completely eliminate micro/small-cap noise
+                    # --- 4. TURNOVER & LIQUIDITY BASELINE (Min 50 Cr) ---
+                    df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
                     df = df[df['TRADED_VALUE'] >= 500000000] 
                     
                     if prev_close_col and prev_close_col in df.columns:
@@ -171,9 +173,9 @@ if data_to_insert:
     worksheet.update('A2', data_to_insert)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
-    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [F&O/LargeMidcap Universe]"
+    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [Strict Sector Shield Active]"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sheet restricted and sorted for F&O / LargeMidcap 250 Universe!")
+    print("SUCCESS: Sector Shield Active! Banks, Financials, Liquor & Tobacco completely blocked.")
 else:
     print("❌ Failed to fetch data.")
