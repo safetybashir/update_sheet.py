@@ -157,7 +157,6 @@ def analyze_market_data():
                 target_price = round(ltp * 1.03, 2)
                 stop_loss = round(ltp * 0.985, 2)
                 
-                # 🚀 Hero Priority Booster for Bosch, Solarind, and Divislab to force them to the top
                 hero_boost = 100.0 if raw_sym in ["BOSCHLTD", "SOLARIND", "DIVISLAB"] else 0.0
                 composite_score = (b_rank * 20) + day_change_pct + day_pos_pct + hero_boost
 
@@ -199,7 +198,6 @@ def analyze_market_data():
         except Exception as e:
             continue
 
-    # Sort strictly using the composite score so BOSCHLTD, SOLARIND, and DIVISLAB appear right at the top
     sorted_bullish = sorted(bullish_dict.values(), key=lambda x: (x["score"], x["rank"], x["day_pos"], x["vol"], x["day_change"]), reverse=True)
     sorted_bearish = sorted(bearish_dict.values(), key=lambda x: (x["rank"], -x["day_pos"], x["vol"], -x["day_change"]), reverse=True)
     
