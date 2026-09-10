@@ -163,7 +163,7 @@ def analyze_split_buy_sell_radar():
             # SEGREGATION LOGIC WITH CONFIRMATION SAFETY
             # ----------------------------------------------------
             if day_change_pct >= 1.2 and day_pos_pct >= 55.0 and close_price > current_vwap and is_sustaining_bullish:
-                action_signal = "🟢 CONFIRMED BUY (VWAP SECURE)" if day_change_pct < 5.0 else "🟢 ROCKET BLAST (SECURE)"
+                action_signal = "🟢 CONFIRMED BUY " if day_change_pct < 5.0 else "🟢 ROCKET BLAST "
                 
                 buy_records.append({
                     "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
@@ -171,7 +171,7 @@ def analyze_split_buy_sell_radar():
                 })
                 
             elif day_change_pct <= -1.2 and day_pos_pct <= 45.0 and close_price < current_vwap and is_sustaining_bearish:
-                action_signal = "🔴 CONFIRMED SELL (VWAP DUMP)" if day_change_pct > -5.0 else "🔴 HEAVY CRASH (SECURE)"
+                action_signal = "🔴 CONFIRMED SELL" if day_change_pct > -5.0 else "🔴 HEAVY CRASH "
                 
                 sell_records.append({
                     "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
