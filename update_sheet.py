@@ -9,37 +9,55 @@ from google.oauth2.service_account import Credentials
 from gspread.exceptions import APIError
 
 # ==========================================
-# CONFIGURATION & CONSTANTS
+# CONFIGURATION & CONSTANTS (`update_sheet.py`)
 # ==========================================
 SHEET_ID = os.environ.get("SHEET_ID", "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ3qg")
-BULLISH_TAB_NAME = "LIVE_BULLISH_CASH_DASHBOARD"
-BEARISH_TAB_NAME = "LIVE_BEARISH_CASH_DASHBOARD"
+SENSIBULE_TAB_NAME = "BULLISH_BEARISH_LIVE_DASHBOARD"
 CREDENTIALS_FILE = "credentials.json"
 
-# Master Cash Tickers List
-CASH_STOCKS = [
-    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
-    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
-    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
-    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "BHARATFORG", "TMPV", "SOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
-    "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "HEROMOTOCO", 
-    "KPITTECH", "RVNL", "RELIANCE", "ZYDUSLIFE", "BHEL", "NATIONALUM", 
-    "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", 
-    "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", "SUPREMEIND", 
-    "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", "CIPLA", 
-    "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", "ULTRACEMCO", 
-    "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", "TRENT", 
-    "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", "CROMPTON", 
-    "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", "PFC", 
-    "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", "KFINTECH", 
-    "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", "GODREJCP", 
-    "FORTIS", "PGEL", "ABB", "COALINDIA", "SUNPHARMA", "MPHASIS", "PIIND", 
-    "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", "INDIGO", 
-    "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", "NAUKRI", 
-    "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALL", "LTMM", "MARICO", "PAGEIND", 
-    "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
-    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO"
+# 🚀 ALL-SECTOR BROAD MARKET MASTER UNIVERSE (Non-Financial Sectors Covered Across NSE)
+STOCK_UNIVERSE = [
+    # Energy, Oil & Gas, Power
+    "RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "NTPC", "POWERGRID", "ADANIENT", 
+    "ADANIGREEN", "ADANIPORTS", "ADANIENSOL", "ATGL", "JSWENERGY", "TATAPOWER", 
+    "NHPC", "SJVN", "TORNTPOWER", "NTPCGREEN", "HINDPETRO", "MRPL", "OIL", 
+    "GSPL", "GUJGASLTD", "IGL", "PETRONET", "AEGISLOG", "COALINDIA", "MOLBIO",
+    
+    # IT & Software Services
+    "TCS", "INFY", "HCLTECH", "TECHM", "WIPRO", "LTIM", "LTTS", "COFORGE", 
+    "MPHASIS", "PERSISTENT", "OFSS", "KPITTECH", "CYIENT", "ZENSARTECH", "SONATSOFTW",
+    
+    # Automobile & Auto Ancillaries
+    "TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "TVSMOTOR", "HEROMOTOCO", 
+    "EICHERMOT", "ASHOKLEY", "BHARATFORG", "BALKRISIND", "APOLLOTYRE", "CEATLTD", 
+    "MRF", "BOSCHLTD", "TIINDIA", "ENDURANCE", "UNOMINDA", "MOTHERSON", "FORCEMOT",
+    
+    # Metals, Mining & Steel
+    "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", 
+    "HINDZINC", "NATIONALUM", "JSL", "APLAPOLLO", "GPIL", "RATNAMANI", "WELCORP",
+    
+    # Capital Goods, Defense & Infrastructure
+    "LT", "HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", 
+    "THERMAX", "BDL", "CGPOWER", "POWERINDIA", "KEI", "DIXON", "POLYCAB", 
+    "ASTRAL", "SUPREMEIND", "KEC", "KPIL", "TRIVENI", "ELGIEQUIP", "TIMKEN", 
+    "SKFINDIA", "SCHAEFFLER", "NCC", "NBCC", "RVNL", "IRCON", "RAILTEL",
+    
+    # Pharma & Healthcare
+    "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", 
+    "APOLLOHOSP", "MAXHEALTH", "GLENMARK", "ALKEM", "ABBOTINDIA", 
+    "IPCALAB", "SYNGENE", "TORNTPHARM", "GLAXO", "PFIZER", "GRANULES", "AJANTPHARM", 
+    "LALPATHLAB", "METROPOLIS", "FORTIS", "MEDANTA", "BIOCON",
+    
+    # FMCG & Consumer Durables
+    "HINDUNILVR", "NESTLEIND", "BRITANNIA", "TATACONSUM", "DABUR", "MARICO", 
+    "COLPAL", "GODREJCP", "TITAN", "PAGEIND", "VOLTAS", "BLUESTARCO", "HAVELLS", 
+    "CROMPTON", "WHIRLPOOL", "AMBER", "PGEL", "VBL", "DEVYANI", "JUBLFOOD",
+    
+    # Retail, Realty & Services
+    "TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "PAYTM", "POLICYBZR", "NAUKRI", 
+    "DELHIVERY", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "PRESTIGE", 
+    "OBEROIRLTY", "SOBHA", "PHOENIXLTD", "CONCOR", "MAHLOG", "AMBUJACEM", "ACC", 
+    "SHREECEM", "ULTRACEMCO", "DALBHARAT", "RAMCOCEM", "JKCEMENT"
 ]
 
 
@@ -87,19 +105,20 @@ def get_gspread_client():
         raise FileNotFoundError("Neither 'GCP_CREDENTIALS_JSON' secret nor 'credentials.json' found.")
 
 
-def analyze_market_data():
-    print(f"⏳ Running Audited Intraday Scan across {len(CASH_STOCKS)} Cash Stocks...")
+def analyze_split_buy_sell_radar():
+    print(f"⏳ Scanning All Sectors Broad Market Universe ({len(STOCK_UNIVERSE)} Tickers)...")
     
-    tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in CASH_STOCKS]
+    tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in STOCK_UNIVERSE]
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
     
     ist = pytz.timezone("Asia/Kolkata")
-    time_str = datetime.now(ist).strftime("%H:%M:%S")
+    now_dt = datetime.now(ist)
+    current_time_str = now_dt.strftime("%H:%M")
     
-    bullish_dict = {}
-    bearish_dict = {}
+    buy_records = []
+    sell_records = []
 
-    for sym in CASH_STOCKS:
+    for sym in STOCK_UNIVERSE:
         try:
             raw_sym = sym.strip()
             t_str = f"{raw_sym.replace('&', '%26')}.NS"
@@ -108,139 +127,86 @@ def analyze_market_data():
                 continue
 
             df = data[t_str].dropna()
-            if len(df) < 20:
+            if len(df) < 15:
                 continue
 
-            ltp = round(float(df['Close'].iloc[-1]), 2)
+            close_price = round(float(df['Close'].iloc[-1]), 2)
             prev_close = float(df['Close'].iloc[-50]) if len(df) >= 50 else float(df['Close'].iloc[0])
-            day_change_pct = round(((ltp - prev_close) / prev_close) * 100, 2)
+            day_change_pct = round(((close_price - prev_close) / prev_close) * 100, 2)
             
-            recent_session_df = df.iloc[-75:] if len(df) >= 75 else df
-            high_day = float(recent_session_df['High'].max())
-            low_day = float(recent_session_df['Low'].min())
-            vol_today = float(recent_session_df['Volume'].sum())
+            recent_df = df.iloc[-75:] if len(df) >= 75 else df
+            high_day = float(recent_df['High'].max())
+            low_day = float(recent_df['Low'].min())
             
-            is_breakout = ltp >= (high_day * 0.99) or day_change_pct >= 1.5
-            weekly_breakout = "YES (MOMENTUM HIGH)" if is_breakout else "NO"
-
-            is_bearish_breakdown = ltp <= (low_day * 1.01) or day_change_pct <= -1.5
-            bearish_weekly_status = "YES (MOMENTUM LOW)" if is_bearish_breakdown else "NO"
+            # Traded Value (Turnover in Crores)
+            total_vol = float(recent_df['Volume'].sum())
+            traded_value_cr = round((total_vol * close_price) / 10000000, 2)
             
             day_range = high_day - low_day
-            day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
-            
-            vol_avg_5m = float(recent_session_df['Volume'].mean())
-            vol_mult = round(vol_today / (vol_avg_5m * 20), 2) if vol_avg_5m > 0 else 1.0
-            if vol_mult < 0.5: vol_mult = 1.1
-            
-            vol_status = "🔥 MASSIVE DELIVERY" if vol_mult >= 2.0 else ("⚡ MODERATE VOLUME" if vol_mult >= 1.3 else "NORMAL VOLUME")
-            
-            typical_price = round((high_day + low_day + ltp) / 3, 2)
-            is_above_vwap = ltp >= typical_price
-            price_vs_vwap = "ABOVE VWAP" if is_above_vwap else "BELOW VWAP"
+            day_pos_pct = round(((close_price - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
-            # ==========================
-            # 🟢 BULLISH EVALUATION
-            # ==========================
-            if day_change_pct >= 2.0 and day_pos_pct >= 75.0 and is_above_vwap:
-                b_setup, b_strength, b_action, b_rank = "STRONG INTRADAY MOMENTUM", "🔥 TOP GRADE-A+ BREAKOUT", "🟢 STRONG BUY (CONFIRMED)", 5
-            elif day_change_pct >= 1.0 and day_pos_pct >= 70.0 and is_above_vwap:
-                b_setup, b_strength, b_action, b_rank = "MOMENTUM CONTINUATION", "⭐ TOP GRADE-A BREAKOUT", "🟢 BUY CASH (CONFIRMED)", 4
-            elif day_change_pct >= 0.5 and day_pos_pct >= 65.0 and is_above_vwap:
-                b_setup, b_strength, b_action, b_rank = "BREAKOUT WITH DIP PULLBACK", "⚡ HIGH WATCH BUY", "🟢 BUY ON DIP (WAIT FOR 5-MIN GREEN CANDLE)", 3
-            elif day_change_pct > 0:
-                b_setup, b_strength, b_action, b_rank = "GOOD ACCUMULATION", "⚡ HIGH WATCH BUY", "👀 MONITOR FOR DIP ENTRY & CONFIRMATION", 2
-            else:
-                b_rank = 1
-
-            if b_rank > 1:
-                target_price = round(ltp * 1.03, 2)
-                stop_loss = round(ltp * 0.985, 2)
+            # ----------------------------------------------------
+            # SEGREGATION LOGIC (BULLISH vs BEARISH)
+            # ----------------------------------------------------
+            if day_change_pct >= 1.2 and day_pos_pct >= 55.0:
+                action_signal = "🟢 BUY / ACCUMULATION" if day_change_pct < 5.0 else "🟢 ROCKET BLAST (BUY)"
                 
-                hero_boost = 100.0 if raw_sym in ["BOSCHLTD", "SOLARIND", "DIVISLAB"] else 0.0
-                composite_score = (b_rank * 20) + day_change_pct + day_pos_pct + hero_boost
-
-                bullish_dict[raw_sym] = {
-                    "data": [
-                        raw_sym, ltp, f"{day_change_pct:.2f}%", weekly_breakout, f"{day_pos_pct:.2f}%",
-                        vol_mult, vol_status, typical_price, price_vs_vwap, target_price, stop_loss,
-                        b_setup, b_strength, b_action, time_str
-                    ],
-                    "rank": b_rank, "day_pos": day_pos_pct, "vol": vol_mult, "day_change": day_change_pct, "score": composite_score
-                }
-
-            # ==========================
-            # 🔴 BEARISH EVALUATION
-            # ==========================
-            if day_change_pct <= -2.0 and day_pos_pct <= 20.0 and not is_above_vwap:
-                bear_setup, bear_strength, bear_action, bear_rank = "STRONG INTRADAY SELLING", "🔥 TOP GRADE-A+ BREAKDOWN", "🔴 STRONG SHORT (CONFIRMED)", 5
-            elif day_change_pct <= -1.0 and day_pos_pct <= 30.0 and not is_above_vwap:
-                bear_setup, bear_strength, bear_action, bear_rank = "HEAVY DISTRIBUTION", "⭐ TOP GRADE-A BREAKDOWN", "🔴 SHORT / SELL (CONFIRMED)", 4
-            elif day_change_pct <= -0.5 and day_pos_pct <= 40.0 and not is_above_vwap:
-                bear_setup, bear_strength, bear_action, bear_rank = "BREAKDOWN WITH RALLY PULLBACK", "⚡ HIGH WATCH SHORT", "🔴 SELL ON RALLY (WAIT FOR RED CANDLE)", 3
-            elif day_change_pct < 0:
-                bear_setup, bear_strength, bear_action, bear_rank = "WEAKNESS / UNLOADING", "⚡ HIGH WATCH SHORT", "👀 MONITOR FOR RALLY SHORT & CONFIRMATION", 2
-            else:
-                bear_rank = 1
-
-            if bear_rank > 1:
-                target_down = round(ltp * 0.97, 2)
-                stop_loss_up = round(ltp * 1.015, 2)
-                bearish_dict[raw_sym] = {
-                    "data": [
-                        raw_sym, ltp, f"{day_change_pct:.2f}%", bearish_weekly_status, f"{day_pos_pct:.2f}%",
-                        vol_mult, vol_status, typical_price, price_vs_vwap, target_down, stop_loss_up,
-                        bear_setup, bear_strength, bear_action, time_str
-                    ],
-                    "rank": bear_rank, "day_pos": day_pos_pct, "vol": vol_mult, "day_change": day_change_pct
-                }
+                buy_records.append({
+                    "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
+                    "traded_value": traded_value_cr
+                })
+                
+            elif day_change_pct <= -1.2 and day_pos_pct <= 45.0:
+                action_signal = "🔴 SELL / BEARISH DUMP" if day_change_pct > -5.0 else "🔴 HEAVY CRASH (SELL)"
+                
+                sell_records.append({
+                    "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
+                    "traded_value": traded_value_cr
+                })
 
         except Exception as e:
             continue
 
-    sorted_bullish = sorted(bullish_dict.values(), key=lambda x: (x["score"], x["rank"], x["day_pos"], x["vol"], x["day_change"]), reverse=True)
-    sorted_bearish = sorted(bearish_dict.values(), key=lambda x: (x["rank"], -x["day_pos"], x["vol"], -x["day_change"]), reverse=True)
+    # 🔥 Sort both lists strictly by Highest Traded Value (Descending Order)
+    sorted_buys = sorted(buy_records, key=lambda x: x["traded_value"], reverse=True)[:35]
+    sorted_sells = sorted(sell_records, key=lambda x: x["traded_value"], reverse=True)[:35]
     
-    return [item["data"] for item in sorted_bullish], [item["data"] for item in sorted_bearish]
+    return [item["data"] for item in sorted_buys], [item["data"] for item in sorted_sells]
 
 
-def run_live_dashboards_sync(max_retries=3, delay=5):
-    bullish_data, bearish_data = analyze_market_data()
+def run_split_radar_sync(max_retries=3, delay=5):
+    buy_rows, sell_rows = analyze_split_buy_sell_radar()
     
-    headers = [
-        "STOCK TICKER", "CASH LTP", "DAY CHANGE %", "WEEKLY HIGH BREAKOUT",
-        "DAY RANGE POS %", "VOLUME MULTIPLIER", "VOLUME SPIKE STATUS", "VWAP",
-        "PRICE vs VWAP", "TARGET PRICE", "STOP LOSS", 
-        "CASH BREAKOUT SETUP", "SIGNAL STRENGTH", "ACTION TRIGGER", "LAST UPDATED"
+    buy_headers = ["TOP BULLISH SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
+    sell_headers = ["TOP BEARISH SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
+
+    max_rows = max(len(buy_rows), len(sell_rows))
+    
+    combined_payload = [
+        buy_headers + [""] + sell_headers
     ]
+
+    for i in range(max_rows):
+        b_row = buy_rows[i] if i < len(buy_rows) else ["", "", "", "", "", ""]
+        s_row = sell_rows[i] if i < len(sell_rows) else ["", "", "", "", "", ""]
+        combined_payload.append(b_row + [""] + s_row)
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Connecting to Google Sheets...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing Bullish/Bearish dashboard to tab '{SENSIBULE_TAB_NAME}'...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
             sheet = client.open_by_key(target_sheet_id)
 
-            # 1. Update Bullish Dashboard Tab
             try:
-                ws_bull = sheet.worksheet(BULLISH_TAB_NAME)
+                ws = sheet.worksheet(SENSIBULE_TAB_NAME)
             except Exception:
-                ws_bull = sheet.add_worksheet(title=BULLISH_TAB_NAME, rows="500", cols="20")
+                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="15")
 
-            ws_bull.clear()
-            ws_bull.update(values=[headers] + bullish_data, range_name="A1")
-            print(f"✅ Updated {len(bullish_data)} unique rows to '{BULLISH_TAB_NAME}'!")
-
-            # 2. Update Bearish Dashboard Tab
-            try:
-                ws_bear = sheet.worksheet(BEARISH_TAB_NAME)
-            except Exception:
-                ws_bear = sheet.add_worksheet(title=BEARISH_TAB_NAME, rows="500", cols="20")
-
-            ws_bear.clear()
-            ws_bear.update(values=[headers] + bearish_data, range_name="A1")
-            print(f"✅ Updated {len(bearish_data)} unique rows to '{BEARISH_TAB_NAME}'!")
+            ws.clear()
+            ws.update(values=combined_payload, range_name="A1")
+            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}'!")
             break
 
         except APIError as e:
@@ -256,4 +222,4 @@ def run_live_dashboards_sync(max_retries=3, delay=5):
 
 
 if __name__ == "__main__":
-    run_live_dashboards_sync()
+    run_split_radar_sync()
