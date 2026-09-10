@@ -15,31 +15,70 @@ SHEET_ID = os.environ.get("SHEET_ID", "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAw
 SENSIBULE_TAB_NAME = "SUPER_CONVICTION_TRADES"
 CREDENTIALS_FILE = "credentials.json"
 
-# Master Stock Universe
-STOCK_UNIVERSE = [
-    "NOVARTIND", "INDNIPPON", "GRAPHITE", "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", 
-    "SBIN", "BHARTIARTL", "LTIM", "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "AXISBANK", 
-    "MARUTI", "SUNPHARMA", "TITAN", "ASIANPAINT", "KOTAKBANK", "ULTRACEMCO", "NTPC", 
-    "ONGC", "ADANIENT", "ADANIPORTS", "COALINDIA", "POWERGRID", "BAJAJFINSV", "TATASTEEL", 
-    "JSWSTEEL", "GRASIM", "TECHM", "WIPRO", "HCLTECH", "NESTLEIND", "INDIGO", "DIVISLAB", 
-    "TATACONSUM", "BPCL", "SBILIFE", "HDFCLIFE", "BRITANNIA", "EICHERMOT", "DRREDDY", 
-    "BAJAJ-AUTO", "APOLLOHOSP", "HEROMOTOCO", "HAL", "BEL", "CHOLAFIN", "DABUR", 
-    "PIDILITIND", "SIEMENS", "ABB", "TORNTPHARM", "VEDL", "IOC", "GAIL", "PNB", 
-    "BANKBARODA", "CANBK", "IDFCFIRSTB", "TVSMOTOR", "M&M", "BOSCHLTD", "AMBUJACEM", 
-    "SHREECEM", "ICICIGI", "ICICIPRULI", "SRF", "MUTHOOTFIN", "PERSISTENT", "LUPIN", 
-    "AUROPHARMA", "CIPLA", "DLF", "OBEROIRLTY", "GODREJPROP", "PEL", "POLYCAB", 
-    "NAUKRI", "ZOMATO", "PAYTM", "NYKAA", "DELHIVERY", "MCX", "HINDPETRO", "CAMS", 
-    "TRENT", "DIXON", "CGPOWER", "MAZDOCK", "COCHINSHIP", "WAAREEENER", "KAYNES", 
-    "INOXWIND", "KEI", "PREMIERENE", "SOLARIND", "FORCEMOT", "PRESTIGE", "SUZLON", 
-    "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "KPITTECH", "RVNL", "ZYDUSLIFE", 
-    "BHEL", "NATIONALUM", "NHPC", "JINDALSTEL", "SONACOMS", "HINDZINC", "UNOMINDA", 
-    "OFSS", "BDL", "SUPREMEIND", "OIL", "TATAELXSI", "HINDALCO", "PETRONET", "AMBER", 
-    "DALBHARAT", "PHOENIXLTD", "BIOCON", "NMDC", "UPL", "CROMPTON", "INDUSTOWER", 
-    "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "PFC", "CDSL", "IREDA", 
-    "GODREJPROP", "KFINTECH", "RECLTD", "GODREJCP", "FORTIS", "PGEL", 
-    "MPHASIS", "PIIND", "COLPAL", "BLUESTARCO", "VOLTAS", "ASTRALL", 
-    "LTMM", "MARICO", "PAGEIND", "MAXHEALTH", "KALYANKJIL", "LODHA", "SWIGGY", "MANKIND"
+# 🛑 EXCLUSION KEYWORDS FOR SECTORS TO DELETE/BLOCK
+# (Banks, Financials, Loans, Insurance, Liquor, Cigarettes/Tobacco)
+EXCLUDED_SECTOR_KEYWORDS = [
+    "BANK", "FINANCE", "FINSERV", "FINTECH", "HOUSING", "CAPITAL", "MUTHOOT", 
+    "CHOLAFIN", "PFC", "RECLTD", "CDSL", "CAMS", "MCX", "BSE", "ICICI", "HDFC", 
+    "SBI", "KOTAK", "AXIS", "INDUSINDBK", "IDFC", "FEDERALBNK", "AUBANK", "PNB", 
+    "BANKBARODA", "CANBK", "MAHABANK", "UCO", "YESBANK", "LICI", "SBILIFE", 
+    "HDFCLIFE", "ICICIGI", "ICICIPRULI", "MAXHEALTH", "STARHEALTH", "SBICARD", 
+    "SPIRIT", "BREW", "ALCOHOL", "BEER", "UNITEDSP", "RADICO", "UBL", "TIINDIA",
+    "ITC", "GODFREY", "VSTIND" # Cigarettes / Tobacco
 ]
+
+# 🚀 NIFTY LARGEMIDCAP 250 MASTER UNIVERSE (Filtered of Banks, Fins, Liquor, Insurance, Loans, Cigarettes)
+RAW_LARGEMIDCAP_250 = [
+    "ABB", "ABBOTINDIA", "ACC", "ADANIENSOL", "ADANIENT", "ADANIGREEN", "ADANIPORTS", 
+    "ADANIPOWER", "ATGL", "ABCAPITAL", "ABFRL", "AJANTPHARM", "ALKEM", "AMBUJACEM", 
+    "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "ASTRAL", "AUROPHARMA", 
+    "AVENUESUPER", "DMART", "BALKRISIND", "BALRAMCHIN", "BATAINDIA", "BEL", "BHARATFORG", 
+    "BHEL", "BIOCON", "BLS", "BLUESTARCO", "BOSCHLTD", "BRITANNIA", "BSE", "CAMS", 
+    "CANFINHOM", "CGPOWER", "CHAMBLFERT", "CHOLAFIN", "CIPLA", "COALINDIA", "COCHINSHIP", 
+    "COFORGE", "COLPAL", "CONCOR", "COROMANDEL", "CROMPTON", "CUMMINSIND", "DABUR", 
+    "DalmiaBharat", "DEEPAKFERT", "DELHIVERY", "DEVYANI", "DIVISLAB", "DIXON", "LALPATHLAB", 
+    "DRREDDY", "EICHERMOT", "ELGIEQUIP", "EMAMILTD", "ENDURANCE", "ESCORTS", "EXIDEIND", 
+    "NYKAA", "FEDERALBNK", "FACT", "FINEORG", "FORCEMOT", "FORTIS", "GAIL", "GMRAIRPORT", 
+    "GICRE", "GILLETTE", "GLAXO", "GLENMARK", "GMDC", "GODREJCP", "GODREJPROP", 
+    "GRANULES", "GRASIM", "GUJGASLTD", "GNFC", "GPPL", "GSPL", "HAL", "HAVELLS", 
+    "HCLTECH", "HDFCAMC", "HDFCLIFE", "HFCL", "HINDALCO", "HINDCOPPER", "HINDPETRO", 
+    "HINDUNILVR", "HINDZINC", "HUDCO", "ICICIGI", "ICICIPRULI", "IDBI", "IDFCFIRSTB", 
+    "IEX", "IGL", "INDHOTEL", "INDIACEM", "INDIANB", "INDIGO", "INDNIPPON", "INDUSTOWER", 
+    "INFY", "INOXWIND", "IOC", "IPCALAB", "IRB", "IRCTC", "IRFC", "ITC", "JINDALSTEL", 
+    "JINDALSAW", "JSL", "JSWENERGY", "JSWSTEEL", "JUBLFOOD", "JUBLINGREA", "KPITTECH", 
+    "KALYANKJIL", "KAYNES", "KEC", "KEI", "KFINTECH", "KNRCON", "KPIL", "LTIM", 
+    "LTTS", "LUPIN", "M&M", "M&MFIN", "MAHSECI", "MAGL", "MANKIND", "MARICO", "MARUTI", 
+    "MAXHEALTH", "MAZDOCK", "MCX", "MEDANTA", "METROPOLIS", "MFSL", "MOTHERSON", "MPHASIS", 
+    "MRF", "MSUMI", "MUTHOOTFIN", "NATIONALUM", "NAVINFLUOR", "NAUKRI", "NBCC", "NCC", 
+    "NESTLEIND", "NHPC", "NLCINDIA", "NMDC", "NTPC", "OBEROIRLTY", "ONGC", "OIL", "OISL", 
+    "PAYTM", "OFSS", "PAGEIND", "PATANJALI", "PEL", "PERSISTENT", "PETRONET", "PFC", 
+    "PHOENIXLTD", "PIDILITIND", "PIIND", "PNB", "POLYCAB", "POONAWALLA", "PRAJIND", 
+    "PRESTIGE", "PGEL", "RADICO", "railtel", "RVNL", "RECLTD", "RELIANCE", "SBICARD", 
+    "SBILIFE", "MOTHERSON", "SCHAEFFLER", "RENUKA", "SHREECEM", "SHRIRAMFIN", "SIEMENS", 
+    "SOBHA", "SOLARIND", "SONACOMS", "SRF", "STARHEALTH", "SAIL", "SUNPHARMA", "SUNTV", 
+    "SUPREMEIND", "SUZLON", "SYNGENE", "TVSMOTOR", "TATACHEM", "TATACOMM", "TCS", 
+    "TATACONSUM", "TATAELXSI", "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TECHM", "TIINDIA", 
+    "TITAN", "TORNTPOWER", "TORNTPHARM", "TRENT", "TRIDENT", "TRIVENI", "UCO", "ULTRACEMCO", 
+    "UNOMINDA", "UPL", "UCO", "VBL", "VEDL", "VIJAYA", "VOLTAS", "WAAREEENER", "WELCORP", 
+    "WHIRLPOOL", "WIPRO", "YESBANK", "ZFCVINDIA", "ZYDUSLIFE", "ZOMATO"
+]
+
+def filter_clean_stock_universe(raw_list):
+    cleaned = []
+    for sym in raw_list:
+        sym_upper = sym.upper().strip()
+        # Check if any excluded keyword exists in the ticker name
+        is_blocked = False
+        for kw in EXCLUDED_SECTOR_KEYWORDS:
+            if kw in sym_upper:
+                is_blocked = True
+                break
+        if not is_blocked and sym_upper not in cleaned:
+            cleaned.append(sym_upper)
+    return cleaned
+
+# Final Clean Stock Universe (Banks, Fins, Insurance, Liquor, Cigarettes completely wiped out)
+STOCK_UNIVERSE = filter_clean_stock_universe(RAW_LARGEMIDCAP_250)
 
 
 def clean_and_parse_json(raw_str):
@@ -87,7 +126,7 @@ def get_gspread_client():
 
 
 def analyze_split_buy_sell_radar():
-    print(f"⏳ Scanning and Sorting Stock Universe across {len(STOCK_UNIVERSE)} Tickers...")
+    print(f"⏳ Scanning Cleaned LargeMidcap Universe across {len(STOCK_UNIVERSE)} Tickers (No Banks/Fins/Liquor/Cig)...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in STOCK_UNIVERSE]
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
@@ -132,7 +171,6 @@ def analyze_split_buy_sell_radar():
             # ----------------------------------------------------
             if day_change_pct >= 1.2 and day_pos_pct >= 55.0:
                 action_signal = "🟢 BUY / ACCUMULATION" if day_change_pct < 5.0 else "🟢 ROCKET BLAST (BUY)"
-                score = traded_value_cr * abs(day_change_pct)
                 
                 buy_records.append({
                     "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
@@ -141,7 +179,6 @@ def analyze_split_buy_sell_radar():
                 
             elif day_change_pct <= -1.2 and day_pos_pct <= 45.0:
                 action_signal = "🔴 SELL / BEARISH DUMP" if day_change_pct > -5.0 else "🔴 HEAVY CRASH (SELL)"
-                score = traded_value_cr * abs(day_change_pct)
                 
                 sell_records.append({
                     "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
@@ -152,22 +189,21 @@ def analyze_split_buy_sell_radar():
             continue
 
     # 🔥 Sort both lists strictly by Highest Traded Value (Descending Order)
-    sorted_buys = sorted(buy_records, key=lambda x: x["traded_value"], reverse=True)[:20]
-    sorted_sells = sorted(sell_records, key=lambda x: x["traded_value"], reverse=True)[:20]
+    sorted_buys = sorted(buy_records, key=lambda x: x["traded_value"], reverse=True)[:25]
+    sorted_sells = sorted(sell_records, key=lambda x: x["traded_value"], reverse=True)[:25]
     
-    return [item["data"] for item in sorted_buys], [item["data"] for item in sorted_sells], current_date_str, current_time_str
+    return [item["data"] for item in sorted_buys], [item["data"] for item in sorted_sells]
 
 
 def run_split_radar_sync(max_retries=3, delay=5):
-    buy_rows, sell_rows, date_str, time_str = analyze_split_buy_sell_radar()
+    buy_rows, sell_rows = analyze_split_buy_sell_radar()
     
     # Left Section Headers (BUY SECTION)
     buy_headers = ["TOP BUY SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
     
-    # Right Section Headers (SELL SECTION - separated by an empty column spacer in index 6)
+    # Right Section Headers (SELL SECTION)
     sell_headers = ["TOP SELL SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
 
-    # Combine side-by-side layout: [Buy Data (Cols A-F)] + [Spacer (Col G)] + [Sell Data (Cols H-M)]
     max_rows = max(len(buy_rows), len(sell_rows))
     
     combined_payload = [
@@ -181,7 +217,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing split Buy & Sell tables to Google Sheets...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing LargeMidcap 250 (Excl. Banks/Fins/Liquor) radar to Google Sheets...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -194,7 +230,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
             ws.clear()
             ws.update(values=combined_payload, range_name="A1")
-            print(f"🎉 Successfully updated Google Sheet with segregated Buy & Sell columns sorted by Traded Value!")
+            print(f"🎉 Successfully updated Google Sheet with pure LargeMidcap non-financial/non-liquor trading signals!")
             break
 
         except APIError as e:
