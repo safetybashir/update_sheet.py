@@ -15,70 +15,38 @@ SHEET_ID = os.environ.get("SHEET_ID", "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAw
 SENSIBULE_TAB_NAME = "SUPER_CONVICTION_TRADES"
 CREDENTIALS_FILE = "credentials.json"
 
-# 🛑 EXCLUSION KEYWORDS FOR SECTORS TO DELETE/BLOCK
-# (Banks, Financials, Loans, Insurance, Liquor, Cigarettes/Tobacco)
-EXCLUDED_SECTOR_KEYWORDS = [
-    "BANK", "FINANCE", "FINSERV", "FINTECH", "HOUSING", "CAPITAL", "MUTHOOT", 
-    "CHOLAFIN", "PFC", "RECLTD", "CDSL", "CAMS", "MCX", "BSE", "ICICI", "HDFC", 
-    "SBI", "KOTAK", "AXIS", "INDUSINDBK", "IDFC", "FEDERALBNK", "AUBANK", "PNB", 
-    "BANKBARODA", "CANBK", "MAHABANK", "UCO", "YESBANK", "LICI", "SBILIFE", 
-    "HDFCLIFE", "ICICIGI", "ICICIPRULI", "MAXHEALTH", "STARHEALTH", "SBICARD", 
-    "SPIRIT", "BREW", "ALCOHOL", "BEER", "UNITEDSP", "RADICO", "UBL", "TIINDIA",
-    "ITC", "GODFREY", "VSTIND" # Cigarettes / Tobacco
-]
-
-# 🚀 NIFTY LARGEMIDCAP 250 MASTER UNIVERSE (Filtered of Banks, Fins, Liquor, Insurance, Loans, Cigarettes)
-RAW_LARGEMIDCAP_250 = [
-    "ABB", "ABBOTINDIA", "ACC", 
-    "ATGL", "AJANTPHARM", "ALKEM", "AMBUJACEM", 
+# 🎯 YOUR EXACT SELECTED STOCK UNIVERSE (Including MOLBIO)
+STOCK_UNIVERSE = [
+    "ABB", "ABBOTINDIA", "ACC", "ATGL", "AJANTPHARM", "ALKEM", "AMBUJACEM", 
     "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT", "ASTRAL", "AUROPHARMA", 
     "AVENUESUPER", "DMART", "BALKRISIND", "BALRAMCHIN", "BATAINDIA", "BEL", "BHARATFORG", 
     "BHEL", "BIOCON", "BLS", "BLUESTARCO", "BOSCHLTD", "BRITANNIA", "BSE", "CAMS", 
-    "CGPOWER", "CHAMBLFERT", "CIPLA", "COALINDIA", "COCHINSHIP", 
-    "COFORGE", "COLPAL", "CONCOR", "COROMANDEL", "CROMPTON", "CUMMINSIND", "DABUR", 
-    "DalmiaBharat", "DEEPAKFERT", "DELHIVERY", "DEVYANI", "DIVISLAB", "DIXON", "LALPATHLAB", 
-    "DRREDDY", "EICHERMOT", "ELGIEQUIP", "EMAMILTD", "ENDURANCE", "ESCORTS", "EXIDEIND", 
-    "NYKAA", "FACT", "FORCEMOT", "FORTIS", "GAIL", "GMRAIRPORT", 
-    "GICRE", "GILLETTE", "GLAXO", "GLENMARK", "GMDC", "GODREJCP", "GODREJPROP", 
-    "GRANULES", "GRASIM", "GUJGASLTD", "GNFC", "GPPL", "GSPL", "HAL", "HAVELLS", 
-    "HCLTECH", "HFCL", "HINDALCO", "HINDCOPPER", "HINDPETRO", 
-    "HINDUNILVR", "HINDZINC", "HUDCO",
-    "IGL", "INDHOTEL", "INDIACEM", "INDIANB", "INDIGO", "INDNIPPON", "INDUSTOWER", 
-    "INFY", "INOXWIND", "IOC", "IPCALAB", "IRB", "IRCTC", "IRFC", "ITC", "JINDALSTEL", 
-    "JINDALSAW", "JSL", "JSWENERGY", "JSWSTEEL", "JUBLFOOD", "JUBLINGREA", "KPITTECH", 
-    "KALYANKJIL", "KAYNES", "KEC", "KEI", "KFINTECH", "KNRCON", "KPIL", "LTIM", 
-    "LTTS", "LUPIN", "M&M", "MAHSECI", "MAGL", "MANKIND", "MARICO", "MARUTI", 
-    "MAXHEALTH", "MAZDOCK", "MEDANTA", "METROPOLIS", "MFSL", "MOTHERSON", "MPHASIS", 
-    "MRF", "MSUMI", "NATIONALUM", "NAVINFLUOR", "NAUKRI", "NBCC", "NCC", 
-    "NESTLEIND", "NHPC", "NLCINDIA", "NMDC", "NTPC", "OBEROIRLTY", "ONGC", "OIL", "OISL", 
-    "PAYTM", "OFSS", "PAGEIND", "PATANJALI", "PEL", "PERSISTENT", "PETRONET", "PFC", 
-    "PHOENIXLTD", "PIDILITIND", "PIIND", "POLYCAB", "POONAWALLA", "PRAJIND", 
-    "PRESTIGE", "PGEL", "railtel", "RVNL", "RECLTD", "RELIANCE",
-    "MOTHERSON", "SCHAEFFLER", "RENUKA", "SHREECEM", "SHRIRAMFIN", "SIEMENS", 
-    "SOBHA", "SOLARIND", "SONACOMS", "SRF", "STARHEALTH", "SAIL", "SUNPHARMA",
-    "SUPREMEIND", "SUZLON", "SYNGENE", "TVSMOTOR", "TATACHEM", "TATACOMM", "TCS", 
-    "TATACONSUM", "TATAELXSI", "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TECHM", "TIINDIA", 
-    "TITAN", "TORNTPOWER", "TORNTPHARM", "TRENT", "TRIDENT", "TRIVENI", "ULTRACEMCO", 
-    "UNOMINDA", "UPL", "VEDL", "VIJAYA", "VOLTAS", "WAAREEENER", 
-    "WHIRLPOOL", "WIPRO", "ZFCVINDIA", "ZYDUSLIFE", "ZOMATO"
+    "CGPOWER", "CHAMBLFERT", "CIPLA", "COALINDIA", "COCHINSHIP", "COFORGE", "COLPAL", 
+    "CONCOR", "COROMANDEL", "CROMPTON", "CUMMINSIND", "DABUR", "DalmiaBharat", 
+    "DEEPAKFERT", "DELHIVERY", "DEVYANI", "DIVISLAB", "DIXON", "LALPATHLAB", "DRREDDY", 
+    "EICHERMOT", "ELGIEQUIP", "EMAMILTD", "ENDURANCE", "ESCORTS", "EXIDEIND", "NYKAA", 
+    "FACT", "FORCEMOT", "FORTIS", "GAIL", "GMRAIRPORT", "GICRE", "GILLETTE", "GLAXO", 
+    "GLENMARK", "GMDC", "GODREJCP", "GODREJPROP", "GRANULES", "GRASIM", "GUJGASLTD", 
+    "GNFC", "GPPL", "GSPL", "HAL", "HAVELLS", "HCLTECH", "HFCL", "HINDALCO", 
+    "HINDCOPPER", "HINDPETRO", "HINDUNILVR", "HINDZINC", "HUDCO", "IGL", "INDHOTEL", 
+    "INDIACEM", "INDIANB", "INDIGO", "INDNIPPON", "INDUSTOWER", "INFY", "INOXWIND", 
+    "IOC", "IPCALAB", "IRB", "IRCTC", "IRFC", "ITC", "JINDALSTEL", "JINDALSAW", "JSL", 
+    "JSWENERGY", "JSWSTEEL", "JUBLFOOD", "JUBLINGREA", "KPITTECH", "KALYANKJIL", 
+    "KAYNES", "KEC", "KEI", "KFINTECH", "KNRCON", "KPIL", "LTIM", "LTTS", "LUPIN", 
+    "M&M", "MAHSECI", "MAGL", "MANKIND", "MARICO", "MARUTI", "MAXHEALTH", "MAZDOCK", 
+    "MEDANTA", "METROPOLIS", "MFSL", "MOTHERSON", "MPHASIS", "MRF", "MSUMI", "NATIONALUM", 
+    "NAVINFLUOR", "NAUKRI", "NBCC", "NCC", "NESTLEIND", "NHPC", "NLCINDIA", "NMDC", 
+    "NTPC", "OBEROIRLTY", "ONGC", "OIL", "OISL", "PAYTM", "OFSS", "PAGEIND", "PATANJALI", 
+    "PEL", "PERSISTENT", "PETRONET", "PFC", "PHOENIXLTD", "PIDILITIND", "PIIND", 
+    "POLYCAB", "POONAWALLA", "PRAJIND", "PRESTIGE", "PGEL", "railtel", "RVNL", "RECLTD", 
+    "RELIANCE", "SCHAEFFLER", "RENUKA", "SHREECEM", "SHRIRAMFIN", "SIEMENS", "SOBHA", 
+    "SOLARIND", "SONACOMS", "SRF", "STARHEALTH", "SAIL", "SUNPHARMA", "SUPREMEIND", 
+    "SUZLON", "SYNGENE", "TVSMOTOR", "TATACHEM", "TATACOMM", "TCS", "TATACONSUM", 
+    "TATAELXSI", "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TECHM", "TIINDIA", "TITAN", 
+    "TORNTPOWER", "TORNTPHARM", "TRENT", "TRIDENT", "TRIVENI", "ULTRACEMCO", "UNOMINDA", 
+    "UPL", "VEDL", "VIJAYA", "VOLTAS", "WAAREEENER", "WHIRLPOOL", "WIPRO", "ZFCVINDIA", 
+    "ZYDUSLIFE", "ZOMATO", "MOLBIO"
 ]
-
-def filter_clean_stock_universe(raw_list):
-    cleaned = []
-    for sym in raw_list:
-        sym_upper = sym.upper().strip()
-        # Check if any excluded keyword exists in the ticker name
-        is_blocked = False
-        for kw in EXCLUDED_SECTOR_KEYWORDS:
-            if kw in sym_upper:
-                is_blocked = True
-                break
-        if not is_blocked and sym_upper not in cleaned:
-            cleaned.append(sym_upper)
-    return cleaned
-
-# Final Clean Stock Universe (Banks, Fins, Insurance, Liquor, Cigarettes completely wiped out)
-STOCK_UNIVERSE = filter_clean_stock_universe(RAW_LARGEMIDCAP_250)
 
 
 def clean_and_parse_json(raw_str):
@@ -126,7 +94,7 @@ def get_gspread_client():
 
 
 def analyze_split_buy_sell_radar():
-    print(f"⏳ Scanning Cleaned LargeMidcap Universe across {len(STOCK_UNIVERSE)} Tickers (No Banks/Fins/Liquor/Cig)...")
+    print(f"⏳ Scanning your exact custom stock list ({len(STOCK_UNIVERSE)} Tickers including MOLBIO)...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in STOCK_UNIVERSE]
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
@@ -198,10 +166,7 @@ def analyze_split_buy_sell_radar():
 def run_split_radar_sync(max_retries=3, delay=5):
     buy_rows, sell_rows = analyze_split_buy_sell_radar()
     
-    # Left Section Headers (BUY SECTION)
     buy_headers = ["TOP BUY SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
-    
-    # Right Section Headers (SELL SECTION)
     sell_headers = ["TOP SELL SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
 
     max_rows = max(len(buy_rows), len(sell_rows))
@@ -217,7 +182,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing LargeMidcap 250 (Excl. Banks/Fins/Liquor) radar to Google Sheets...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing custom stock list radar to Google Sheets...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -230,7 +195,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
             ws.clear()
             ws.update(values=combined_payload, range_name="A1")
-            print(f"🎉 Successfully updated Google Sheet with pure LargeMidcap non-financial/non-liquor trading signals!")
+            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' with your custom universe (Molbio included)!")
             break
 
         except APIError as e:
