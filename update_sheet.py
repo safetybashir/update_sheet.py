@@ -106,7 +106,7 @@ def get_gspread_client():
 
 
 def analyze_split_buy_sell_radar():
-    print(f"⏳ Scanning All Sectors Broad Market Universe ({len(STOCK_UNIVERSE)} Tickers)...")
+    print(f"⏳ Scanning All Sectors Broad Market Universe ({len(STOCK_UNIVERSE)} Tickers with VWAP & Confirmation Safety)...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in STOCK_UNIVERSE]
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
@@ -127,10 +127,16 @@ def analyze_split_buy_sell_radar():
                 continue
 
             df = data[t_str].dropna()
-            if len(df) < 15:
+            if len(df) < 20:
                 continue
 
+            # 📊 Calculate VWAP (Volume Weighted Average Price) for intaday confirmation
+            typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+            vwap = (typical_price * df['Volume']).cumsum() / df['Volume'].cumsum()
+            
+            current_vwap = float(vwap.iloc[-1])
             close_price = round(float(df['Close'].iloc[-1]), 2)
+            
             prev_close = float(df['Close'].iloc[-50]) if len(df) >= 50 else float(df['Close'].iloc[0])
             day_change_pct = round(((close_price - prev_close) / prev_close) * 100, 2)
             
@@ -145,19 +151,24 @@ def analyze_split_buy_sell_radar():
             day_range = high_day - low_day
             day_pos_pct = round(((close_price - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
+            # 🛡️ ADVANCED SAFETY GUARD: VWAP & Consecutive Candle Confirmation Check (No Wicks Fakeout)
+            last_three_closes = df['Close'].iloc[-3:].tolist()
+            is_sustaining_bullish = all(c >= current_vwap for c in last_three_closes) if len(last_three_closes) == 3 else (close_price >= current_vwap)
+            is_sustaining_bearish = all(c <= current_vwap for c in last_three_closes) if len(last_three_closes) == 3 else (close_price <= current_vwap)
+
             # ----------------------------------------------------
-            # SEGREGATION LOGIC (BULLISH vs BEARISH)
+            # SEGREGATION LOGIC WITH CONFIRMATION SAFETY
             # ----------------------------------------------------
-            if day_change_pct >= 1.2 and day_pos_pct >= 55.0:
-                action_signal = "🟢 BUY / ACCUMULATION" if day_change_pct < 5.0 else "🟢 ROCKET BLAST (BUY)"
+            if day_change_pct >= 1.2 and day_pos_pct >= 55.0 and close_price > current_vwap and is_sustaining_bullish:
+                action_signal = "🟢 CONFIRMED BUY (VWAP SECURE)" if day_change_pct < 5.0 else "🟢 ROCKET BLAST (SECURE)"
                 
                 buy_records.append({
                     "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
                     "traded_value": traded_value_cr
                 })
                 
-            elif day_change_pct <= -1.2 and day_pos_pct <= 45.0:
-                action_signal = "🔴 SELL / BEARISH DUMP" if day_change_pct > -5.0 else "🔴 HEAVY CRASH (SELL)"
+            elif day_change_pct <= -1.2 and day_pos_pct <= 45.0 and close_price < current_vwap and is_sustaining_bearish:
+                action_signal = "🔴 CONFIRMED SELL (VWAP DUMP)" if day_change_pct > -5.0 else "🔴 HEAVY CRASH (SECURE)"
                 
                 sell_records.append({
                     "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
@@ -193,7 +204,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing Bullish/Bearish dashboard to tab '{SENSIBULE_TAB_NAME}'...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing Safety-Filtered Dashboard to tab '{SENSIBULE_TAB_NAME}'...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -206,7 +217,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
             ws.clear()
             ws.update(values=combined_payload, range_name="A1")
-            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}'!")
+            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' with VWAP Safety Filters!")
             break
 
         except APIError as e:
