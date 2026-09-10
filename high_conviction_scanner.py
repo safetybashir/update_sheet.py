@@ -16,7 +16,7 @@ SHEET_ID = os.environ.get("SHEET_ID", "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAw
 SENSIBULE_TAB_NAME = "SUPER_CONVICTION_TRADES"
 CREDENTIALS_FILE = "credentials.json"
 
-# Master Stock Universe (Expanded to include high-volume, mid-cap, small-cap, and FnO stocks)
+# Master Stock Universe
 STOCK_UNIVERSE = [
     "NOVARTIND", "INDNIPPON", "GRAPHITE", "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", 
     "SBIN", "BHARTIARTL", "LTIM", "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "AXISBANK", 
@@ -36,9 +36,9 @@ STOCK_UNIVERSE = [
     "BHEL", "NATIONALUM", "NHPC", "JINDALSTEL", "SONACOMS", "HINDZINC", "UNOMINDA", 
     "OFSS", "BDL", "SUPREMEIND", "OIL", "TATAELXSI", "HINDALCO", "PETRONET", "AMBER", 
     "DALBHARAT", "PHOENIXLTD", "BIOCON", "NMDC", "UPL", "CROMPTON", "INDUSTOWER", 
-    "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "PFC", "LUPIN", "CDSL", "IREDA", 
-    "GODREJPROP", "KFINTECH", "HCLTECH", "RECLTD", "GODREJCP", "FORTIS", "PGEL", 
-    "MPHASIS", "PIIND", "COLPAL", "BLUESTARCO", "VOLTAS", "DABUR", "ASTRALL", 
+    "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "PFC", "CDSL", "IREDA", 
+    "GODREJPROP", "KFINTECH", "RECLTD", "GODREJCP", "FORTIS", "PGEL", 
+    "MPHASIS", "PIIND", "COLPAL", "BLUESTARCO", "VOLTAS", "ASTRALL", 
     "LTMM", "MARICO", "PAGEIND", "MAXHEALTH", "KALYANKJIL", "LODHA", "SWIGGY", "MANKIND"
 ]
 
@@ -98,9 +98,6 @@ def analyze_mahesh_style_radar():
     current_date_str = now_dt.strftime("%d-%b-%Y")
     current_time_str = now_dt.strftime("%H:%M")
     
-    # Header timestamp string matching your precise specification
-    meta_timestamp = f"Data Date: {current_date_str} | Updated: {current_date_str} {current_time_str} (IST) [Strict Sector Shield Active]"
-    
     records = []
 
     for sym in STOCK_UNIVERSE:
@@ -131,35 +128,31 @@ def analyze_mahesh_style_radar():
             day_pos_pct = round(((close_price - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
             # ----------------------------------------------------
-            # CLASSIFICATION LOGIC (Mahesh Style Radar Format)
+            # UNIFIED ACTION & ORGANIC TRAP SHIELD LOGIC
             # ----------------------------------------------------
-            buy_radar = "—"
-            dump_radar = "—"
+            action_signal = "⏳ SIDEWAYS / MONITOR"
             organic_status = "🌱 ORGANIC STOCK (NO TRAP)"
-            
-            # Sorting score setup
             score = 0.0
 
-            if day_change_pct >= 2.0 and day_pos_pct >= 60.0:
-                if day_change_pct >= 10.0:
-                    buy_radar = "🟢 ROCKET BLAST (BUY)"
-                elif day_change_pct >= 5.0:
-                    buy_radar = "🟢 STRONG MOMENTUM (BUY)"
+            if day_change_pct >= 1.5 and day_pos_pct >= 60.0:
+                if day_change_pct >= 8.0:
+                    action_signal = "🟢 ROCKET BLAST (STRONG BUY)"
+                elif day_change_pct >= 4.0:
+                    action_signal = "🟢 STRONG MOMENTUM (BUY)"
                 else:
-                    buy_radar = "🟢 BUY ON DIPS / ACCUMULATION"
+                    action_signal = "🟢 BUY ON DIPS / ACCUMULATION"
                 
                 score = (traded_value_cr * 0.5) + (day_change_pct * 20)
                 
-            elif day_change_pct <= -2.0 and day_pos_pct <= 40.0:
-                if day_change_pct <= -7.0:
-                    dump_radar = "🔴 HEAVY DUMP / DISTRIBUTION"
+            elif day_change_pct <= -1.5 and day_pos_pct <= 40.0:
+                if day_change_pct <= -5.0:
+                    action_signal = "🔴 HEAVY DUMP / BEARISH BREAKDOWN"
                 else:
-                    dump_radar = "🔴 BEARISH PRESSURE"
+                    action_signal = "🔴 BEARISH PRESSURE / SELL"
                 
                 score = (traded_value_cr * 0.5) + (abs(day_change_pct) * 20)
             else:
-                # Skip low movement noise unless traded value is exceptionally massive
-                if traded_value_cr < 50.0:
+                if traded_value_cr < 80.0: # Skip low turnover noise
                     continue
                 score = traded_value_cr * 0.1
 
@@ -169,8 +162,7 @@ def analyze_mahesh_style_radar():
                     traded_value_cr,
                     close_price,
                     f"{day_change_pct:+.2f}%",
-                    buy_radar,
-                    dump_radar,
+                    action_signal,
                     organic_status
                 ],
                 "score": score
@@ -180,29 +172,32 @@ def analyze_mahesh_style_radar():
             continue
 
     # Sort strictly by highest conviction score (Traded Value & Momentum Combined)
-    sorted_records = sorted(records, key=lambda x: x["score"], reverse=True)[:25]
+    sorted_records = sorted(records, key=lambda x: x["score"], reverse=True)[:30]
     
     formatted_rows = [item["data"] for item in sorted_records]
-    return formatted_rows, meta_timestamp
+    
+    # Clean single-line header string embedding the exact live timestamp & shield badge
+    header_timestamp_info = f"Updated: {current_date_str} {current_time_str} (IST) [Strict Sector Shield Active]"
+    
+    return formatted_rows, header_timestamp_info
 
 
 def run_mahesh_radar_sync(max_retries=3, delay=5):
-    rows_data, meta_timestamp = analyze_mahesh_style_radar()
+    rows_data, header_timestamp_info = analyze_mahesh_style_radar()
     
-    # Exact Headers matching your requirement
+    # 6 Clean Professional Columns (No space waste, no confusion)
     headers = [
         "STOCK SYMBOL", 
         "TRADED VALUE (CR)", 
         "CLOSE PRICE", 
         "DAY CHANGE %", 
-        "🟢 BUY / ROCKET RADAR", 
-        "🔴 SELL / DUMP RADAR", 
-        "🌱 ORGANIC STOCKS / NO BULL TRAP"
+        f"⚡ ACTION / TRADING SIGNAL | {header_timestamp_info}", 
+        "🌱 ORGANIC STATUS"
     ]
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Updating Mahesh-style Radar to Google Sheets...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing clean streamlined radar to Google Sheets...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -211,20 +206,16 @@ def run_mahesh_radar_sync(max_retries=3, delay=5):
             try:
                 ws = sheet.worksheet(SENSIBULE_TAB_NAME)
             except Exception:
-                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="10")
+                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="8")
 
             ws.clear()
             
-            # Row 1: Metadata Timestamp
-            # Row 2: Table Headers
-            # Row 3 onwards: Stock Records
-            payload = [
-                [meta_timestamp, "", "", "", "", "", ""],
-                headers
-            ] + rows_data
+            # Row 1: Headers (with embedded timestamp right inside column E header)
+            # Row 2 onwards: Stock Data Rows
+            payload = [headers] + rows_data
 
             ws.update(values=payload, range_name="A1")
-            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' in Mahesh-style format!")
+            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' cleanly without wasted space!")
             break
 
         except APIError as e:
