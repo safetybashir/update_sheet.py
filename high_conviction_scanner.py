@@ -6,7 +6,6 @@ import pytz
 import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
-from google.auth.exceptions import GoogleAuthError
 from gspread.exceptions import APIError
 
 # ==========================================
@@ -87,7 +86,7 @@ def get_gspread_client():
         raise FileNotFoundError("Neither 'GCP_CREDENTIALS_JSON' secret nor 'credentials.json' found.")
 
 
-def analyze_mahesh_style_radar():
+def analyze_split_buy_sell_radar():
     print(f"⏳ Scanning and Sorting Stock Universe across {len(STOCK_UNIVERSE)} Tickers...")
     
     tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in STOCK_UNIVERSE]
@@ -98,7 +97,8 @@ def analyze_mahesh_style_radar():
     current_date_str = now_dt.strftime("%d-%b-%Y")
     current_time_str = now_dt.strftime("%H:%M")
     
-    records = []
+    buy_records = []
+    sell_records = []
 
     for sym in STOCK_UNIVERSE:
         try:
@@ -128,76 +128,60 @@ def analyze_mahesh_style_radar():
             day_pos_pct = round(((close_price - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
             # ----------------------------------------------------
-            # UNIFIED ACTION & ORGANIC TRAP SHIELD LOGIC
+            # SEGREGATION LOGIC (BUY vs SELL)
             # ----------------------------------------------------
-            action_signal = "⏳ SIDEWAYS / MONITOR"
-            organic_status = "🌱 ORGANIC STOCK (NO TRAP)"
-            score = 0.0
-
-            if day_change_pct >= 1.5 and day_pos_pct >= 60.0:
-                if day_change_pct >= 8.0:
-                    action_signal = "🟢 ROCKET BLAST (STRONG BUY)"
-                elif day_change_pct >= 4.0:
-                    action_signal = "🟢 STRONG MOMENTUM (BUY)"
-                else:
-                    action_signal = "🟢 BUY ON DIPS / ACCUMULATION"
+            if day_change_pct >= 1.2 and day_pos_pct >= 55.0:
+                action_signal = "🟢 BUY / ACCUMULATION" if day_change_pct < 5.0 else "🟢 ROCKET BLAST (BUY)"
+                score = traded_value_cr * abs(day_change_pct)
                 
-                score = (traded_value_cr * 0.5) + (day_change_pct * 20)
+                buy_records.append({
+                    "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
+                    "traded_value": traded_value_cr
+                })
                 
-            elif day_change_pct <= -1.5 and day_pos_pct <= 40.0:
-                if day_change_pct <= -5.0:
-                    action_signal = "🔴 HEAVY DUMP / BEARISH BREAKDOWN"
-                else:
-                    action_signal = "🔴 BEARISH PRESSURE / SELL"
+            elif day_change_pct <= -1.2 and day_pos_pct <= 45.0:
+                action_signal = "🔴 SELL / BEARISH DUMP" if day_change_pct > -5.0 else "🔴 HEAVY CRASH (SELL)"
+                score = traded_value_cr * abs(day_change_pct)
                 
-                score = (traded_value_cr * 0.5) + (abs(day_change_pct) * 20)
-            else:
-                if traded_value_cr < 80.0: # Skip low turnover noise
-                    continue
-                score = traded_value_cr * 0.1
-
-            records.append({
-                "data": [
-                    raw_sym,
-                    traded_value_cr,
-                    close_price,
-                    f"{day_change_pct:+.2f}%",
-                    action_signal,
-                    organic_status
-                ],
-                "score": score
-            })
+                sell_records.append({
+                    "data": [raw_sym, traded_value_cr, close_price, f"{day_change_pct:+.2f}%", action_signal, current_time_str],
+                    "traded_value": traded_value_cr
+                })
 
         except Exception as e:
             continue
 
-    # Sort strictly by highest conviction score (Traded Value & Momentum Combined)
-    sorted_records = sorted(records, key=lambda x: x["score"], reverse=True)[:30]
+    # 🔥 Sort both lists strictly by Highest Traded Value (Descending Order)
+    sorted_buys = sorted(buy_records, key=lambda x: x["traded_value"], reverse=True)[:20]
+    sorted_sells = sorted(sell_records, key=lambda x: x["traded_value"], reverse=True)[:20]
     
-    formatted_rows = [item["data"] for item in sorted_records]
-    
-    # Clean single-line header string embedding the exact live timestamp & shield badge
-    header_timestamp_info = f"Updated: {current_date_str} {current_time_str} (IST) [Strict Sector Shield Active]"
-    
-    return formatted_rows, header_timestamp_info
+    return [item["data"] for item in sorted_buys], [item["data"] for item in sorted_sells], current_date_str, current_time_str
 
 
-def run_mahesh_radar_sync(max_retries=3, delay=5):
-    rows_data, header_timestamp_info = analyze_mahesh_style_radar()
+def run_split_radar_sync(max_retries=3, delay=5):
+    buy_rows, sell_rows, date_str, time_str = analyze_split_buy_sell_radar()
     
-    # 6 Clean Professional Columns (No space waste, no confusion)
-    headers = [
-        "STOCK SYMBOL", 
-        "TRADED VALUE (CR)", 
-        "CLOSE PRICE", 
-        "DAY CHANGE %", 
-        f"⚡ ACTION / TRADING SIGNAL | {header_timestamp_info}", 
-        "🌱 ORGANIC STATUS"
+    # Left Section Headers (BUY SECTION)
+    buy_headers = ["TOP BUY SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
+    
+    # Right Section Headers (SELL SECTION - separated by an empty column spacer in index 6)
+    sell_headers = ["TOP SELL SYMBOL", "TRADED VAL (CR)", "CLOSE", "CHANGE %", "ACTION", "TIME"]
+
+    # Combine side-by-side layout: [Buy Data (Cols A-F)] + [Spacer (Col G)] + [Sell Data (Cols H-M)]
+    max_rows = max(len(buy_rows), len(sell_rows))
+    
+    combined_payload = [
+        buy_headers + [""] + sell_headers
     ]
+
+    for i in range(max_rows):
+        b_row = buy_rows[i] if i < len(buy_rows) else ["", "", "", "", "", ""]
+        s_row = sell_rows[i] if i < len(sell_rows) else ["", "", "", "", "", ""]
+        combined_payload.append(b_row + [""] + s_row)
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing clean streamlined radar to Google Sheets...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing split Buy & Sell tables to Google Sheets...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -206,16 +190,11 @@ def run_mahesh_radar_sync(max_retries=3, delay=5):
             try:
                 ws = sheet.worksheet(SENSIBULE_TAB_NAME)
             except Exception:
-                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="8")
+                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="15")
 
             ws.clear()
-            
-            # Row 1: Headers (with embedded timestamp right inside column E header)
-            # Row 2 onwards: Stock Data Rows
-            payload = [headers] + rows_data
-
-            ws.update(values=payload, range_name="A1")
-            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' cleanly without wasted space!")
+            ws.update(values=combined_payload, range_name="A1")
+            print(f"🎉 Successfully updated Google Sheet with segregated Buy & Sell columns sorted by Traded Value!")
             break
 
         except APIError as e:
@@ -231,4 +210,4 @@ def run_mahesh_radar_sync(max_retries=3, delay=5):
 
 
 if __name__ == "__main__":
-    run_mahesh_radar_sync()
+    run_split_radar_sync()
