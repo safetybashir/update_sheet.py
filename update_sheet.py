@@ -15,7 +15,7 @@ SHEET_ID = os.environ.get("SHEET_ID", "1e9znYZTTnp3MNKn2Re9FfjtizzS5xZdZwCHp7AJZ
 SENSIBULE_TAB_NAME = "BULLISH_BEARISH_LIVE_DASHBOARD"
 CREDENTIALS_FILE = "credentials.json"
 
-# 🚀 ALL-SECTOR BROAD MARKET MASTER UNIVERSE (Non-Financial Sectors Covered Across NSE)
+# 🚀 ALL-SECTOR BROAD MARKET MASTER UNIVERSE (Non-Financial Sectors Covered Across NSE - Welcorp Excluded)
 STOCK_UNIVERSE = [
     # Energy, Oil & Gas, Power
     "RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "NTPC", "POWERGRID", "ADANIENT", 
@@ -32,9 +32,9 @@ STOCK_UNIVERSE = [
     "EICHERMOT", "ASHOKLEY", "BHARATFORG", "BALKRISIND", "APOLLOTYRE", "CEATLTD", 
     "MRF", "BOSCHLTD", "TIINDIA", "ENDURANCE", "UNOMINDA", "MOTHERSON", "FORCEMOT",
     
-    # Metals, Mining & Steel
+    # Metals, Mining & Steel (WELCORP Permanently Excluded)
     "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", 
-    "HINDZINC", "NATIONALUM", "JSL", "APLAPOLLO", "GPIL", "RATNAMANI", "WELCORP",
+    "HINDZINC", "NATIONALUM", "JSL", "APLAPOLLO", "GPIL", "RATNAMANI",
     
     # Capital Goods, Defense & Infrastructure
     "LT", "HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", 
@@ -130,7 +130,7 @@ def analyze_split_buy_sell_radar():
             if len(df) < 20:
                 continue
 
-            # 📊 Calculate VWAP (Volume Weighted Average Price) for intaday confirmation
+            # 📊 Calculate VWAP (Volume Weighted Average Price) for intraday confirmation
             typical_price = (df['High'] + df['Low'] + df['Close']) / 3
             vwap = (typical_price * df['Volume']).cumsum() / df['Volume'].cumsum()
             
@@ -217,7 +217,7 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
             ws.clear()
             ws.update(values=combined_payload, range_name="A1")
-            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' with VWAP Safety Filters!")
+            print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' (Welcorp Permanently Removed)!")
             break
 
         except APIError as e:
