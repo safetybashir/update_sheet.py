@@ -15,30 +15,20 @@ SHEET_ID = os.environ.get("SHEET_ID", "1YZ-JI0UUEzpHhhW_EWqPcdF2JlAEl_BUmCRjVTAw
 SENSIBULE_TAB_NAME = "SUPER_CONVICTION_TRADES"
 CREDENTIALS_FILE = "credentials.json"
 
-# Master Cash Tickers List
-CASH_STOCKS = [
-    "TORNTPHARM", "ASHOKLEY", "KAYNES", "INOXWIND", "GAIL", "KEI", "PREMIERENE", 
-    "CGPOWER", "M&M", "BSE", "DIVISLAB", "MOTHERSON", "POWERINDIA", "GLENMARK", 
-    "MAZDOCK", "DELHIVERY", "GVT&D", "TVSMOTOR", "POLYCAB", "TIINDIA", "SIEMENS", 
-    "CUMMINSIND", "JSWENERGY", "ANGELONE", "COCHINSHIP", "WAAREEENER", "LAURUSLABS", 
-    "BHARATFORG", "TMPVSOLARIND", "TATASTEEL", "LTF", "FORCEMOT", "PRESTIGE", 
-    "BPCL", "HAL", "SUZLON", "GMRAIRPORT", "TATAPOWER", "NBCC", "DMART", "HEROMOTOCO", 
-    "KPITTECH", "RVNL", "RELIANCE", "PNB", "ZYDUSLIFE", "BHEL", "NATIONALUM", 
-    "NHPC", "SRF", "JINDALSTEL", "BAJAJ-AUTO", "BEL", "TITAN", "SONACOMS", 
-    "HINDZINC", "UNOMINDA", "OBEROIRLTY", "BHARTIARTL", "OFSS", "BDL", "SUPREMEIND", 
-    "OIL", "SHREECEM", "NTPC", "TATAELXSI", "HINDALCO", "PETRONET", "CIPLA", 
-    "MARUTI", "PAYTM", "PERSISTENT", "AMBER", "DLF", "DALBHARAT", "ULTRACEMCO", 
-    "ONGC", "PHOENIXLTD", "HINDPETRO", "CAMS", "AUROPHARMA", "BIOCON", "TRENT", 
-    "DRREDDY", "JSWSTEEL", "NMDC", "IOC", "UPL", "NYKAA", "LTC", "CROMPTON", 
-    "INDUSTOWER", "HAVELLS", "CONCOR", "SAIL", "JUBLFOOD", "GRASIM", "PFC", 
-    "ASIANPAINT", "LUPIN", "CDSL", "IREDA", "HINDUNILVR", "GODREJPROP", "KFINTECH", 
-    "AMBUJACEM", "APOLLOHOSP", "HCLTECH", "POWERGRID", "RECLTD", "GODREJCP", 
-    "FORTIS", "PGEL", "ABB", "COALINDIA", "SUNPHARMA", "MPHASIS", "PIIND", 
-    "COLPAL", "BLUESTARCO", "VMM", "VOLTAS", "TECHM", "EICHERMOT", "INDIGO", 
-    "DABUR", "NESTLEIND", "TATACONSUM", "BOSCHLTD", "VEDL", "PIDILITIND", "NAUKRI", 
-    "WIPRO", "ALKEM", "ITC", "COFORGE", "ASTRALL", "LTMM", "MARICO", "PAGEIND", 
-    "MAXHEALTH", "BRITANNIA", "INFY", "ETERNAL", "TCS", "KALYANKJIL", "LODHA", 
-    "SWIGGY", "MANKIND", "DIXON", "APLAPOLLO", "MCX"
+# Master FnO (Futures & Options) Stocks List
+FNO_STOCKS = [
+    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "BHARTIARTL", 
+    "LTIM", "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "AXISBANK", "MARUTI", 
+    "SUNPHARMA", "TITAN", "ASIANPAINT", "KOTAKBANK", "ULTRACEMCO", "TITAGARH", 
+    "NTPC", "ONGC", "TITAN", "ADANIENT", "ADANIPORTS", "COALINDIA", "POWERGRID", 
+    "BAJAJFINSV", "TATASTEEL", "JSWSTEEL", "GRASIM", "TECHM", "WIPRO", "HCLTECH", 
+    "NESTLEIND", "INDIGO", "DIVISLAB", "TATACONSUM", "BPCL", "SBILIFE", "HDFCLIFE", 
+    "BRITANNIA", "EICHERMOT", "DRREDDY", "BAJAJ-AUTO", "APOLLOHOSP", "HEROMOTOCO", 
+    "HAL", "BEL", "CHOLAFIN", "DABUR", "PIDILITIND", "SIEMENS", "ABB", "TORNTPHARM", 
+    "VEDL", "IOC", "GAIL", "PNB", "BANKBARODA", "CANBK", "IDFCFIRSTB", "TVSMOTOR", 
+    "M&M", "BOSCHLTD", "AMBUJACEM", "SHREECEM", "ICICIGI", "ICICIPRULI", "SRF", 
+    "MUTHOOTFIN", "PERSISTENT", "LUPIN", "AUROPHARMA", "CIPLA", "DLF", "OBEROIRLTY", 
+    "GODREJPROP", "PEL", "POLYCAB", "NAUKRI", "ZOMATO", "PAYTM", "NYKAA", "DELHIVERY"
 ]
 
 
@@ -86,10 +76,10 @@ def get_gspread_client():
         raise FileNotFoundError("Neither 'GCP_CREDENTIALS_JSON' secret nor 'credentials.json' found.")
 
 
-def analyze_sensibule_options():
-    print(f"⏳ Running Live Sensibule Options Scan across {len(CASH_STOCKS)} Stocks...")
+def analyze_fno_options():
+    print(f"⏳ Running Live FnO Traded Value & Options Scan across {len(FNO_STOCKS)} Derivative Stocks...")
     
-    tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in CASH_STOCKS]
+    tickers = [f"{sym.strip().replace('&', '%26')}.NS" for sym in FNO_STOCKS]
     data = yf.download(tickers, period="5d", interval="5m", group_by="ticker", progress=False)
     
     ist = pytz.timezone("Asia/Kolkata")
@@ -99,7 +89,7 @@ def analyze_sensibule_options():
     
     signals_list = []
 
-    for sym in CASH_STOCKS:
+    for sym in FNO_STOCKS:
         try:
             raw_sym = sym.strip()
             t_str = f"{raw_sym.replace('&', '%26')}.NS"
@@ -119,42 +109,46 @@ def analyze_sensibule_options():
             high_day = float(recent_session_df['High'].max())
             low_day = float(recent_session_df['Low'].min())
             
+            # Traded Value / Turnover approximation (Volume * Close price proxy for liquidity & momentum check)
+            avg_volume = float(recent_session_df['Volume'].mean())
+            approx_traded_value_cr = round((avg_volume * ltp * 75) / 10000000, 2) # Lot size weighted estimation or scale
+
             day_range = high_day - low_day
             day_pos_pct = round(((ltp - low_day) / day_range) * 100, 2) if day_range > 0 else 50.0
 
             # ==========================
-            # 🚀 CALL OPTION (CE) - HIGH MOMENTUM
+            # 🚀 CALL OPTION (CE) - FNO MOMENTUM
             # ==========================
-            if day_change_pct >= 0.8 and day_pos_pct >= 60.0:
+            if day_change_pct >= 0.6 and day_pos_pct >= 55.0:
                 breakeven_trigger = round(high_day * 1.002, 2)
                 strict_sl = round(ltp * 0.985, 2)
                 
-                # Heavyweight booster to push top momentum tickers (Bosch, Supremeind, Divislab) to top
-                priority_boost = 10.0 if raw_sym in ["BOSCHLTD", "SUPREMEIND", "DIVISLAB", "ANGELONE"] else 0.0
-                total_score = day_change_pct + priority_boost
+                # High weightage for top FnO leaders
+                priority_boost = 15.0 if raw_sym in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "BAJFINANCE"] else 0.0
+                total_score = day_change_pct + (approx_traded_value_cr * 0.1) + priority_boost
 
                 signals_list.append({
                     "data": [
-                        raw_sym, ltp, "🚀 MOMENTUM BREAKOUT", "BUY CALL OPTION (CE)",
+                        raw_sym, ltp, f"{day_change_pct}%", "🚀 FNO MOMENTUM CE", "BUY CALL OPTION (CE)",
                         f"🟢 ABOVE {breakeven_trigger}", f"🔴 BELOW {strict_sl}", 
-                        "🔥 EXECUTE IN SENSIBULE", time_str
+                        f"₹{approx_traded_value_cr} Cr", "🔥 EXECUTE IN SENSIBULE", time_str
                     ],
                     "score": total_score
                 })
 
             # ==========================
-            # 💥 PUT OPTION (PE) - HEAVY DISTRIBUTION
+            # 💥 PUT OPTION (PE) - FNO DISTRIBUTION
             # ==========================
-            elif day_change_pct <= -0.8 and day_pos_pct <= 40.0:
+            elif day_change_pct <= -0.6 and day_pos_pct <= 45.0:
                 breakeven_trigger = round(low_day * 0.998, 2)
                 strict_sl = round(ltp * 1.015, 2)
-                total_score = abs(day_change_pct)
+                total_score = abs(day_change_pct) + (approx_traded_value_cr * 0.1)
 
                 signals_list.append({
                     "data": [
-                        raw_sym, ltp, "💥 BEARISH BREAKDOWN", "BUY PUT OPTION (PE)",
+                        raw_sym, ltp, f"{day_change_pct}%", "💥 FNO BEARISH PE", "BUY PUT OPTION (PE)",
                         f"🟢 BELOW {breakeven_trigger}", f"🔴 ABOVE {strict_sl}", 
-                        "🔥 EXECUTE IN SENSIBULE", time_str
+                        f"₹{approx_traded_value_cr} Cr", "🔥 EXECUTE IN SENSIBULE", time_str
                     ],
                     "score": total_score
                 })
@@ -162,22 +156,22 @@ def analyze_sensibule_options():
         except Exception as e:
             continue
 
-    # Sort strictly by highest score so active top movers appear instantly at the top
-    sorted_signals = sorted(signals_list, key=lambda x: x["score"], reverse=True)[:10]
+    # Sort strictly by highest conviction score & liquidity traded value
+    sorted_signals = sorted(signals_list, key=lambda x: x["score"], reverse=True)[:15]
     return [item["data"] for item in sorted_signals], full_timestamp_str
 
 
-def run_sensibule_sync(max_retries=3, delay=5):
-    signals_data, full_timestamp_str = analyze_sensibule_options()
+def run_fno_sync(max_retries=3, delay=5):
+    signals_data, full_timestamp_str = analyze_fno_options()
     
     headers = [
-        "TICKER", "LTP", "TREND STATUS", "STRATEGY", 
-        "🎯 TARGET / BREAKEVEN", "🛑 STRICT SL (1.5%)", "SENSIBULE TRIGGER", "LAST UPDATED"
+        "TICKER", "LTP", "CHANGE %", "TREND STATUS", "STRATEGY", 
+        "🎯 TARGET / BREAKEVEN", "🛑 STRICT SL", "EST. TRADED VALUE", "SENSIBULE TRIGGER", "LAST UPDATED"
     ]
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing live signals to Google Sheets...")
+            print(f"🔄 Attempt {attempt}/{max_retries}: Pushing FnO Traded Value signals to Google Sheets...")
             client = get_gspread_client()
             
             target_sheet_id = os.environ.get("SHEET_ID", SHEET_ID)
@@ -186,11 +180,11 @@ def run_sensibule_sync(max_retries=3, delay=5):
             try:
                 ws = sheet.worksheet(SENSIBULE_TAB_NAME)
             except Exception:
-                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="10")
+                ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="12")
 
             ws.clear()
             ws.update(values=[headers] + signals_data, range_name="A1")
-            print(f"✅ Successfully pushed {len(signals_data)} option triggers with timestamps to '{SENSIBULE_TAB_NAME}'!")
+            print(f"✅ Successfully pushed {len(signals_data)} FnO option triggers to '{SENSIBULE_TAB_NAME}'!")
             break
 
         except APIError as e:
@@ -206,4 +200,4 @@ def run_sensibule_sync(max_retries=3, delay=5):
 
 
 if __name__ == "__main__":
-    run_sensibule_sync()
+    run_fno_sync()
