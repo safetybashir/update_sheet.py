@@ -1,11 +1,15 @@
+import os
+import json
 import time
+from datetime import datetime
+import pytz
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from google.oauth2.service_account import Credentials
 import gspread
+from google.oauth2.service_account import Credentials
 
-# --- HARDCODED CONFIGURATION (Sheet ID & Tabs) ---
+# --- CONFIGURATION (Sheet ID & Tabs) ---
 SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 TAB_SWING = "Daily_5EMA_Swing"
 TAB_INTRADAY = "Intraday_15Min"
@@ -23,10 +27,30 @@ TARGET_UNIVERSE = [
 RSI_PERIOD = 14
 EMA_PERIOD = 5
 
+def get_gspread_client():
+    """
+    GitHub Secrets (GCP_CREDENTIALS_JSON) ya local file se gspread client authenticate karne ke liye.
+    """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    if "GCP_CREDENTIALS_JSON" in os.environ and os.environ["GCP_CREDENTIALS_JSON"].strip():
+        raw_json = os.environ["GCP_CREDENTIALS_JSON"].strip()
+        try:
+            creds_dict = json.loads(raw_json)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+            return gspread.authorize(creds)
+        except Exception as e:
+            raise ValueError(f"❌ Error in 'GCP_CREDENTIALS_JSON' secret: {e}")
+    elif os.path.exists("credentials.json"):
+        try:
+            creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+            return gspread.authorize(creds)
+        except Exception as e:
+            raise ValueError(f"❌ Invalid local 'credentials.json': {e}")
+    else:
+        raise FileNotFoundError("Neither 'GCP_CREDENTIALS_JSON' secret nor 'credentials.json' found.")
+
 def fetch_data(ticker, interval, period):
-    """
-    Yahoo Finance se OHLCV data fetch karne ke liye function.
-    """
     try:
         df = yf.download(ticker + ".NS", period=period, interval=interval, progress=False)
         if isinstance(df.columns, pd.MultiIndex):
@@ -37,9 +61,6 @@ def fetch_data(ticker, interval, period):
         return None
 
 def calculate_indicators(df):
-    """
-    5 EMA aur RSI calculate karna, aur Alert Candle (Separation) logic check karna.
-    """
     if df is None or len(df) < 20:
         return None
     
@@ -107,34 +128,41 @@ def run_scanner():
 
 def update_google_sheet(swing_data, intraday_data):
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
-        client = gspread.authorize(creds)
-        
-        # Direct Sheet ID ke zariye open karna
+        client = get_gspread_client()
         sheet = client.open_by_key(SPREADSHEET_ID)
         
-        # Update Daily Swing Tab
+        # IST Timestamp generate karna
+        ist = pytz.timezone("Asia/Kolkata")
+        current_time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # --- Update Daily Swing Tab ---
         tab_swing = sheet.worksheet(TAB_SWING)
         tab_swing.clear()
+        
+        swing_header_row = [["5 EMA Swing Scanner Report", f"Last Updated: {current_time_str} IST"]]
         if swing_data:
             df_s = pd.DataFrame(swing_data)
-            tab_swing.update([df_s.columns.values.tolist()] + df_s.values.tolist())
+            swing_payload = swing_header_row + [[]] + [df_s.columns.values.tolist()] + df_s.values.tolist()
+            tab_swing.update('A1', swing_payload)
         else:
-            tab_swing.update([["Status"]], [["No Daily Alert Setups Today"]])
+            tab_swing.update('A1', swing_header_row + [[]] + [["Status"], ["No Daily Alert Setups Today"]])
             
-        # Update 15M Intraday Tab
+        # --- Update 15M Intraday Tab ---
         tab_intra = sheet.worksheet(TAB_INTRADAY)
         tab_intra.clear()
+        
+        intra_header_row = [["15-Min Intraday Scanner Report", f"Last Updated: {current_time_str} IST"]]
         if intraday_data:
             df_i = pd.DataFrame(intraday_data)
-            tab_intra.update([df_i.columns.values.tolist()] + df_i.values.tolist())
+            intra_payload = intra_header_row + [[]] + [df_i.columns.values.tolist()] + df_i.values.tolist()
+            tab_intra.update('A1', intra_payload)
         else:
-            tab_intra.update([["Status"]], [["No 15M Alert Setups Active"]])
+            tab_intra.update('A1', intra_header_row + [[]] + [["Status"], ["No 15M Alert Setups Active"]])
             
-        print("Google Sheet 'ema_reversal_scanner.py' successfully updated!")
+        print(f"✅ Google Sheet successfully updated with timestamp: {current_time_str}!")
     except Exception as e:
-        print(f"Google Sheet Update Error: {e}")
+        print(f"❌ Google Sheet Update Error: {e}")
+        raise e
 
 if __name__ == "__main__":
     run_scanner()
