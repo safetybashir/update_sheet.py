@@ -1,23 +1,31 @@
-import os
 import time
-import yaml
 import pandas as pd
 import numpy as np
 import yfinance as yf
 from google.oauth2.service_account import Credentials
 import gspread
 
-# Load Configuration from YAML
-def load_config():
-    with open("ema_config.yaml", "r") as file:
-        return yaml.safe_load(file)
+# --- HARDCODED CONFIGURATION (Sheet ID & Tabs) ---
+SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
+TAB_SWING = "Daily_5EMA_Swing"
+TAB_INTRADAY = "Intraday_15Min"
 
-config = load_config()
+TARGET_UNIVERSE = [
+    "TATASTEEL",
+    "RELIANCE",
+    "INFY",
+    "TCS",
+    "SUNPHARMA",
+    "TATAMOTORS",
+    "AXISBANK"
+]
+
+RSI_PERIOD = 14
+EMA_PERIOD = 5
 
 def fetch_data(ticker, interval, period):
     """
     Yahoo Finance se OHLCV data fetch karne ke liye function.
-    Intervals: '1d' (Daily ke liye), '15m' (15-Min ke liye)
     """
     try:
         df = yf.download(ticker + ".NS", period=period, interval=interval, progress=False)
@@ -36,18 +44,16 @@ def calculate_indicators(df):
         return None
     
     # 5 EMA Calculation
-    df['EMA_5'] = df['Close'].ewm(span=config['settings']['ema_period'], adjust=False).mean()
+    df['EMA_5'] = df['Close'].ewm(span=EMA_PERIOD, adjust=False).mean()
     
     # RSI Calculation (14 Period)
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=config['settings']['rsi_period']).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=config['settings']['rsi_period']).mean()
+    gain = (delta.where(delta > 0, 0)).rolling(window=RSI_PERIOD).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=RSI_PERIOD).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
     # Alert Candle Logic (Separation Check)
-    # Bullish Alert: Low of the candle is separated completely above 5 EMA (touch chhoda ho)
-    # Bearish Alert: High of the candle is separated completely below 5 EMA
     df['Bullish_Alert'] = (df['Low'] > df['EMA_5']) & (df['Close'] > df['Open'])
     df['Bearish_Alert'] = (df['High'] < df['EMA_5']) & (df['Close'] < df['Open'])
     
@@ -55,15 +61,14 @@ def calculate_indicators(df):
 
 def run_scanner():
     print("--- Starting 5 EMA + RSI Reversal Scanner ---")
-    universe = config['target_universe']
     
     swing_results = []
     intraday_results = []
     
-    for stock in universe:
+    for stock in TARGET_UNIVERSE:
         print(f"Scanning {stock}...")
         
-        # 1. Daily Timeframe Scan (Swing - Daily Chart)
+        # 1. Daily Timeframe Scan (Swing)
         df_daily = fetch_data(stock, interval="1d", period="3mo")
         df_daily = calculate_indicators(df_daily)
         if df_daily is not None and not df_daily.empty:
@@ -79,7 +84,7 @@ def run_scanner():
                     'Alert_Low': round(float(latest_daily['Low']), 2)
                 })
         
-        # 2. 15-Minute Timeframe Scan (Intraday - 15Min Chart)
+        # 2. 15-Minute Timeframe Scan (Intraday)
         df_15m = fetch_data(stock, interval="15m", period="5d")
         df_15m = calculate_indicators(df_15m)
         if df_15m is not None and not df_15m.empty:
@@ -95,11 +100,9 @@ def run_scanner():
                     'Alert_Low': round(float(latest_15m['Low']), 2)
                 })
                 
-        time.sleep(0.5) # Rate limit handling to avoid blocking
+        time.sleep(0.5)
         
-    print(f"Scan Complete. Daily Setups found: {len(swing_results)}, 15M Setups found: {len(intraday_results)}")
-    
-    # Update Google Sheets
+    print(f"Scan Complete. Daily Setups: {len(swing_results)}, 15M Setups: {len(intraday_results)}")
     update_google_sheet(swing_results, intraday_results)
 
 def update_google_sheet(swing_data, intraday_data):
@@ -108,11 +111,11 @@ def update_google_sheet(swing_data, intraday_data):
         creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
         client = gspread.authorize(creds)
         
-        # Open Google Sheet using unique Sheet ID from YAML config
-        sheet = client.open_by_key(config['google_sheets']['spreadsheet_id'])
+        # Direct Sheet ID ke zariye open karna
+        sheet = client.open_by_key(SPREADSHEET_ID)
         
         # Update Daily Swing Tab
-        tab_swing = sheet.worksheet(config['google_sheets']['tabs']['swing_daily'])
+        tab_swing = sheet.worksheet(TAB_SWING)
         tab_swing.clear()
         if swing_data:
             df_s = pd.DataFrame(swing_data)
@@ -121,7 +124,7 @@ def update_google_sheet(swing_data, intraday_data):
             tab_swing.update([["Status"]], [["No Daily Alert Setups Today"]])
             
         # Update 15M Intraday Tab
-        tab_intra = sheet.worksheet(config['google_sheets']['tabs']['intraday_15m'])
+        tab_intra = sheet.worksheet(TAB_INTRADAY)
         tab_intra.clear()
         if intraday_data:
             df_i = pd.DataFrame(intraday_data)
@@ -129,7 +132,7 @@ def update_google_sheet(swing_data, intraday_data):
         else:
             tab_intra.update([["Status"]], [["No 15M Alert Setups Active"]])
             
-        print("Google Sheet 'Swing_Intraday_Command_Center' successfully updated using Sheet ID!")
+        print("Google Sheet 'Swing_Intraday_Command_Center' successfully updated!")
     except Exception as e:
         print(f"Google Sheet Update Error: {e}")
 
