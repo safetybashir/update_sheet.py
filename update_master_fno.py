@@ -176,6 +176,6 @@ if data_to_insert:
     status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [Strict Sector Shield Active]"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sector Shield Active! Banks, Financials, Liquor & Tobacco completely blocked.")
+    print("SUCCESS: Sector Shield Active! Banks, INSURANCE, NBFC, Financials, Liquor & Tobacco completely blocked.")
 else:
     print("❌ Failed to fetch data.")
