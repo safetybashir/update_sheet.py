@@ -9,28 +9,63 @@ import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURATION (Sheet ID & Tabs) ---
+# --- CONFIGURATION (Sheet ID & Target Tab) ---
 SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
-TAB_SWING = "Daily_5EMA_Swing"
-TAB_INTRADAY = "Intraday_15Min"
+UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 
-TARGET_UNIVERSE = [
-    "TATASTEEL",
-    "RELIANCE",
-    "INFY",
-    "TCS",
-    "SUNPHARMA",
-    "TATAMOTORS",
-    "AXISBANK"
+# 🚀 ALL-SECTOR BROAD MARKET MASTER UNIVERSE (Non-Financial Sectors Covered Across NSE - Welcorp Excluded)
+STOCK_UNIVERSE = [
+    # Energy, Oil & Gas, Power
+    "RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "NTPC", "POWERGRID", "ATGL", "JSWENERGY", "TATAPOWER", 
+    "NHPC", "SJVN", "TORNTPOWER", "NTPCGREEN", "HINDPETRO", "MRPL", "OIL", 
+    "GSPL", "GUJGASLTD", "IGL", "PETRONET", "AEGISLOG", "COALINDIA", "MOLBIO",
+    
+    # IT & Software Services
+    "TCS", "INFY", "HCLTECH", "TECHM", "WIPRO", "LTIM", "LTTS", "COFORGE", 
+    "MPHASIS", "PERSISTENT", "OFSS", "KPITTECH", "CYIENT", "ZENSARTECH", "SONATSOFTW",
+    
+    # Automobile & Auto Ancillaries
+    "TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "TVSMOTOR", "HEROMOTOCO", 
+    "EICHERMOT", "ASHOKLEY", "BHARATFORG", "BALKRISIND", "APOLLOTYRE", "CEATLTD", 
+    "MRF", "BOSCHLTD", "TIINDIA", "ENDURANCE", "UNOMINDA", "MOTHERSON", "FORCEMOT",
+    
+    # Metals, Mining & Steel (WELCORP Permanently Excluded)
+    "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", 
+    "HINDZINC", "NATIONALUM", "JSL", "APLAPOLLO", "GPIL", "RATNAMANI",
+    
+    # Capital Goods, Defense & Infrastructure
+    "LT", "HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", 
+    "THERMAX", "BDL", "CGPOWER", "POWERINDIA", "KEI", "DIXON", "POLYCAB", 
+    "ASTRAL", "SUPREMEIND", "KEC", "KPIL", "TRIVENI", "ELGIEQUIP", "TIMKEN", 
+    "SKFINDIA", "SCHAEFFLER", "NCC", "NBCC", "RVNL", "IRCON", "RAILTEL", 
+    
+    # Pharma & Healthcare
+    "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", 
+    "APOLLOHOSP", "MAXHEALTH", "GLENMARK", "ALKEM", "ABBOTINDIA", 
+    "IPCALAB", "SYNGENE", "TORNTPHARM", "GLAXO", "PFIZER", "GRANULES", "AJANTPHARM", 
+    "LALPATHLAB", "METROPOLIS", "FORTIS", "MEDANTA", "BIOCON",
+    
+    # FMCG & Consumer Durables
+    "HINDUNILVR", "NESTLEIND", "BRITANNIA", "TATACONSUM", "DABUR", "MARICO", 
+    "COLPAL", "GODREJCP", "TITAN", "PAGEIND", "VOLTAS", "BLUESTARCO", "HAVELLS", 
+    "CROMPTON", "WHIRLPOOL", "AMBER", "PGEL", "VBL", "DEVYANI", "JUBLFOOD",
+    
+    # Retail, Realty & Services
+    "TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "PAYTM", "POLICYBZR", "NAUKRI", 
+    "DELHIVERY", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "PRESTIGE", 
+    "OBEROIRLTY", "SOBHA", "PHOENIXLTD", "CONCOR", "MAHLOG", "AMBUJACEM", "ACC", 
+    "SHREECEM", "ULTRACEMCO", "DALBHARAT", "RAMCOCEM", "JKCEMENT",
+   
+    # Master, high value trading Stocks
+    "NOVARTIND", "MANINDS", "INDOCO", "ESDS", "GENESYS", "VSSL", "SHAKTIPUMP", "TECHNOCRAF",    
+    "ACUTAAS", "RAYMOND", "ITDC", "KROSS", "VARROC", "ELLEN", "SAMHI", "INOXINDIA", "EMIL", "MILKYMIST", 
+    "ATHERENERG", "OLAELEC", "PARAGMILK", "IRB", "INDNIPPON", "EMMVEE", "TCC",  
 ]
 
 RSI_PERIOD = 14
 EMA_PERIOD = 5
 
 def get_gspread_client():
-    """
-    GitHub Secrets (GCP_CREDENTIALS_JSON) ya local file se gspread client authenticate karne ke liye.
-    """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
     if "GCP_CREDENTIALS_JSON" in os.environ and os.environ["GCP_CREDENTIALS_JSON"].strip():
@@ -64,24 +99,21 @@ def calculate_indicators(df):
     if df is None or len(df) < 20:
         return None
     
-    # 5 EMA Calculation
     df['EMA_5'] = df['Close'].ewm(span=EMA_PERIOD, adjust=False).mean()
     
-    # RSI Calculation (14 Period)
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=RSI_PERIOD).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=RSI_PERIOD).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # Alert Candle Logic (Separation Check)
     df['Bullish_Alert'] = (df['Low'] > df['EMA_5']) & (df['Close'] > df['Open'])
     df['Bearish_Alert'] = (df['High'] < df['EMA_5']) & (df['Close'] < df['Open'])
     
     return df
 
 def run_scanner():
-    print("--- Starting 5 EMA + RSI Reversal Scanner ---")
+    print("--- Starting Side-by-Side Intraday & Swing Scanner ---")
     
     swing_results = []
     intraday_results = []
@@ -123,7 +155,7 @@ def run_scanner():
                 
         time.sleep(0.5)
         
-    print(f"Scan Complete. Daily Setups: {len(swing_results)}, 15M Setups: {len(intraday_results)}")
+    print(f"Scan Complete. Swing Setups: {len(swing_results)}, Intraday Setups: {len(intraday_results)}")
     update_google_sheet(swing_results, intraday_results)
 
 def update_google_sheet(swing_data, intraday_data):
@@ -131,35 +163,44 @@ def update_google_sheet(swing_data, intraday_data):
         client = get_gspread_client()
         sheet = client.open_by_key(SPREADSHEET_ID)
         
-        # IST Timestamp generate karna
         ist = pytz.timezone("Asia/Kolkata")
         current_time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
         
-        # --- Update Daily Swing Tab ---
-        tab_swing = sheet.worksheet(TAB_SWING)
-        tab_swing.clear()
-        
-        swing_header_row = [["5 EMA Swing Scanner Report", f"Last Updated: {current_time_str} IST"]]
-        if swing_data:
-            df_s = pd.DataFrame(swing_data)
-            swing_payload = swing_header_row + [[]] + [df_s.columns.values.tolist()] + df_s.values.tolist()
-            tab_swing.update('A1', swing_payload)
-        else:
-            tab_swing.update('A1', swing_header_row + [[]] + [["Status"], ["No Daily Alert Setups Today"]])
+        try:
+            ws = sheet.worksheet(UNIFIED_TAB_NAME)
+        except Exception:
+            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="100", cols="20")
             
-        # --- Update 15M Intraday Tab ---
-        tab_intra = sheet.worksheet(TAB_INTRADAY)
-        tab_intra.clear()
+        ws.clear()
         
-        intra_header_row = [["15-Min Intraday Scanner Report", f"Last Updated: {current_time_str} IST"]]
-        if intraday_data:
-            df_i = pd.DataFrame(intraday_data)
-            intra_payload = intra_header_row + [[]] + [df_i.columns.values.tolist()] + df_i.values.tolist()
-            tab_intra.update('A1', intra_payload)
-        else:
-            tab_intra.update('A1', intra_header_row + [[]] + [["Status"], ["No 15M Alert Setups Active"]])
+        # Headers definition
+        intra_headers = ["INTRA STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
+        swing_headers = ["SWING STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
+        
+        intra_rows = []
+        for item in intraday_data:
+            intra_rows.append([item['Stock'], item['Timeframe'], item['Close'], item['RSI'], item['Signal'], item['Alert_High'], item['Alert_Low']])
             
-        print(f"✅ Google Sheet successfully updated with timestamp: {current_time_str}!")
+        swing_rows = []
+        for item in swing_data:
+            swing_rows.append([item['Stock'], item['Timeframe'], item['Close'], item['RSI'], item['Signal'], item['Alert_High'], item['Alert_Low']])
+            
+        max_rows = max(len(intra_rows), len(swing_rows))
+        
+        # Construct side-by-side payload layout
+        combined_payload = [
+            [f"15-MIN INTRADAY (LEFT) vs DAILY SWING (RIGHT) COMMAND CENTER | Last Updated: {current_time_str} IST"]
+        ]
+        combined_payload.append([]) # Blank row
+        combined_payload.append(intra_headers + [""] + swing_headers)
+        
+        for i in range(max_rows):
+            i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
+            s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
+            combined_payload.append(i_row + [""] + s_row)
+            
+        ws.update('A1', combined_payload)
+        print(f"✅ Google Sheet side-by-side dashboard successfully updated at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
