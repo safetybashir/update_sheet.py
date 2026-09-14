@@ -236,4 +236,4 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
 
 if __name__ == "__main__":
-    run_split_radar_sync()
+    run_split_radar_sync() 
