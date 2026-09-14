@@ -21,8 +21,10 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas numpy pyyaml yfinance gspread google-auth
+          pip install pandas numpy pyyaml yfinance gspread google-auth oauth2client pytz
 
       - name: Run 5 EMA Scanner Script
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
         run: |
           python ema_reversal_scanner.py
