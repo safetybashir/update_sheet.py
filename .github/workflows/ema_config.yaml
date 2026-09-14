@@ -1,26 +1,28 @@
-# =====================================================================
-# WORKFLOW: 5 EMA + RSI REVERSAL SCANNER (SWING & INTRADAY)
-# =====================================================================
+name: 5 EMA Reversal Scanner Update
 
-settings:
-  data_source: "yahoo"
-  rsi_period: 14
-  ema_period: 5
-  min_turnover_lakhs: 500
+on:
+  schedule:
+    # यह समय 14:45 UTC है, जिसका मतलब भारत में रात 8:15 PM है (Mon-Fri)
+    - cron: '45 14 * * 1-5'
+  workflow_dispatch:
 
-google_sheets:
-  spreadsheet_id: "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
-  spreadsheet_name: "Swing_Intraday_Command_Center"
-  tabs:
-    swing_daily: "Daily_5EMA_Swing"
-    intraday_15m: "Intraday_15Min"
+jobs:
+  run-ema-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-target_universe:
-  - "TATASTEEL"
-  - "RELIANCE"
-  - "INFY"
-  - "TCS"
-  - "SUNPHARMA"
-  - "TATAMOTORS"
-  - "AXISBANK"
-  # Note: WELCORP is permanently excluded due to erratic behavior.
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy pyyaml yfinance gspread google-auth
+
+      - name: Run 5 EMA Scanner Script
+        run: |
+          python ema_reversal_scanner.py
