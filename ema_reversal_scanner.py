@@ -13,7 +13,6 @@ from google.oauth2.service_account import Credentials
 SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 
-# 🚀 ALL-SECTOR BROAD MARKET MASTER UNIVERSE (Non-Financial Sectors Covered Across NSE - Welcorp Excluded)
 STOCK_UNIVERSE = [
     # Energy, Oil & Gas, Power
     "RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "NTPC", "POWERGRID", "ATGL", "JSWENERGY", "TATAPOWER", 
@@ -59,7 +58,7 @@ STOCK_UNIVERSE = [
     # Master, high value trading Stocks
     "NOVARTIND", "MANINDS", "INDOCO", "ESDS", "GENESYS", "VSSL", "SHAKTIPUMP", "TECHNOCRAF",    
     "ACUTAAS", "RAYMOND", "ITDC", "KROSS", "VARROC", "ELLEN", "SAMHI", "INOXINDIA", "EMIL", "MILKYMIST", 
-    "ATHERENERG", "OLAELEC", "PARAGMILK", "IRB", "INDNIPPON", "EMMVEE", "TCC",  
+    "ATHERENERG", "OLAELEC", "PARAGMILK", "IRB", "INDNIPPON", "EMMVEE", "TCC"
 ]
 
 RSI_PERIOD = 14
@@ -113,12 +112,12 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print("--- Starting Side-by-Side Intraday & Swing Scanner ---")
+    print(f"--- Starting Side-by-Side Intraday & Swing Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
     
-    for stock in TARGET_UNIVERSE:
+    for stock in STOCK_UNIVERSE:
         print(f"Scanning {stock}...")
         
         # 1. Daily Timeframe Scan (Swing)
@@ -153,7 +152,7 @@ def run_scanner():
                     'Alert_Low': round(float(latest_15m['Low']), 2)
                 })
                 
-        time.sleep(0.5)
+        time.sleep(0.2)
         
     print(f"Scan Complete. Swing Setups: {len(swing_results)}, Intraday Setups: {len(intraday_results)}")
     update_google_sheet(swing_results, intraday_results)
@@ -169,11 +168,10 @@ def update_google_sheet(swing_data, intraday_data):
         try:
             ws = sheet.worksheet(UNIFIED_TAB_NAME)
         except Exception:
-            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="100", cols="20")
+            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="20")
             
         ws.clear()
         
-        # Headers definition
         intra_headers = ["INTRA STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
         swing_headers = ["SWING STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
         
@@ -185,13 +183,12 @@ def update_google_sheet(swing_data, intraday_data):
         for item in swing_data:
             swing_rows.append([item['Stock'], item['Timeframe'], item['Close'], item['RSI'], item['Signal'], item['Alert_High'], item['Alert_Low']])
             
-        max_rows = max(len(intra_rows), len(swing_rows))
+        max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        # Construct side-by-side payload layout
         combined_payload = [
             [f"15-MIN INTRADAY (LEFT) vs DAILY SWING (RIGHT) COMMAND CENTER | Last Updated: {current_time_str} IST"]
         ]
-        combined_payload.append([]) # Blank row
+        combined_payload.append([])
         combined_payload.append(intra_headers + [""] + swing_headers)
         
         for i in range(max_rows):
