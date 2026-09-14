@@ -24,5 +24,7 @@ jobs:
           pip install pandas numpy yfinance gspread google-auth oauth2client pyyaml
 
       - name: Run Master FNO Script
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
         run: |
           python update_master_fno.py
