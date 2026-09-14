@@ -9,6 +9,7 @@ settings:
   min_turnover_lakhs: 500
 
 google_sheets:
+  spreadsheet_id: "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
   spreadsheet_name: "Swing_Intraday_Command_Center"
   tabs:
     swing_daily: "Daily_5EMA_Swing"
