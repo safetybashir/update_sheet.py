@@ -112,7 +112,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Side-by-Side Intraday & Swing Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Side-by-Side Intraday (Left) & Swing (Right) Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -120,7 +120,7 @@ def run_scanner():
     for stock in STOCK_UNIVERSE:
         print(f"Scanning {stock}...")
         
-        # 1. Daily Timeframe Scan (Swing)
+        # 1. Daily Timeframe Scan (Swing - Right Side)
         df_daily = fetch_data(stock, interval="1d", period="3mo")
         df_daily = calculate_indicators(df_daily)
         if df_daily is not None and not df_daily.empty:
@@ -136,7 +136,7 @@ def run_scanner():
                     'Alert_Low': round(float(latest_daily['Low']), 2)
                 })
         
-        # 2. 15-Minute Timeframe Scan (Intraday)
+        # 2. 15-Minute Timeframe Scan (Intraday - Left Side)
         df_15m = fetch_data(stock, interval="15m", period="5d")
         df_15m = calculate_indicators(df_15m)
         if df_15m is not None and not df_15m.empty:
@@ -154,7 +154,7 @@ def run_scanner():
                 
         time.sleep(0.2)
         
-    print(f"Scan Complete. Swing Setups: {len(swing_results)}, Intraday Setups: {len(intraday_results)}")
+    print(f"Scan Complete. Swing Setups (Right): {len(swing_results)}, Intraday Setups (Left): {len(intraday_results)}")
     update_google_sheet(swing_results, intraday_results)
 
 def update_google_sheet(swing_data, intraday_data):
@@ -172,6 +172,7 @@ def update_google_sheet(swing_data, intraday_data):
             
         ws.clear()
         
+        # Left Side Headers (Intraday) & Right Side Headers (Swing)
         intra_headers = ["INTRA STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
         swing_headers = ["SWING STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
         
@@ -185,19 +186,23 @@ def update_google_sheet(swing_data, intraday_data):
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
+        # Title Banner across top
         combined_payload = [
-            [f"15-MIN INTRADAY (LEFT) vs DAILY SWING (RIGHT) COMMAND CENTER | Last Updated: {current_time_str} IST"]
+            [f"15-MIN INTRADAY (LEFT) vs DAILY SWING TRADING (RIGHT) COMMAND CENTER | Last Updated: {current_time_str} IST"]
         ]
-        combined_payload.append([])
+        combined_payload.append([]) # Blank Row
+        
+        # Column Headers with separator empty column in between
         combined_payload.append(intra_headers + [""] + swing_headers)
         
+        # Side-by-Side data mapping
         for i in range(max_rows):
             i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             combined_payload.append(i_row + [""] + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet side-by-side dashboard successfully updated at {current_time_str}!")
+        print(f"✅ Google Sheet side-by-side Intraday & Swing dashboard successfully updated at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
