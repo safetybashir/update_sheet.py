@@ -1,31 +1,31 @@
-name: Update cash SHEET.PY Breakout 
+name: Update Sheet Pipeline
 
 on:
   schedule:
-    # Runs every 15 minutes during Indian Market Hours (Mon-Fri)
-    - cron: '*/15 3-10 * * 1-5'
+    # Roz market hours ya schedule ke mutabiq (Mon-Fri)
+    - cron: '30 14 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  run-scanner:
+  run-update-sheet:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance gspread google-auth pytz
+          pip install pandas numpy yfinance gspread google-auth oauth2client pyyaml
 
-      - name: Run Market Scanner Script
+      - name: Run Update Sheet Script
         env:
           GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-        run: python update_sheet.py
+        run: |
+          python update_sheet.py
