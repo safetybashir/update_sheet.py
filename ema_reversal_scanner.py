@@ -126,12 +126,13 @@ def run_scanner():
         if df_daily is not None and not df_daily.empty:
             latest_daily = df_daily.iloc[-1]
             if latest_daily['Bullish_Alert'] or latest_daily['Bearish_Alert']:
+                signal_text = '🟢 Bullish Reversal' if latest_daily['Bullish_Alert'] else '🔴 Bearish Reversal'
                 swing_results.append({
                     'Stock': stock,
                     'Timeframe': 'Daily',
                     'Close': round(float(latest_daily['Close']), 2),
                     'RSI': round(float(latest_daily['RSI']), 2),
-                    'Signal': 'Bullish Reversal' if latest_daily['Bullish_Alert'] else 'Bearish Reversal',
+                    'Signal': signal_text,
                     'Alert_High': round(float(latest_daily['High']), 2),
                     'Alert_Low': round(float(latest_daily['Low']), 2)
                 })
@@ -142,12 +143,13 @@ def run_scanner():
         if df_15m is not None and not df_15m.empty:
             latest_15m = df_15m.iloc[-1]
             if latest_15m['Bullish_Alert'] or latest_15m['Bearish_Alert']:
+                signal_text = '🟢 Bullish Reversal' if latest_15m['Bullish_Alert'] else '🔴 Bearish Reversal'
                 intraday_results.append({
                     'Stock': stock,
                     'Timeframe': '15Min',
                     'Close': round(float(latest_15m['Close']), 2),
                     'RSI': round(float(latest_15m['RSI']), 2),
-                    'Signal': 'Bullish Reversal' if latest_15m['Bullish_Alert'] else 'Bearish Reversal',
+                    'Signal': signal_text,
                     'Alert_High': round(float(latest_15m['High']), 2),
                     'Alert_Low': round(float(latest_15m['Low']), 2)
                 })
@@ -172,7 +174,6 @@ def update_google_sheet(swing_data, intraday_data):
             
         ws.clear()
         
-        # Left Side Headers (Intraday) & Right Side Headers (Swing)
         intra_headers = ["INTRA STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
         swing_headers = ["SWING STOCK", "TIMEFRAME", "CLOSE", "RSI", "SIGNAL", "HIGH", "LOW"]
         
@@ -186,23 +187,22 @@ def update_google_sheet(swing_data, intraday_data):
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        # Title Banner across top
+        # Center aligned title and timestamp placed cleanly around the middle separator column (Column H)
+        title_row = ["⚡ 15-MIN INTRADAY (LEFT)", "", "", "", "", "", "", f"🕒 Last Updated: {current_time_str} IST", "", "", "DAILY SWING TRADING (RIGHT) ⚡"]
+
         combined_payload = [
-            [f"15-MIN INTRADAY (LEFT) vs DAILY SWING TRADING (RIGHT) COMMAND CENTER | Last Updated: {current_time_str} IST"]
+            title_row,
+            [], # Blank Row
+            intra_headers + [""] + swing_headers
         ]
-        combined_payload.append([]) # Blank Row
         
-        # Column Headers with separator empty column in between
-        combined_payload.append(intra_headers + [""] + swing_headers)
-        
-        # Side-by-Side data mapping
         for i in range(max_rows):
             i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             combined_payload.append(i_row + [""] + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet side-by-side Intraday & Swing dashboard successfully updated at {current_time_str}!")
+        print(f"✅ Google Sheet side-by-side dashboard successfully updated with centered timestamp at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
