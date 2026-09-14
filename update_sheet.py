@@ -56,10 +56,10 @@ STOCK_UNIVERSE = [
     "TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "PAYTM", "POLICYBZR", "NAUKRI", 
     "DELHIVERY", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "PRESTIGE", 
     "OBEROIRLTY", "SOBHA", "PHOENIXLTD", "CONCOR", "MAHLOG", "AMBUJACEM", "ACC", 
-    "SHREECEM", "ULTRACEMCO", "DALBHARAT", "RAMCOCEM", "JKCEMENT"
+    "SHREECEM", "ULTRACEMCO", "DALBHARAT", "RAMCOCEM", "JKCEMENT",
    
     # Master, high value trading Stocks
-    "NOVARTIND", "MANINDS", "INDOCO", "ESDS", "GENESYS", "VSSL", "SHAKTIPUMP", "TECHNOCRAF",   
+    "NOVARTIND", "MANINDS", "INDOCO", "ESDS", "GENESYS", "VSSL", "SHAKTIPUMP", "TECHNOCRAF",    
     "ACUTAAS", "RAYMOND", "ITDC", "KROSS", "VARROC", "ELLEN", "SAMHI", "INOXINDIA", "EMIL", "MILKYMIST", 
     "ATHERENERG", "OLAELEC", "PARAGMILK", "IRB", "INDNIPPON", "EMMVEE", "TCC",  
 ]
@@ -219,7 +219,8 @@ def run_split_radar_sync(max_retries=3, delay=5):
                 ws = sheet.add_worksheet(title=SENSIBULE_TAB_NAME, rows="100", cols="15")
 
             ws.clear()
-            ws.update(values=combined_payload, range_name="A1")
+            # 🛠️ Fixed update method format for complete compatibility across gspread versions
+            ws.update('A1', combined_payload)
             print(f"🎉 Successfully updated Google Sheet tab '{SENSIBULE_TAB_NAME}' (Welcorp Permanently Removed)!")
             break
 
@@ -236,4 +237,4 @@ def run_split_radar_sync(max_retries=3, delay=5):
 
 
 if __name__ == "__main__":
-    run_split_radar_sync() 
+    run_split_radar_sync()
