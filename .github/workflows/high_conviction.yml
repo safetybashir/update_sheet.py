@@ -1,4 +1,4 @@
-name: Sensibule High Conviction Scanner Automation
+name: High Conviction Scanner Automation
 
 on:
   schedule:
