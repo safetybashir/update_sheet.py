@@ -1,0 +1,25 @@
+# ==========================================
+# 5 EMA + RSI REVERSAL SCANNER CONFIGURATION
+# ==========================================
+
+settings:
+  data_source: "yahoo"
+  rsi_period: 14
+  ema_period: 5
+  min_turnover_lakhs: 500
+
+google_sheets:
+  spreadsheet_name: "Swing_Intraday_Command_Center"
+  tabs:
+    swing_daily: "Daily_5EMA_Swing"
+    intraday_15m: "Intraday_15Min"
+
+target_universe:
+  - "TATASTEEL"
+  - "RELIANCE"
+  - "INFY"
+  - "TCS"
+  - "SUNPHARMA"
+  - "TATAMOTORS"
+  - "AXISBANK"
+  # Note: WELCORP is permanently excluded due to erratic behavior.
