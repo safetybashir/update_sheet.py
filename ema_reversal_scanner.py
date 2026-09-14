@@ -132,7 +132,7 @@ def update_google_sheet(swing_data, intraday_data):
         else:
             tab_intra.update([["Status"]], [["No 15M Alert Setups Active"]])
             
-        print("Google Sheet 'Swing_Intraday_Command_Center' successfully updated!")
+        print("Google Sheet 'ema_reversal_scanner.py' successfully updated!")
     except Exception as e:
         print(f"Google Sheet Update Error: {e}")
 
