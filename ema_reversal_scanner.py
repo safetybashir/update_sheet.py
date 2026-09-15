@@ -112,7 +112,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Clean Row-1 Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Multi-Tier Layout Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -195,31 +195,30 @@ def update_google_sheet(swing_data, intraday_data):
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        # Row 1: Cleanly placed Timestamp in Col A, Intraday title in Col B, Swing title starting at Col J
-        title_row = [
-            f"🕒 Last Updated: {current_time_str} IST",  # Col A
-            "⚡ HIGH-CONVICTION INTRADAY (15 MIN)",        # Col B
-            "", "", "", "", "", "", "",                    # Cols C to I (Gap)
-            "HIGH-CONVICTION SWING TRADING (DAILY) ⚡"     # Col J
-        ]
-
-        # Row 2: Headers (Intra headers A to G, Col H & I empty gap, Swing headers starting at Col J)
+        # Row 1: Timestamp in Column A only
+        row_1 = [f"🕒 Last Updated: {current_time_str} IST"]
+        
+        # Row 2: Section Titles (Intraday Title on Left, Swing Title starting at Column J)
         gap_cols = ["", ""] # Columns H and I as blank separators
+        row_2 = ["⚡ HIGH-CONVICTION INTRADAY (15 MIN)"] + [""] * 6 + gap_cols + ["HIGH-CONVICTION SWING TRADING (DAILY) ⚡"]
+        
+        # Row 3: Table Headers
         headers_row = intra_headers + gap_cols + swing_headers
 
         combined_payload = [
-            title_row,
+            row_1,
+            row_2,
             headers_row
         ]
         
-        # Row 3 onwards: Data rows with blank gap in columns H and I
+        # Row 4 onwards: Stock Data rows
         for i in range(max_rows):
             i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             combined_payload.append(i_row + gap_cols + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet updated successfully with Clean Row 1 layout at {current_time_str}!")
+        print(f"✅ Google Sheet updated successfully with Clean Multi-Tier Layout at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
