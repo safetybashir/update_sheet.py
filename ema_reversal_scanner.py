@@ -112,7 +112,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Optimized 7-Column Side-by-Side Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Header-Row-2 Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -182,7 +182,6 @@ def update_google_sheet(swing_data, intraday_data):
             
         ws.clear()
         
-        # 7 Columns per table (Timeframe column removed to save space)
         intra_headers = ["INTRA STOCK", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
         swing_headers = ["SWING STOCK", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
         
@@ -196,27 +195,29 @@ def update_google_sheet(swing_data, intraday_data):
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        # Top banner with explicit (15 MIN) and (DAILY) tags
+        # Row 1: Title & Timestamp Banner
         title_row = [
             "⚡ HIGH-CONVICTION INTRADAY (15 MIN)", "", "", "", "", "", "", 
             f"🕒 Last Updated: {current_time_str} IST", 
-            "", "", "", "", "", "", 
-            "HIGH-CONVICTION SWING TRADING (DAILY) ⚡"
+            "HIGH-CONVICTION SWING TRADING (DAILY) ⚡", "", "", "", "", "", ""
         ]
+
+        # Row 2: Table Headers placed immediately below Row 1
+        headers_row = intra_headers + [""] + swing_headers
 
         combined_payload = [
             title_row,
-            [], # Blank Row
-            intra_headers + [""] + swing_headers
+            headers_row
         ]
         
+        # Row 3 onwards: Actual data rows
         for i in range(max_rows):
             i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             combined_payload.append(i_row + [""] + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet updated successfully with 7-column layout at {current_time_str}!")
+        print(f"✅ Google Sheet updated successfully with Headers on Row 2 at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
