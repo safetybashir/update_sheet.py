@@ -112,7 +112,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Header-Row-2 Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Column-J Separated Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -178,7 +178,7 @@ def update_google_sheet(swing_data, intraday_data):
         try:
             ws = sheet.worksheet(UNIFIED_TAB_NAME)
         except Exception:
-            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="20")
+            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
             
         ws.clear()
         
@@ -195,29 +195,32 @@ def update_google_sheet(swing_data, intraday_data):
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        # Row 1: Title & Timestamp Banner
+        # Row 1: Title & Timestamp (Col A gets Timestamp, Left Title at Col A, Right Title starting at Col J)
+        # Total columns mapped up to Col P (Index 15) to position Right Title cleanly at Column J
         title_row = [
-            "⚡ HIGH-CONVICTION INTRADAY (15 MIN)", "", "", "", "", "", "", 
-            f"🕒 Last Updated: {current_time_str} IST", 
+            "⚡ HIGH-CONVICTION INTRADAY (15 MIN)", "", "", "", "", "", "", "", "", 
             "HIGH-CONVICTION SWING TRADING (DAILY) ⚡", "", "", "", "", "", ""
         ]
+        # Insert Timestamp specifically into Column A cell of row 1
+        title_row[0] = f"🕒 Last Updated: {current_time_str} IST | ⚡ HIGH-CONVICTION INTRADAY (15 MIN)"
 
-        # Row 2: Table Headers placed immediately below Row 1
-        headers_row = intra_headers + [""] + swing_headers
+        # Row 2: Headers (Intra headers A to G, Col H & I empty gap, Swing headers starting at Col J)
+        gap_cols = ["", ""] # Columns H and I as blank separators
+        headers_row = intra_headers + gap_cols + swing_headers
 
         combined_payload = [
             title_row,
             headers_row
         ]
         
-        # Row 3 onwards: Actual data rows
+        # Row 3 onwards: Data rows with blank gap in columns H and I
         for i in range(max_rows):
             i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
-            combined_payload.append(i_row + [""] + s_row)
+            combined_payload.append(i_row + gap_cols + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet updated successfully with Headers on Row 2 at {current_time_str}!")
+        print(f"✅ Google Sheet updated successfully with Column J separation at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
