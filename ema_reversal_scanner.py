@@ -187,11 +187,6 @@ def update_google_sheet(swing_data, intraday_data):
         
         intra_rows = []
         for item in intraday_data:
-            intra_rows.append([item['Stock'], item['Close'], item['RSI'], item['Bullish_Sign'], item['Bearish_Sig'] if 'Bearish_Sig' in item else item.get('Bearish_Sig', ''), item['Alert_High'], item['Alert_Low']])
-        
-        # Re-mapping correctly loop for rows
-        intra_rows = []
-        for item in intraday_data:
             intra_rows.append([item['Stock'], item['Close'], item['RSI'], item['Bullish_Sig'], item['Bearish_Sig'], item['Alert_High'], item['Alert_Low']])
             
         swing_rows = []
