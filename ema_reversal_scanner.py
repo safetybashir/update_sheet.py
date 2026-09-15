@@ -112,7 +112,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting High-Conviction Sorted Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Optimized 7-Column Side-by-Side Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -130,14 +130,13 @@ def run_scanner():
                 rsi_val = float(latest_daily['RSI'])
                 swing_results.append({
                     'Stock': stock,
-                    'Timeframe': 'Daily',
                     'Close': round(float(latest_daily['Close']), 2),
                     'RSI': round(rsi_val, 2),
                     'Bullish_Sig': '🟢 Bullish Reversal' if is_bullish else '',
                     'Bearish_Sig': '🔴 Bearish Reversal' if not is_bullish else '',
                     'Alert_High': round(float(latest_daily['High']), 2),
                     'Alert_Low': round(float(latest_daily['Low']), 2),
-                    'Conviction_Score': abs(rsi_val - 50) # Higher deviation from 50 = stronger trend/momentum extremity
+                    'Conviction_Score': abs(rsi_val - 50)
                 })
         
         # 2. 15-Minute Timeframe Scan (Intraday - Left Side)
@@ -150,7 +149,6 @@ def run_scanner():
                 rsi_val_15 = float(latest_15m['RSI'])
                 intraday_results.append({
                     'Stock': stock,
-                    'Timeframe': '15Min',
                     'Close': round(float(latest_15m['Close']), 2),
                     'RSI': round(rsi_val_15, 2),
                     'Bullish_Sig': '🟢 Bullish Reversal' if is_bullish_15 else '',
@@ -162,11 +160,11 @@ def run_scanner():
                 
         time.sleep(0.2)
         
-    # SORT BY CONVICTION SCORE (Highest RSI extremity / momentum strength bubbles up to the top)
+    # SORT BY CONVICTION SCORE
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Top-Conviction Sorted -> Swing: {len(swing_results)}, Intraday: {len(intraday_results)}")
+    print(f"Scan Complete. Swing: {len(swing_results)}, Intraday: {len(intraday_results)}")
     update_google_sheet(swing_results, intraday_results)
 
 def update_google_sheet(swing_data, intraday_data):
@@ -180,24 +178,31 @@ def update_google_sheet(swing_data, intraday_data):
         try:
             ws = sheet.worksheet(UNIFIED_TAB_NAME)
         except Exception:
-            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
+            ws = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="20")
             
         ws.clear()
         
-        intra_headers = ["INTRA STOCK", "TIMEFRAME", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
-        swing_headers = ["SWING STOCK", "TIMEFRAME", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
+        # 7 Columns per table (Timeframe column removed to save space)
+        intra_headers = ["INTRA STOCK", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
+        swing_headers = ["SWING STOCK", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
         
         intra_rows = []
         for item in intraday_data:
-            intra_rows.append([item['Stock'], item['Timeframe'], item['Close'], item['RSI'], item['Bullish_Sig'], item['Bearish_Sig'], item['Alert_High'], item['Alert_Low']])
+            intra_rows.append([item['Stock'], item['Close'], item['RSI'], item['Bullish_Sig'], item['Bearish_Sig'], item['Alert_High'], item['Alert_Low']])
             
         swing_rows = []
         for item in swing_data:
-            swing_rows.append([item['Stock'], item['Timeframe'], item['Close'], item['RSI'], item['Bullish_Sig'], item['Bearish_Sig'], item['Alert_High'], item['Alert_Low']])
+            swing_rows.append([item['Stock'], item['Close'], item['RSI'], item['Bullish_Sig'], item['Bearish_Sig'], item['Alert_High'], item['Alert_Low']])
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        title_row = ["⚡ HIGH-CONVICTION INTRADAY (LEFT)", "", "", "", "", "", "", "", f"🕒 Last Updated: {current_time_str} IST", "", "", "", "HIGH-CONVICTION SWING (RIGHT) ⚡"]
+        # Top banner with explicit (15 MIN) and (DAILY) tags
+        title_row = [
+            "⚡ HIGH-CONVICTION INTRADAY (15 MIN)", "", "", "", "", "", "", 
+            f"🕒 Last Updated: {current_time_str} IST", 
+            "", "", "", "", "", "", 
+            "HIGH-CONVICTION SWING TRADING (DAILY) ⚡"
+        ]
 
         combined_payload = [
             title_row,
@@ -206,12 +211,12 @@ def update_google_sheet(swing_data, intraday_data):
         ]
         
         for i in range(max_rows):
-            i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", "", ""]
-            s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", "", ""]
+            i_row = intra_rows[i] if i < len(intra_rows) else ["", "", "", "", "", "", ""]
+            s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             combined_payload.append(i_row + [""] + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet updated successfully with top-conviction sorting at {current_time_str}!")
+        print(f"✅ Google Sheet updated successfully with 7-column layout at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
