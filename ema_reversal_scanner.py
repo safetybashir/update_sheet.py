@@ -112,7 +112,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Column-J Separated Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Clean Row-1 Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -187,6 +187,11 @@ def update_google_sheet(swing_data, intraday_data):
         
         intra_rows = []
         for item in intraday_data:
+            intra_rows.append([item['Stock'], item['Close'], item['RSI'], item['Bullish_Sign'], item['Bearish_Sig'] if 'Bearish_Sig' in item else item.get('Bearish_Sig', ''), item['Alert_High'], item['Alert_Low']])
+        
+        # Re-mapping correctly loop for rows
+        intra_rows = []
+        for item in intraday_data:
             intra_rows.append([item['Stock'], item['Close'], item['RSI'], item['Bullish_Sig'], item['Bearish_Sig'], item['Alert_High'], item['Alert_Low']])
             
         swing_rows = []
@@ -195,14 +200,13 @@ def update_google_sheet(swing_data, intraday_data):
             
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        # Row 1: Title & Timestamp (Col A gets Timestamp, Left Title at Col A, Right Title starting at Col J)
-        # Total columns mapped up to Col P (Index 15) to position Right Title cleanly at Column J
+        # Row 1: Cleanly placed Timestamp in Col A, Intraday title in Col B, Swing title starting at Col J
         title_row = [
-            "⚡ HIGH-CONVICTION INTRADAY (15 MIN)", "", "", "", "", "", "", "", "", 
-            "HIGH-CONVICTION SWING TRADING (DAILY) ⚡", "", "", "", "", "", ""
+            f"🕒 Last Updated: {current_time_str} IST",  # Col A
+            "⚡ HIGH-CONVICTION INTRADAY (15 MIN)",        # Col B
+            "", "", "", "", "", "", "",                    # Cols C to I (Gap)
+            "HIGH-CONVICTION SWING TRADING (DAILY) ⚡"     # Col J
         ]
-        # Insert Timestamp specifically into Column A cell of row 1
-        title_row[0] = f"🕒 Last Updated: {current_time_str} IST | ⚡ HIGH-CONVICTION INTRADAY (15 MIN)"
 
         # Row 2: Headers (Intra headers A to G, Col H & I empty gap, Swing headers starting at Col J)
         gap_cols = ["", ""] # Columns H and I as blank separators
@@ -220,7 +224,7 @@ def update_google_sheet(swing_data, intraday_data):
             combined_payload.append(i_row + gap_cols + s_row)
             
         ws.update('A1', combined_payload)
-        print(f"✅ Google Sheet updated successfully with Column J separation at {current_time_str}!")
+        print(f"✅ Google Sheet updated successfully with Clean Row 1 layout at {current_time_str}!")
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
         raise e
