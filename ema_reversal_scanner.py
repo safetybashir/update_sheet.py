@@ -14,7 +14,7 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Updated Mapping: Heavyweights separately + Broad Sectors (Ex-Financials)
+# Updated Mapping: Clean Sector Names without any arrows
 MULTI_INDEX_MAP = {
     "⚡ NIFTY 50 TOP HEAVYWEIGHTS (The Market Movers)": {
         "Index Movers (Top 6 Weightage Stocks)": ["RELIANCE", "TCS", "INFY", "ITC", "L&T", "MARUTI"]
@@ -89,7 +89,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Heavyweight & Broad Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Clean Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -185,7 +185,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             
         ws1.update(range_name='A1', values=payload_tab1)
 
-        # TAB 2: MARKET_MOOD_AND_SECTORS
+        # TAB 2: MARKET_MOOD_AND_SECTORS (Clean Sector Names without arrows)
         try:
             ws2 = sheet.worksheet(MOOD_TAB_NAME)
         except Exception:
@@ -198,7 +198,6 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         declines = total_stocks - advances
         ad_ratio = round(advances / declines, 2) if declines > 0 else float(advances)
         
-        # Emoji-based Mood assignment
         if ad_ratio >= 2.0:
             market_mood = "🟢🔥 STRONG UPTREND (Aggressive Bull Control)"
         elif ad_ratio >= 1.2:
@@ -211,7 +210,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             market_mood = "🔴💥 STRONG DOWNTREND / PANIC (Bear Control)"
 
         payload_tab2 = [
-            [f"🕒 Market Breadth & Heavyweights Engine | Last Updated: {current_time_str} IST"],
+            [f"🕒 Market Breadth & Sector Report (Clean Layout) | Last Updated: {current_time_str} IST"],
             [""],
             ["📊 OVERALL MARKET PULSE (A/D RATIO ENGINE)"],
             ["Market Mood Sentiment", market_mood],
@@ -244,7 +243,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                     opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
                     
                 payload_tab2.append([
-                    f"   ↳ {sector_name}",
+                    sector_name,  # Clean name directly without arrows
                     f"{avg_pct}%",
                     sec_adv,
                     sec_dec,
@@ -254,7 +253,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully with Heavyweights & Emojis.")
+        print("✅ Google Sheets Updated Successfully with Clean Sector Names.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
