@@ -82,7 +82,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Market Mood & EMA Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Audited Market Mood & Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -142,7 +142,7 @@ def run_scanner():
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Updating Google Sheets safely...")
+    print(f"Scan Complete. Updating Google Sheets cleanly...")
     update_google_sheets(swing_results, intraday_results, stock_metrics)
 
 def update_google_sheets(swing_data, intraday_data, stock_metrics):
@@ -156,11 +156,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         # ==========================================
         # TAB 1: EMA_COMMAND_CENTER
         # ==========================================
-        try:
-            ws1 = sheet.worksheet(UNIFIED_TAB_NAME)
-        except Exception:
-            ws1 = sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
-            
+        ws1 = sheet.worksheet(UNIFIED_TAB_NAME) if len(sheet.worksheets()) > 0 else sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
         ws1.clear()
         
         intra_headers = ["INTRA STOCK", "CLOSE", "RSI", "BULLISH SIG", "BEARISH SIG", "HIGH", "LOW"]
@@ -182,17 +178,16 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             payload_tab1.append(i_row + gap_cols + s_row)
             
-        # Using explicit keyword arguments for safe gspread compatibility
         ws1.update(range_name='A1', values=payload_tab1)
-        print("✅ Tab 1 (EMA_COMMAND_CENTER) Updated Successfully.")
+        print("✅ Tab 1 Updated Cleanly.")
 
         # ========================================================
-        # TAB 2: MARKET_MOOD_AND_SECTORS
+        # TAB 2: MARKET_MOOD_AND_SECTORS (Clean, No Extra Columns)
         # ========================================================
         try:
             ws2 = sheet.worksheet(MOOD_TAB_NAME)
         except Exception:
-            ws2 = sheet.add_worksheet(title=MOOD_TAB_NAME, rows="100", cols="15")
+            ws2 = sheet.add_worksheet(title=MOOD_TAB_NAME, rows="100", cols="10")
             
         ws2.clear()
 
@@ -208,18 +203,19 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         else:
             market_mood = "🟡 SIDEWAYS / CONSOLIDATION"
 
+        # Strictly 6 columns wide to avoid extra blank columns
         payload_tab2 = [
-            [f"🕒 Market Pulse & Breadth Report | Last Updated: {current_time_str} IST", "", "", "", "", ""],
-            ["", "", "", "", "", ""],
-            ["📊 MARKET MOOD SUMMARY", "", "", "", "", ""],
-            ["Overall Market Mood", market_mood, "", "", "", ""],
-            ["Total Stocks Scanned", total_stocks, "", "", "", ""],
-            ["Total Advances (🟢)", advances, "", "", "", ""],
-            ["Total Declines (🔴)", declines, "", "", "", ""],
-            ["Advance / Decline Ratio", ad_ratio, "", "", "", ""],
-            ["", "", "", "", "", ""],
-            ["📈 SECTOR OPPORTUNITY HEATMAP", "", "", "", "", ""],
-            ["Sector Name", "Avg % Change", "Advances", "Declines", "Sector Momentum", "Action Opportunity"]
+            [f"🕒 Market Pulse & Breadth Report | Last Updated: {current_time_str} IST"],
+            [""],
+            ["📊 MARKET MOOD SUMMARY"],
+            ["Overall Market Mood", market_mood],
+            ["Total Stocks Scanned", total_stocks],
+            ["Total Advances (🟢)", advances],
+            ["Total Declines (🔴)", declines],
+            ["Advance / Decline Ratio", ad_ratio],
+            [""],
+            ["📈 SECTOR OPPORTUNITY HEATMAP (F&O & Cash Trading)"],
+            ["Sector Name", "Avg % Change", "Advances", "Declines", "Sector Momentum", "Action & Cash Opportunity"]
         ]
 
         for sector_name, tickers in SECTOR_MAP.items():
@@ -230,13 +226,13 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             
             if avg_pct >= 0.5:
                 momentum = "🔥 Strong Bullish Leader"
-                opportunity = "Look for Long / Call Entries 🟢"
+                opportunity = "F&O: Long/Call | Cash: Swing Delivery Buy 🟢"
             elif avg_pct <= -0.5:
                 momentum = "💧 Heavy Laggard / Weak"
-                opportunity = "Look for Short / Put Entries 🔴"
+                opportunity = "F&O: Short/Put | Cash: Avoid / Short Build 🔴"
             else:
                 momentum = "⚖️ Neutral / Rangebound"
-                opportunity = "Avoid / Wait for Breakout ⏳"
+                opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
                 
             payload_tab2.append([
                 sector_name,
@@ -247,9 +243,8 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                 opportunity
             ])
 
-        # Using explicit keyword arguments for safe gspread compatibility
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Tab 2 (MARKET_MOOD_AND_SECTORS) Updated Successfully.")
+        print("✅ Tab 2 Updated Cleanly with Cash Trading Opportunities.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
