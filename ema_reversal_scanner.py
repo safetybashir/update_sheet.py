@@ -26,7 +26,6 @@ SECTOR_MAP = {
     "Retail, Realty & Services": ["TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "PAYTM", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "AMBUJACEM", "ULTRACEMCO"]
 }
 
-# Flatten stock universe for scanning
 STOCK_UNIVERSE = []
 for sec_stocks in SECTOR_MAP.values():
     for s in sec_stocks:
@@ -87,12 +86,11 @@ def run_scanner():
     
     swing_results = []
     intraday_results = []
-    stock_metrics = {} # To track % change / status per stock for sectors
+    stock_metrics = {}
     
     for stock in STOCK_UNIVERSE:
         print(f"Scanning {stock}...")
         
-        # Daily Data for Sector & Swing analysis
         df_daily = fetch_data(stock, interval="1d", period="3mo")
         if df_daily is not None and not df_daily.empty:
             close_price = float(df_daily['Close'].iloc[-1])
@@ -121,7 +119,6 @@ def run_scanner():
                     'Conviction_Score': abs(rsi_val - 50)
                 })
         
-        # 15-Minute Data for Intraday
         df_15m = fetch_data(stock, interval="15m", period="5d")
         df_15m = calculate_indicators(df_15m)
         if df_15m is not None and not df_15m.empty:
@@ -145,7 +142,7 @@ def run_scanner():
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Updating Google Sheets...")
+    print(f"Scan Complete. Updating Google Sheets safely...")
     update_google_sheets(swing_results, intraday_results, stock_metrics)
 
 def update_google_sheets(swing_data, intraday_data, stock_metrics):
@@ -157,7 +154,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         current_time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
         
         # ==========================================
-        # TAB 1: EMA_COMMAND_CENTER (Existing Layout)
+        # TAB 1: EMA_COMMAND_CENTER
         # ==========================================
         try:
             ws1 = sheet.worksheet(UNIFIED_TAB_NAME)
@@ -185,10 +182,12 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             s_row = swing_rows[i] if i < len(swing_rows) else ["", "", "", "", "", "", ""]
             payload_tab1.append(i_row + gap_cols + s_row)
             
-        ws1.update('A1', payload_tab1)
+        # Using explicit keyword arguments for safe gspread compatibility
+        ws1.update(range_name='A1', values=payload_tab1)
+        print("✅ Tab 1 (EMA_COMMAND_CENTER) Updated Successfully.")
 
         # ========================================================
-        # TAB 2: MARKET_MOOD_AND_SECTORS (New Mood & Opportunity Tab)
+        # TAB 2: MARKET_MOOD_AND_SECTORS
         # ========================================================
         try:
             ws2 = sheet.worksheet(MOOD_TAB_NAME)
@@ -197,7 +196,6 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             
         ws2.clear()
 
-        # Calculate Breadth Statistics
         total_stocks = len(stock_metrics)
         advances = sum(1 for m in stock_metrics.values() if m['is_advance'])
         declines = total_stocks - advances
@@ -224,7 +222,6 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             ["Sector Name", "Avg % Change", "Advances", "Declines", "Sector Momentum", "Action Opportunity"]
         ]
 
-        # Calculate Sector Performance
         for sector_name, tickers in SECTOR_MAP.items():
             sec_pcts = [stock_metrics[t]['pct_change'] for t in tickers if t in stock_metrics]
             sec_adv = sum(1 for t in tickers if t in stock_metrics and stock_metrics[t]['is_advance'])
@@ -250,8 +247,9 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                 opportunity
             ])
 
-        ws2.update('A1', payload_tab2)
-        print(f"✅ Both Tabs updated successfully at {current_time_str}!")
+        # Using explicit keyword arguments for safe gspread compatibility
+        ws2.update(range_name='A1', values=payload_tab2)
+        print("✅ Tab 2 (MARKET_MOOD_AND_SECTORS) Updated Successfully.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
