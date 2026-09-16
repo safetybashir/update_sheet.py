@@ -9,22 +9,23 @@ import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURATION (Sheet ID & Target Tabs) ---
+# --- CONFIGURATION ---
 SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Updated Multi-Index Mapping: COMPLETELY EXCLUDING Banking, Insurance, NBFC & Finance
+# Updated Mapping: Heavyweights separately + Broad Sectors (Ex-Financials)
 MULTI_INDEX_MAP = {
-    "NIFTY 50 (Core Benchmark - Non-Financial)": {
-        "IT & Technology": ["TCS", "INFY", "HCLTECH", "TECHM", "WIPRO", "LTIM"],
-        "Energy, Oil & Gas / Power": ["RELIANCE", "ONGC", "BPCL", "POWERGRID", "NTPC", "COALINDIA"],
-        "Automobile & Ancillaries": ["TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "HEROMOTOCO"],
-        "FMCG & Consumer Goods": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "TITAN"]
+    "⚡ NIFTY 50 TOP HEAVYWEIGHTS (The Market Movers)": {
+        "Index Movers (Top 6 Weightage Stocks)": ["RELIANCE", "TCS", "INFY", "ITC", "L&T", "MARUTI"]
     },
-    "NIFTY MIDCAP / LARGEMIDCAP (High Growth Momentum - Non-Financial)": {
+    "📊 LARGE & MIDCAP SECTOR UNIVERSE (Non-Financial)": {
+        "IT & Technology": ["HCLTECH", "TECHM", "WIPRO", "LTIM"],
+        "Energy, Oil & Gas / Power": ["ONGC", "BPCL", "POWERGRID", "NTPC", "COALINDIA"],
+        "Automobile Ancillaries": ["TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO"],
+        "FMCG & Consumer Goods": ["HINDUNILVR", "NESTLEIND", "BRITANNIA", "TITAN"],
         "Metals & Mining": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", "HINDZINC"],
-        "Capital Goods & Defense": ["LT", "HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "POLYCAB"],
+        "Capital Goods & Defense": ["HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "POLYCAB"],
         "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "APOLLOHOSP", "MAXHEALTH"],
         "Realty, Retail & Services": ["TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "AMBUJACEM", "ULTRACEMCO"]
     }
@@ -88,7 +89,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Non-Financial Multi-Index Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Heavyweight & Broad Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -159,9 +160,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         ist = pytz.timezone("Asia/Kolkata")
         current_time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
         
-        # ==========================================
-        # TAB 1: EMA_COMMAND_CENTER (Main Reversal Signals)
-        # ==========================================
+        # TAB 1: EMA_COMMAND_CENTER
         ws1 = sheet.worksheet(UNIFIED_TAB_NAME) if len(sheet.worksheets()) > 0 else sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
         ws1.clear()
         
@@ -185,11 +184,8 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab1.append(i_row + gap_cols + s_row)
             
         ws1.update(range_name='A1', values=payload_tab1)
-        print("✅ Tab 1 Updated Successfully.")
 
-        # ====================================================================
-        # TAB 2: MARKET_MOOD_AND_SECTORS (Non-Financial Sectors Only)
-        # ====================================================================
+        # TAB 2: MARKET_MOOD_AND_SECTORS
         try:
             ws2 = sheet.worksheet(MOOD_TAB_NAME)
         except Exception:
@@ -202,28 +198,34 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         declines = total_stocks - advances
         ad_ratio = round(advances / declines, 2) if declines > 0 else float(advances)
         
-        if ad_ratio > 1.2:
-            market_mood = "🟢 BULLISH (Buyers in Control)"
-        elif ad_ratio < 0.8:
-            market_mood = "🔴 BEARISH (Sellers in Control)"
+        # Emoji-based Mood assignment
+        if ad_ratio >= 2.0:
+            market_mood = "🟢🔥 STRONG UPTREND (Aggressive Bull Control)"
+        elif ad_ratio >= 1.2:
+            market_mood = "🟢 MODERATE UPTREND (Buyers Active)"
+        elif ad_ratio >= 0.8:
+            market_mood = "🟡⚖️ SIDEWAYS / RANGEBOUND (Neutral)"
+        elif ad_ratio >= 0.5:
+            market_mood = "🔴💧 MODERATE DOWNTREND (Sellers Active)"
         else:
-            market_mood = "🟡 SIDEWAYS / CONSOLIDATION"
+            market_mood = "🔴💥 STRONG DOWNTREND / PANIC (Bear Control)"
 
         payload_tab2 = [
-            [f"🕒 Core Industrial & Momentum Market Pulse (Ex-Financials) | Last Updated: {current_time_str} IST"],
+            [f"🕒 Market Breadth & Heavyweights Engine | Last Updated: {current_time_str} IST"],
             [""],
-            ["📊 OVERALL MARKET PULSE (EX-FINANCIALS)"],
+            ["📊 OVERALL MARKET PULSE (A/D RATIO ENGINE)"],
             ["Market Mood Sentiment", market_mood],
             ["Total Universe Scanned", total_stocks],
             ["Total Advances (🟢)", advances],
             ["Total Declines (🔴)", declines],
             ["Market A/D Ratio", ad_ratio],
+            ["📈 A/D Interpretation Guide", ">=2.0: 🟢 Strong Up | 1.2-1.99: 🟢 Moderate Up | 0.8-1.19: 🟡 Sideways | 0.5-0.79: 🔴 Moderate Down | <0.5: 🔴 Strong Down"],
             [""]
         ]
 
         for index_name, sectors in MULTI_INDEX_MAP.items():
-            payload_tab2.append([f"📌 INDEX: {index_name}"])
-            payload_tab2.append(["Sector / Sub-Group", "Avg % Change", "Advances", "Declines", "Sector Momentum", "F&O & Cash Opportunity"])
+            payload_tab2.append([f"📌 GROUP: {index_name}"])
+            payload_tab2.append(["Sector / Component", "Avg % Change", "Advances", "Declines", "Sector Momentum", "F&O & Cash Opportunity"])
             
             for sector_name, tickers in sectors.items():
                 sec_pcts = [stock_metrics[t]['pct_change'] for t in tickers if t in stock_metrics]
@@ -252,7 +254,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Tab 2 Updated (Excluding Financials) Successfully.")
+        print("✅ Google Sheets Updated Successfully with Heavyweights & Emojis.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
