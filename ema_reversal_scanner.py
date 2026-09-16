@@ -14,23 +14,29 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Sector Mapping for Market Breadth & Opportunity Tracking
-SECTOR_MAP = {
-    "Energy, Oil & Gas, Power": ["RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "NTPC", "POWERGRID", "ATGL", "JSWENERGY", "TATAPOWER", "NHPC", "SJVN", "TORNTPOWER", "HINDPETRO", "MRPL", "OIL", "GSPL", "IGL", "PETRONET", "COALINDIA"],
-    "IT & Software": ["TCS", "INFY", "HCLTECH", "TECHM", "WIPRO", "LTIM", "LTTS", "COFORGE", "MPHASIS", "PERSISTENT", "OFSS", "KPITTECH", "CYIENT"],
-    "Automobile & Ancillaries": ["TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "TVSMOTOR", "HEROMOTOCO", "EICHERMOT", "ASHOKLEY", "BHARATFORG", "BALKRISIND", "APOLLOTYRE", "MRF"],
-    "Metals & Mining": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", "HINDZINC", "NATIONALUM", "JSL", "APLAPOLLO"],
-    "Capital Goods & Defense": ["LT", "HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "DIXON", "POLYCAB", "ASTRAL"],
-    "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "APOLLOHOSP", "MAXHEALTH", "GLENMARK", "ALKEM", "TORNTPHARM"],
-    "FMCG & Consumer": ["HINDUNILVR", "NESTLEIND", "BRITANNIA", "TATACONSUM", "DABUR", "MARICO", "COLPAL", "GODREJCP", "TITAN", "VOLTAS", "HAVELLS"],
-    "Retail, Realty & Services": ["TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "PAYTM", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "AMBUJACEM", "ULTRACEMCO"]
+# Updated Multi-Index Mapping: COMPLETELY EXCLUDING Banking, Insurance, NBFC & Finance
+MULTI_INDEX_MAP = {
+    "NIFTY 50 (Core Benchmark - Non-Financial)": {
+        "IT & Technology": ["TCS", "INFY", "HCLTECH", "TECHM", "WIPRO", "LTIM"],
+        "Energy, Oil & Gas / Power": ["RELIANCE", "ONGC", "BPCL", "POWERGRID", "NTPC", "COALINDIA"],
+        "Automobile & Ancillaries": ["TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "HEROMOTOCO"],
+        "FMCG & Consumer Goods": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "TITAN"]
+    },
+    "NIFTY MIDCAP / LARGEMIDCAP (High Growth Momentum - Non-Financial)": {
+        "Metals & Mining": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", "HINDZINC"],
+        "Capital Goods & Defense": ["LT", "HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "POLYCAB"],
+        "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "APOLLOHOSP", "MAXHEALTH"],
+        "Realty, Retail & Services": ["TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "AMBUJACEM", "ULTRACEMCO"]
+    }
 }
 
+# Flatten unique stocks for scanning
 STOCK_UNIVERSE = []
-for sec_stocks in SECTOR_MAP.values():
-    for s in sec_stocks:
-        if s not in STOCK_UNIVERSE:
-            STOCK_UNIVERSE.append(s)
+for index_name, sectors in MULTI_INDEX_MAP.items():
+    for sec_name, tickers in sectors.items():
+        for t in tickers:
+            if t not in STOCK_UNIVERSE:
+                STOCK_UNIVERSE.append(t)
 
 RSI_PERIOD = 14
 EMA_PERIOD = 5
@@ -82,7 +88,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Audited Market Mood & Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Non-Financial Multi-Index Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -142,7 +148,7 @@ def run_scanner():
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Updating Google Sheets cleanly...")
+    print(f"Scan Complete. Updating Google Sheets...")
     update_google_sheets(swing_results, intraday_results, stock_metrics)
 
 def update_google_sheets(swing_data, intraday_data, stock_metrics):
@@ -154,7 +160,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         current_time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
         
         # ==========================================
-        # TAB 1: EMA_COMMAND_CENTER
+        # TAB 1: EMA_COMMAND_CENTER (Main Reversal Signals)
         # ==========================================
         ws1 = sheet.worksheet(UNIFIED_TAB_NAME) if len(sheet.worksheets()) > 0 else sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
         ws1.clear()
@@ -179,15 +185,15 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab1.append(i_row + gap_cols + s_row)
             
         ws1.update(range_name='A1', values=payload_tab1)
-        print("✅ Tab 1 Updated Cleanly.")
+        print("✅ Tab 1 Updated Successfully.")
 
-        # ========================================================
-        # TAB 2: MARKET_MOOD_AND_SECTORS (Clean, No Extra Columns)
-        # ========================================================
+        # ====================================================================
+        # TAB 2: MARKET_MOOD_AND_SECTORS (Non-Financial Sectors Only)
+        # ====================================================================
         try:
             ws2 = sheet.worksheet(MOOD_TAB_NAME)
         except Exception:
-            ws2 = sheet.add_worksheet(title=MOOD_TAB_NAME, rows="100", cols="10")
+            ws2 = sheet.add_worksheet(title=MOOD_TAB_NAME, rows="150", cols="10")
             
         ws2.clear()
 
@@ -203,48 +209,50 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         else:
             market_mood = "🟡 SIDEWAYS / CONSOLIDATION"
 
-        # Strictly 6 columns wide to avoid extra blank columns
         payload_tab2 = [
-            [f"🕒 Market Pulse & Breadth Report | Last Updated: {current_time_str} IST"],
+            [f"🕒 Core Industrial & Momentum Market Pulse (Ex-Financials) | Last Updated: {current_time_str} IST"],
             [""],
-            ["📊 MARKET MOOD SUMMARY"],
-            ["Overall Market Mood", market_mood],
-            ["Total Stocks Scanned", total_stocks],
+            ["📊 OVERALL MARKET PULSE (EX-FINANCIALS)"],
+            ["Market Mood Sentiment", market_mood],
+            ["Total Universe Scanned", total_stocks],
             ["Total Advances (🟢)", advances],
             ["Total Declines (🔴)", declines],
-            ["Advance / Decline Ratio", ad_ratio],
-            [""],
-            ["📈 SECTOR OPPORTUNITY HEATMAP (F&O & Cash Trading)"],
-            ["Sector Name", "Avg % Change", "Advances", "Declines", "Sector Momentum", "Action & Cash Opportunity"]
+            ["Market A/D Ratio", ad_ratio],
+            [""]
         ]
 
-        for sector_name, tickers in SECTOR_MAP.items():
-            sec_pcts = [stock_metrics[t]['pct_change'] for t in tickers if t in stock_metrics]
-            sec_adv = sum(1 for t in tickers if t in stock_metrics and stock_metrics[t]['is_advance'])
-            sec_dec = len(sec_pcts) - sec_adv
-            avg_pct = round(sum(sec_pcts) / len(sec_pcts), 2) if sec_pcts else 0.0
+        for index_name, sectors in MULTI_INDEX_MAP.items():
+            payload_tab2.append([f"📌 INDEX: {index_name}"])
+            payload_tab2.append(["Sector / Sub-Group", "Avg % Change", "Advances", "Declines", "Sector Momentum", "F&O & Cash Opportunity"])
             
-            if avg_pct >= 0.5:
-                momentum = "🔥 Strong Bullish Leader"
-                opportunity = "F&O: Long/Call | Cash: Swing Delivery Buy 🟢"
-            elif avg_pct <= -0.5:
-                momentum = "💧 Heavy Laggard / Weak"
-                opportunity = "F&O: Short/Put | Cash: Avoid / Short Build 🔴"
-            else:
-                momentum = "⚖️ Neutral / Rangebound"
-                opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
+            for sector_name, tickers in sectors.items():
+                sec_pcts = [stock_metrics[t]['pct_change'] for t in tickers if t in stock_metrics]
+                sec_adv = sum(1 for t in tickers if t in stock_metrics and stock_metrics[t]['is_advance'])
+                sec_dec = len(sec_pcts) - sec_adv
+                avg_pct = round(sum(sec_pcts) / len(sec_pcts), 2) if sec_pcts else 0.0
                 
-            payload_tab2.append([
-                sector_name,
-                f"{avg_pct}%",
-                sec_adv,
-                sec_dec,
-                momentum,
-                opportunity
-            ])
+                if avg_pct >= 0.5:
+                    momentum = "🔥 Strong Bullish Leader"
+                    opportunity = "F&O: Long/Call | Cash: Swing Delivery Buy 🟢"
+                elif avg_pct <= -0.5:
+                    momentum = "💧 Heavy Laggard / Weak"
+                    opportunity = "F&O: Short/Put | Cash: Avoid / Short Build 🔴"
+                else:
+                    momentum = "⚖️ Neutral / Rangebound"
+                    opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
+                    
+                payload_tab2.append([
+                    f"   ↳ {sector_name}",
+                    f"{avg_pct}%",
+                    sec_adv,
+                    sec_dec,
+                    momentum,
+                    opportunity
+                ])
+            payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Tab 2 Updated Cleanly with Cash Trading Opportunities.")
+        print("✅ Tab 2 Updated (Excluding Financials) Successfully.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
