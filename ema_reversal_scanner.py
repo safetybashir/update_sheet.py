@@ -14,12 +14,12 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Sector Mapping (Clean and Aligned)
+# Sector Mapping (Cleaned up tickers and removed F&O recommendation column)
 MULTI_INDEX_MAP = {
     "📊 LARGE & MIDCAP SECTOR UNIVERSE (Non-Financial)": {
         "IT & Technology": ["HCLTECH", "TECHM", "WIPRO", "LTIM"],
         "Energy, Oil & Gas / Power": ["ONGC", "BPCL", "POWERGRID", "NTPC", "COALINDIA"],
-        "Automobile Ancillaries": ["TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO"],
+        "Automobile Ancillaries": ["TATAMOTORS", "TVSMOTOR", "BAJAJ-AUTO", "HEROMOTOCO"],
         "FMCG & Consumer Goods": ["HINDUNILVR", "NESTLEIND", "BRITANNIA", "TITAN"],
         "Metals & Mining": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", "HINDZINC"],
         "Capital Goods & Defense": ["HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "POLYCAB"],
@@ -64,7 +64,6 @@ def get_gspread_client():
 
 def fetch_data(ticker, interval, period):
     try:
-        # Handling special ticker formatting for Yahoo Finance
         yf_ticker = ticker + ".NS"
         df = yf.download(yf_ticker, period=period, interval=interval, progress=False)
         if isinstance(df.columns, pd.MultiIndex):
@@ -93,7 +92,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Aligned Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Clean Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -207,6 +206,10 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         declines = total_stocks - advances
         ad_ratio = round(advances / declines, 2) if declines > 0 else float(advances)
         
+        # Calculating Advance & Decline Percentages for quick status view
+        adv_pct = round((advances / total_stocks) * 100, 1) if total_stocks > 0 else 0.0
+        dec_pct = round((declines / total_stocks) * 100, 1) if total_stocks > 0 else 0.0
+        
         if ad_ratio >= 2.0:
             market_mood = "🟢🔥 STRONG UPTREND (Aggressive Bull Control)"
         elif ad_ratio >= 1.2:
@@ -224,8 +227,8 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             ["📊 OVERALL MARKET PULSE (A/D RATIO ENGINE)"],
             ["Market Mood Sentiment", market_mood],
             ["Total Universe Scanned", total_stocks],
-            ["Total Advances (🟢)", advances],
-            ["Total Declines (🔴)", declines],
+            ["Total Advances (🟢)", f"{advances} ({adv_pct}%)"],
+            ["Total Declines (🔴)", f"{declines} ({dec_pct}%)"],
             ["Market A/D Ratio", ad_ratio],
             ["📈 A/D Interpretation Guide", ">=2.0: 🟢 Strong Up | 1.2-1.99: 🟢 Moderate Up | 0.8-1.19: 🟡 Sideways | 0.5-0.79: 🔴 Moderate Down | <0.5: 🔴 Strong Down"],
             [""]
@@ -233,7 +236,8 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
 
         for index_name, sectors in MULTI_INDEX_MAP.items():
             payload_tab2.append([f"📌 GROUP: {index_name}"])
-            payload_tab2.append(["Sector / Component", "Avg % Change", "Advances", "Declines", "Sector Momentum", "F&O & Cash Opportunity"])
+            # 5 Clean Columns without F&O recommendation column
+            payload_tab2.append(["Sector / Component", "Avg % Change", "Advances", "Declines", "Sector Momentum"])
             
             for sector_name, tickers in sectors.items():
                 sec_pcts = [stock_metrics[t]['pct_change'] for t in tickers if t in stock_metrics]
@@ -242,28 +246,23 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                 avg_pct = round(sum(sec_pcts) / len(sec_pcts), 2) if sec_pcts else 0.0
                 
                 if avg_pct >= 0.5:
-                    momentum = "🔥 Strong Bullish Leader"
-                    opportunity = "F&O: Long/Call | Cash: Swing Delivery Buy 🟢"
+                    momentum = "🔥 Strong Bullish Leader 🟢"
                 elif avg_pct <= -0.5:
-                    momentum = "💧 Heavy Laggard / Weak"
-                    opportunity = "F&O: Short/Put | Cash: Avoid / Short Build 🔴"
+                    momentum = "💧 Heavy Laggard / Weak 🔴"
                 else:
-                    momentum = "⚖️ Neutral / Rangebound"
-                    opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
+                    momentum = "⚖️ Neutral / Rangebound ⏳"
                     
-                # Guaranteed rigid column values to prevent any shifting or splitting
                 payload_tab2.append([
                     str(sector_name),
                     f"{avg_pct}%",
                     int(sec_adv),
                     int(sec_dec),
-                    str(momentum),
-                    str(opportunity)
+                    str(momentum)
                 ])
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully (Aligned & Stable).")
+        print("✅ Google Sheets Updated Successfully (Clean 5-Column Format + Adv/Dec % + Fixed Tickers).")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
