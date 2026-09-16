@@ -14,11 +14,8 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Sector Mapping
+# Updated Mapping: Broad Sectors First, Heavyweights Moved to the Last
 MULTI_INDEX_MAP = {
-    "⚡ NIFTY 50 TOP HEAVYWEIGHTS (The Market Movers)": {
-        "Index Movers (Top 6 Weightage Stocks)": ["RELIANCE", "TCS", "INFY", "ITC", "L&T", "MARUTI"]
-    },
     "📊 LARGE & MIDCAP SECTOR UNIVERSE (Non-Financial)": {
         "IT & Technology": ["HCLTECH", "TECHM", "WIPRO", "LTIM"],
         "Energy, Oil & Gas / Power": ["ONGC", "BPCL", "POWERGRID", "NTPC", "COALINDIA"],
@@ -28,6 +25,9 @@ MULTI_INDEX_MAP = {
         "Capital Goods & Defense": ["HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "POLYCAB"],
         "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "APOLLOHOSP", "MAXHEALTH"],
         "Realty, Retail & Services": ["TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "AMBUJACEM", "ULTRACEMCO"]
+    },
+    "⚡ NIFTY 50 TOP HEAVYWEIGHTS (The Market Movers)": {
+        "Index Movers (Top 6 Weightage Stocks)": ["RELIANCE", "TCS", "INFY", "ITC", "L&T", "MARUTI"]
     }
 }
 
@@ -89,7 +89,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Robust Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Sector Scanner (Heavyweights at Bottom) for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -109,7 +109,6 @@ def run_scanner():
                 'is_advance': pct_change >= 0
             }
         else:
-            # Default fallback so metrics don't break entirely
             stock_metrics[stock] = {
                 'pct_change': 0.0,
                 'is_advance': False
@@ -248,7 +247,6 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                     momentum = "⚖️ Neutral / Rangebound"
                     opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
                     
-                # Explicit fallback values ensuring no columns ever get skipped
                 payload_tab2.append([
                     str(sector_name),
                     f"{avg_pct}%",
@@ -260,7 +258,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully with Robust Column Safeguards.")
+        print("✅ Google Sheets Updated Successfully (Heavyweights at Bottom).")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
