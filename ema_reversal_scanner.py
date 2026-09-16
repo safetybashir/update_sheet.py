@@ -14,7 +14,7 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Updated Mapping: Broad Sectors First, Heavyweights Moved to the Last
+# Sector Mapping (Clean and Aligned)
 MULTI_INDEX_MAP = {
     "📊 LARGE & MIDCAP SECTOR UNIVERSE (Non-Financial)": {
         "IT & Technology": ["HCLTECH", "TECHM", "WIPRO", "LTIM"],
@@ -64,12 +64,16 @@ def get_gspread_client():
 
 def fetch_data(ticker, interval, period):
     try:
-        df = yf.download(ticker + ".NS", period=period, interval=interval, progress=False)
+        # Handling special ticker formatting for Yahoo Finance
+        yf_ticker = ticker + ".NS"
+        df = yf.download(yf_ticker, period=period, interval=interval, progress=False)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.droplevel(1)
-        return df
+        if df is not None and not df.empty:
+            return df
     except Exception as e:
-        return None
+        pass
+    return None
 
 def calculate_indicators(df):
     if df is None or len(df) < 20:
@@ -89,7 +93,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Sector Scanner (Heavyweights at Bottom) for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Aligned Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -247,6 +251,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                     momentum = "⚖️ Neutral / Rangebound"
                     opportunity = "F&O: Avoid | Cash: Accumulate Dips Selectively ⏳"
                     
+                # Guaranteed rigid column values to prevent any shifting or splitting
                 payload_tab2.append([
                     str(sector_name),
                     f"{avg_pct}%",
@@ -258,7 +263,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully (Heavyweights at Bottom).")
+        print("✅ Google Sheets Updated Successfully (Aligned & Stable).")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
