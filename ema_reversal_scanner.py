@@ -14,7 +14,7 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Sector Mapping with stable tickers
+# Sector Mapping with stable tickers (KMCSHIL added to Pharma & Healthcare)
 MULTI_INDEX_MAP = {
     "📊 LARGE & MIDCAP SECTOR UNIVERSE (Non-Financial)": {
         "IT & Technology": ["HCLTECH", "TECHM", "WIPRO", "LTIM"],
@@ -23,7 +23,7 @@ MULTI_INDEX_MAP = {
         "FMCG & Consumer Goods": ["HINDUNILVR", "NESTLEIND", "BRITANNIA", "TITAN"],
         "Metals & Mining": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "JINDALSTEL", "SAIL", "NMDC", "HINDZINC"],
         "Capital Goods & Defense": ["HAL", "BEL", "SIEMENS", "ABB", "BHEL", "MAZDOCK", "COCHINSHIP", "POLYCAB"],
-        "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "APOLLOHOSP", "MAXHEALTH"],
+        "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "LUPIN", "AUROPHARMA", "APOLLOHOSP", "MAXHEALTH", "KMCSHIL"],
         "Realty, Retail & Services": ["TRENT", "DMART", "ZOMATO", "SWIGGY", "NYKAA", "IRCTC", "INDHOTEL", "DLF", "LODHA", "GODREJPROP", "AMBUJACEM", "ULTRACEMCO"]
     },
     "⚡ NIFTY 50 TOP HEAVYWEIGHTS (The Market Movers)": {
@@ -92,7 +92,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Bulletproof Sector Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Scanner with KMCSHIL for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -246,9 +246,6 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
                     momentum = "💧 Heavy Laggard / Weak 🔴"
                 else:
                     momentum = "⚖️ Neutral / Rangebound ⏳"
-                    
-                # Console debug check to verify values
-                print(f"Sector: {sector_name} | Avg: {avg_pct}% | Adv: {sec_adv} | Dec: {sec_dec}")
 
                 payload_tab2.append([
                     str(sector_name),
@@ -260,7 +257,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully (All Sectors Including Auto Ancillaries Fully Secured).")
+        print("✅ Google Sheets Updated Successfully (KMCSHIL Included in Pharma & Healthcare).")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
