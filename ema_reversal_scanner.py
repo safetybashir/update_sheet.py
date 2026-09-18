@@ -14,7 +14,7 @@ SPREADSHEET_ID = "1Tkd_sn6Fk6i702nTHT3rm3efgZZFcTUPNmnTUJeABm0"
 UNIFIED_TAB_NAME = "EMA_COMMAND_CENTER"
 MOOD_TAB_NAME = "MARKET_MOOD_AND_SECTORS"
 
-# Sector Mapping with stable tickers (KMCSHIL added to Pharma & Healthcare)
+# Sector Mapping with stable tickers (KMCSHIL included)
 MULTI_INDEX_MAP = {
     "📊 LARGE & MIDCAP SECTOR UNIVERSE (Non-Financial)": {
         "IT & Technology": ["HCLTECH", "TECHM", "WIPRO", "LTIM"],
@@ -92,16 +92,21 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Scanner with KMCSHIL for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Multi-Timeframe Confluence Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
     stock_metrics = {}
     
     for stock in STOCK_UNIVERSE:
-        print(f"Scanning {stock}...")
+        print(f"Scanning Confluence for {stock}...")
         
-        df_daily = fetch_data(stock, interval="1d", period="3mo")
+        # 1. Fetch Higher Timeframes for Confluence Check
+        df_weekly = calculate_indicators(fetch_data(stock, interval="1wk", period="1y"))
+        df_daily = calculate_indicators(fetch_data(stock, interval="1d", period="3mo"))
+        df_15m = calculate_indicators(fetch_data(stock, interval="15m", period="5d"))
+        
+        # Market Breadth tracking via Daily data
         if df_daily is not None and not df_daily.empty:
             close_price = float(df_daily['Close'].iloc[-1])
             prev_close = float(df_daily['Close'].iloc[-2]) if len(df_daily) > 1 else close_price
@@ -117,36 +122,58 @@ def run_scanner():
                 'is_advance': False
             }
             
-        df_daily = calculate_indicators(df_daily)
+        # Determine Higher Timeframe Trends (Bullish/Bearish State based on Close vs EMA_5)
+        weekly_trend = None
+        daily_trend = None
+        
+        if df_weekly is not None and not df_weekly.empty:
+            w_latest = df_weekly.iloc[-1]
+            if w_latest['Close'] > w_latest['EMA_5']:
+                weekly_trend = 'BULLISH'
+            elif w_latest['Close'] < w_latest['EMA_5']:
+                weekly_trend = 'BEARISH'
+                
         if df_daily is not None and not df_daily.empty:
+            d_latest = df_daily.iloc[-1]
+            if d_latest['Close'] > d_latest['EMA_5']:
+                daily_trend = 'BULLISH'
+            elif d_latest['Close'] < d_latest['EMA_5']:
+                daily_trend = 'BEARISH'
+
+        # 2. SWING TRADING CONFLUENCE (Daily + Weekly Alignment)
+        if df_daily is not None and not df_daily.empty and weekly_trend and daily_trend:
             latest_daily = df_daily.iloc[-1]
-            if latest_daily['Bullish_Alert'] or latest_daily['Bearish_Alert']:
-                is_bullish = latest_daily['Bullish_Alert']
+            d_bull = latest_daily['Bullish_Alert'] and (daily_trend == 'BULLISH') and (weekly_trend == 'BULLISH')
+            d_bear = latest_daily['Bearish_Alert'] and (daily_trend == 'BEARISH') and (weekly_trend == 'BEARISH')
+            
+            if d_bull or d_bear:
                 rsi_val = float(latest_daily['RSI'])
                 swing_results.append({
                     'Stock': stock,
                     'Close': round(float(latest_daily['Close']), 2),
                     'RSI': round(rsi_val, 2),
-                    'Bullish_Sig': '🟢 Bullish Reversal' if is_bullish else '',
-                    'Bearish_Sig': '🔴 Bearish Reversal' if not is_bullish else '',
+                    'Bullish_Sig': '🟢 Bullish Reversal' if d_bull else '',
+                    'Bearish_Sig': '🔴 Bearish Reversal' if d_bear else '',
                     'Alert_High': round(float(latest_daily['High']), 2),
                     'Alert_Low': round(float(latest_daily['Low']), 2),
                     'Conviction_Score': abs(rsi_val - 50)
                 })
         
-        df_15m = fetch_data(stock, interval="15m", period="5d")
-        df_15m = calculate_indicators(df_15m)
-        if df_15m is not None and not df_15m.empty:
+        # 3. INTRADAY CONFLUENCE (15m + Daily + Weekly Alignment)
+        if df_15m is not None and not df_15m.empty and weekly_trend and daily_trend:
             latest_15m = df_15m.iloc[-1]
-            if latest_15m['Bullish_Alert'] or latest_15m['Bearish_Alert']:
-                is_bullish_15 = latest_15m['Bullish_Alert']
+            # 15m signal must match Daily and Weekly trend direction
+            m15_bull = latest_15m['Bullish_Alert'] and (daily_trend == 'BULLISH') and (weekly_trend == 'BULLISH')
+            m15_bear = latest_15m['Bearish_Alert'] and (daily_trend == 'BEARISH') and (weekly_trend == 'BEARISH')
+            
+            if m15_bull or m15_bear:
                 rsi_val_15 = float(latest_15m['RSI'])
                 intraday_results.append({
                     'Stock': stock,
                     'Close': round(float(latest_15m['Close']), 2),
                     'RSI': round(rsi_val_15, 2),
-                    'Bullish_Sig': '🟢 Bullish Reversal' if is_bullish_15 else '',
-                    'Bearish_Sig': '🔴 Bearish Reversal' if not is_bullish_15 else '',
+                    'Bullish_Sig': '🟢 Bullish Reversal' if m15_bull else '',
+                    'Bearish_Sig': '🔴 Bearish Reversal' if m15_bear else '',
                     'Alert_High': round(float(latest_15m['High']), 2),
                     'Alert_Low': round(float(latest_15m['Low']), 2),
                     'Conviction_Score': abs(rsi_val_15 - 50)
@@ -157,7 +184,7 @@ def run_scanner():
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Updating Google Sheets...")
+    print(f"Scan Complete. Updating Google Sheets with Confluence Data...")
     update_google_sheets(swing_results, intraday_results, stock_metrics)
 
 def update_google_sheets(swing_data, intraday_data, stock_metrics):
@@ -180,9 +207,9 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        row_1 = [f"🕒 Last Updated: {current_time_str} IST"]
+        row_1 = [f"🕒 Last Updated: {current_time_str} IST (Multi-Timeframe Confluence Active)"]
         gap_cols = ["", ""]
-        row_2 = ["⚡ HIGH-CONVICTION INTRADAY (15 MIN)"] + [""] * 6 + gap_cols + ["HIGH-CONVICTION SWING TRADING (DAILY) ⚡"]
+        row_2 = ["⚡ HIGH-CONVICTION INTRADAY (15M + Daily + Weekly)"] + [""] * 6 + gap_cols + ["HIGH-CONVICTION SWING TRADING (Daily + Weekly) ⚡"]
         headers_row = intra_headers + gap_cols + swing_headers
 
         payload_tab1 = [row_1, row_2, headers_row]
@@ -257,7 +284,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully (KMCSHIL Included in Pharma & Healthcare).")
+        print("✅ Google Sheets Updated Successfully with Confluence Rules.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
