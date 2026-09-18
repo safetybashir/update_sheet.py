@@ -92,7 +92,7 @@ def calculate_indicators(df):
     return df
 
 def run_scanner():
-    print(f"--- Starting Multi-Timeframe Confluence Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting 15M + Daily + Weekly Confluence Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
@@ -101,12 +101,12 @@ def run_scanner():
     for stock in STOCK_UNIVERSE:
         print(f"Scanning Confluence for {stock}...")
         
-        # 1. Fetch Higher Timeframes for Confluence Check
+        # Fetch Higher & Lower Timeframes
         df_weekly = calculate_indicators(fetch_data(stock, interval="1wk", period="1y"))
         df_daily = calculate_indicators(fetch_data(stock, interval="1d", period="3mo"))
         df_15m = calculate_indicators(fetch_data(stock, interval="15m", period="5d"))
         
-        # Market Breadth tracking via Daily data
+        # Track Market Breadth via Daily data
         if df_daily is not None and not df_daily.empty:
             close_price = float(df_daily['Close'].iloc[-1])
             prev_close = float(df_daily['Close'].iloc[-2]) if len(df_daily) > 1 else close_price
@@ -122,7 +122,7 @@ def run_scanner():
                 'is_advance': False
             }
             
-        # Determine Higher Timeframe Trends (Bullish/Bearish State based on Close vs EMA_5)
+        # Determine Trend States for Weekly and Daily
         weekly_trend = None
         daily_trend = None
         
@@ -140,7 +140,7 @@ def run_scanner():
             elif d_latest['Close'] < d_latest['EMA_5']:
                 daily_trend = 'BEARISH'
 
-        # 2. SWING TRADING CONFLUENCE (Daily + Weekly Alignment)
+        # SWING TRADING CONFLUENCE (Daily + Weekly Alignment)
         if df_daily is not None and not df_daily.empty and weekly_trend and daily_trend:
             latest_daily = df_daily.iloc[-1]
             d_bull = latest_daily['Bullish_Alert'] and (daily_trend == 'BULLISH') and (weekly_trend == 'BULLISH')
@@ -159,10 +159,9 @@ def run_scanner():
                     'Conviction_Score': abs(rsi_val - 50)
                 })
         
-        # 3. INTRADAY CONFLUENCE (15m + Daily + Weekly Alignment)
+        # INTRADAY CONFLUENCE (15M + Daily + Weekly Alignment)
         if df_15m is not None and not df_15m.empty and weekly_trend and daily_trend:
             latest_15m = df_15m.iloc[-1]
-            # 15m signal must match Daily and Weekly trend direction
             m15_bull = latest_15m['Bullish_Alert'] and (daily_trend == 'BULLISH') and (weekly_trend == 'BULLISH')
             m15_bear = latest_15m['Bearish_Alert'] and (daily_trend == 'BEARISH') and (weekly_trend == 'BEARISH')
             
@@ -184,7 +183,7 @@ def run_scanner():
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Updating Google Sheets with Confluence Data...")
+    print(f"Scan Complete. Updating Google Sheets with Triple Confluence...")
     update_google_sheets(swing_results, intraday_results, stock_metrics)
 
 def update_google_sheets(swing_data, intraday_data, stock_metrics):
@@ -207,7 +206,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        row_1 = [f"🕒 Last Updated: {current_time_str} IST (Multi-Timeframe Confluence Active)"]
+        row_1 = [f"🕒 Last Updated: {current_time_str} IST (15M + Daily + Weekly Confluence Active)"]
         gap_cols = ["", ""]
         row_2 = ["⚡ HIGH-CONVICTION INTRADAY (15M + Daily + Weekly)"] + [""] * 6 + gap_cols + ["HIGH-CONVICTION SWING TRADING (Daily + Weekly) ⚡"]
         headers_row = intra_headers + gap_cols + swing_headers
@@ -284,7 +283,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully with Confluence Rules.")
+        print("✅ Google Sheets Updated Successfully with Triple Confluence.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
