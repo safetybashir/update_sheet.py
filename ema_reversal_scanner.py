@@ -90,7 +90,7 @@ def calculate_indicators(df):
     # Volume Spike Background Filter (> 1.5x of 20-period Volume SMA)
     if 'Volume' in df.columns:
         df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
-        df['Vol_Spike'] = df['Volume'] > (1.5 * df['Vol_SMA'])
+        df['Vol_Spike'] = df['Volume'] > (1.2 * df['Vol_SMA'])
     else:
         df['Vol_Spike'] = True
     
