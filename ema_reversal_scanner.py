@@ -75,33 +75,58 @@ def fetch_data(ticker, interval, period):
     return None
 
 def calculate_indicators(df):
-    if df is None or len(df) < 20:
+    if df is None or len(df) < 30:
         return None
     
+    # EMA Trend Line
     df['EMA_5'] = df['Close'].ewm(span=EMA_PERIOD, adjust=False).mean()
     
+    # MACD Trend & Momentum Background Filter
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    
+    # Volume Spike Background Filter (> 1.5x of 20-period Volume SMA)
+    if 'Volume' in df.columns:
+        df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
+        df['Vol_Spike'] = df['Volume'] > (1.5 * df['Vol_SMA'])
+    else:
+        df['Vol_Spike'] = True
+    
+    # RSI Calculation
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=RSI_PERIOD).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=RSI_PERIOD).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    df['Bullish_Alert'] = (df['Low'] > df['EMA_5']) & (df['Close'] > df['Open'])
-    df['Bearish_Alert'] = (df['High'] < df['EMA_5']) & (df['Close'] < df['Open'])
+    # Alerts requiring Price action, Volume Spike, and MACD Alignment
+    df['Bullish_Alert'] = (
+        (df['Low'] > df['EMA_5']) & 
+        (df['Close'] > df['Open']) & 
+        (df['Vol_Spike']) & 
+        (df['MACD'] > df['MACD_Signal'])
+    )
+    df['Bearish_Alert'] = (
+        (df['High'] < df['EMA_5']) & 
+        (df['Close'] < df['Open']) & 
+        (df['Vol_Spike']) & 
+        (df['MACD'] < df['MACD_Signal'])
+    )
     
     return df
 
 def run_scanner():
-    print(f"--- Starting 15M + Daily + Weekly Confluence Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
+    print(f"--- Starting Advanced Confluence + Vol/MACD Scanner for {len(STOCK_UNIVERSE)} Stocks ---")
     
     swing_results = []
     intraday_results = []
     stock_metrics = {}
     
     for stock in STOCK_UNIVERSE:
-        print(f"Scanning Confluence for {stock}...")
+        print(f"Scanning Advanced Filters for {stock}...")
         
-        # Fetch Higher & Lower Timeframes
         df_weekly = calculate_indicators(fetch_data(stock, interval="1wk", period="1y"))
         df_daily = calculate_indicators(fetch_data(stock, interval="1d", period="3mo"))
         df_15m = calculate_indicators(fetch_data(stock, interval="15m", period="5d"))
@@ -128,19 +153,19 @@ def run_scanner():
         
         if df_weekly is not None and not df_weekly.empty:
             w_latest = df_weekly.iloc[-1]
-            if w_latest['Close'] > w_latest['EMA_5']:
+            if w_latest['Close'] > w_latest['EMA_5'] and w_latest['MACD'] > w_latest['MACD_Signal']:
                 weekly_trend = 'BULLISH'
-            elif w_latest['Close'] < w_latest['EMA_5']:
+            elif w_latest['Close'] < w_latest['EMA_5'] and w_latest['MACD'] < w_latest['MACD_Signal']:
                 weekly_trend = 'BEARISH'
                 
         if df_daily is not None and not df_daily.empty:
             d_latest = df_daily.iloc[-1]
-            if d_latest['Close'] > d_latest['EMA_5']:
+            if d_latest['Close'] > d_latest['EMA_5'] and d_latest['MACD'] > d_latest['MACD_Signal']:
                 daily_trend = 'BULLISH'
-            elif d_latest['Close'] < d_latest['EMA_5']:
+            elif d_latest['Close'] < d_latest['EMA_5'] and d_latest['MACD'] < d_latest['MACD_Signal']:
                 daily_trend = 'BEARISH'
 
-        # SWING TRADING CONFLUENCE (Daily + Weekly Alignment)
+        # SWING TRADING CONFLUENCE
         if df_daily is not None and not df_daily.empty and weekly_trend and daily_trend:
             latest_daily = df_daily.iloc[-1]
             d_bull = latest_daily['Bullish_Alert'] and (daily_trend == 'BULLISH') and (weekly_trend == 'BULLISH')
@@ -159,7 +184,7 @@ def run_scanner():
                     'Conviction_Score': abs(rsi_val - 50)
                 })
         
-        # INTRADAY CONFLUENCE (15M + Daily + Weekly Alignment)
+        # INTRADAY CONFLUENCE
         if df_15m is not None and not df_15m.empty and weekly_trend and daily_trend:
             latest_15m = df_15m.iloc[-1]
             m15_bull = latest_15m['Bullish_Alert'] and (daily_trend == 'BULLISH') and (weekly_trend == 'BULLISH')
@@ -183,7 +208,7 @@ def run_scanner():
     intraday_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
     swing_results.sort(key=lambda x: x['Conviction_Score'], reverse=True)
         
-    print(f"Scan Complete. Updating Google Sheets with Triple Confluence...")
+    print(f"Scan Complete. Updating Google Sheets with Advanced Filtered Data...")
     update_google_sheets(swing_results, intraday_results, stock_metrics)
 
 def update_google_sheets(swing_data, intraday_data, stock_metrics):
@@ -194,7 +219,6 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         ist = pytz.timezone("Asia/Kolkata")
         current_time_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
         
-        # TAB 1: EMA_COMMAND_CENTER
         ws1 = sheet.worksheet(UNIFIED_TAB_NAME) if len(sheet.worksheets()) > 0 else sheet.add_worksheet(title=UNIFIED_TAB_NAME, rows="200", cols="25")
         ws1.clear()
         
@@ -206,7 +230,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
         
         max_rows = max(len(intra_rows), len(swing_rows), 1)
         
-        row_1 = [f"🕒 Last Updated: {current_time_str} IST (15M + Daily + Weekly Confluence Active)"]
+        row_1 = [f"🕒 Last Updated: {current_time_str} IST (Triple Confluence + Volume Spike + MACD Active)"]
         gap_cols = ["", ""]
         row_2 = ["⚡ HIGH-CONVICTION INTRADAY (15M + Daily + Weekly)"] + [""] * 6 + gap_cols + ["HIGH-CONVICTION SWING TRADING (Daily + Weekly) ⚡"]
         headers_row = intra_headers + gap_cols + swing_headers
@@ -283,7 +307,7 @@ def update_google_sheets(swing_data, intraday_data, stock_metrics):
             payload_tab2.append([""])
 
         ws2.update(range_name='A1', values=payload_tab2)
-        print("✅ Google Sheets Updated Successfully with Triple Confluence.")
+        print("✅ Google Sheets Updated Successfully with Advanced Volume & MACD Filters.")
         
     except Exception as e:
         print(f"❌ Google Sheet Update Error: {e}")
