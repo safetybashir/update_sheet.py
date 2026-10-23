@@ -87,15 +87,15 @@ def fetch_bhavcopy_for_date(date_obj):
                     if not sym_col or not close_col:
                         return None
 
-                    # --- 1. SERIES FILTER (EQ ONLY) ---
+                    # --- 1. SERIES FILTER ---
                     if series_col and series_col in df.columns:
                         df = df[df[series_col].astype(str).str.strip() == 'EQ']
                     
-                    # --- 2. STRICT WHITELIST FILTER (ONLY USER PROVIDED F&O LIST) ---
+                    # --- 2. WHITELIST FILTER ---
                     df[sym_col] = df[sym_col].astype(str).str.strip()
                     df = df[df[sym_col].isin(STRICT_FNO_WHITELIST)]
 
-                    # --- 3. TURNOVER CALCULATION ---
+                    # --- 3. CALCULATIONS ---
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
                     
                     if prev_close_col and prev_close_col in df.columns:
@@ -111,36 +111,31 @@ def fetch_bhavcopy_for_date(date_obj):
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
                         high_p = float(row[high_col]) if high_col and high_col in df.columns else close_p
-                        low_p = float(row[low_col]) if low_col and low_col in df.columns else close_p
                         prev_c = float(row[prev_close_col]) if prev_close_col and prev_close_col in df.columns else close_p
                         
-                        # --- Col E: DYNAMIC BUY & ROCKET RADAR ---
                         buy_signal = "—"
                         if (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
                             buy_signal = "🟢 ROCKET BLAST (BUY)"
                         elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
                             buy_signal = "🎯 SNIPER BULL HIT (BUY)"
                         elif turnover_cr >= 800 and (-0.5 <= change_pct <= 0.5):
-                            buy_signal = "⚡ COILED SPRING (ACCUMULATION)"
+                            buy_signal = "⚡ COILED SPRING"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
 
-                        # --- Col F: SELL & DUMP RADAR ---
                         sell_signal = "—"
                         if (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
-                            sell_signal = "🔴 SHARP DUMP (SELL/EXIT)"
+                            sell_signal = "🔴 SHARP DUMP (EXIT)"
                         elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
-                            sell_signal = "⚠️ SNIPER BEAR HIT (INSTI SELL)"
+                            sell_signal = "⚠️ BEAR HIT (SELL)"
 
-                        # --- Col G: ORGANIC STOCKS / NO BULL TRAP ---
                         upper_wick_pct = ((high_p - max(close_p, prev_c)) / prev_c) * 100 if prev_c > 0 else 0
-                        
                         if turnover_cr >= 200 and upper_wick_pct >= 1.2 and change_pct < 0.8:
-                            organic_status = "🚨 TRAP / TOP REJECTION"
+                            organic_status = "🚨 TRAP / REJECTION"
                         elif turnover_cr >= 300 and change_pct <= -1.0:
-                            organic_status = "⚠️ BEAR TRAP / DUMP ZONE"
+                            organic_status = "⚠️ BEAR TRAP"
                         else:
-                            organic_status = "🌱 ORGANIC STOCK (NO TRAP)"
+                            organic_status = "🌱 ORGANIC"
                             
                         processed_data.append({
                             'symbol': symbol,
@@ -153,11 +148,7 @@ def fetch_bhavcopy_for_date(date_obj):
                             'organic': organic_status
                         })
                         
-                    # Sort by Day Change % (Highest Gainers on Top)
-                    processed_data.sort(key=lambda x: x['change_pct'], reverse=True)
-                    
-                    final_rows = [[item['symbol'], item['turnover'], item['close'], item['change_str'], item['buy'], item['sell'], item['organic']] for item in processed_data]
-                    return final_rows
+                    return processed_data
         return None
     except Exception as e:
         print(f"Error: {e}")
@@ -165,7 +156,7 @@ def fetch_bhavcopy_for_date(date_obj):
 
 # 3. Execution Trigger
 date = datetime.now()
-data_to_insert = None
+raw_data = None
 fetched_date_str = ""
 
 for i in range(5): 
@@ -173,23 +164,61 @@ for i in range(5):
     if test_date.weekday() >= 5: 
         continue
         
-    data_to_insert = fetch_bhavcopy_for_date(test_date)
-    if data_to_insert:
+    raw_data = fetch_bhavcopy_for_date(test_date)
+    if raw_data:
         fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Sheet Output
-if data_to_insert:
+# 4. Sheet Output (Split into Bullish & Bearish Halves side-by-side)
+if raw_data:
     worksheet.clear()  
     
-    headers = ["STOCK SYMBOL", "TRADED VALUE (CR)", "CLOSE PRICE", "DAY CHANGE %", "🟢 BUY / ROCKET RADAR", "🔴 SELL / DUMP RADAR", "🌱 ORGANIC STOCKS / NO BULL TRAP"]
-    worksheet.update('A1', [headers])
-    worksheet.update('A2', data_to_insert)
+    # Split data into Bullish (>=0) and Bearish (<0)
+    bullish_list = [x for x in raw_data if x['change_pct'] >= 0]
+    bearish_list = [x for x in raw_data if x['change_pct'] < 0]
+    
+    # Sort Bullish: Highest gainers on top
+    bullish_list.sort(key=lambda x: x['change_pct'], reverse=True)
+    
+    # Sort Bearish: Deepest negative / dips on top (MAXHEALTH style)
+    bearish_list.sort(key=lambda x: x['change_pct'], reverse=False)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
-    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [Strict F&O Whitelist Active]"
-    worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Master F&O Whitelist Active! Only High-Momentum Valid Chart Stocks Uploaded.")
+    # Headers for Left (Cols A-G) and Right (Cols I-O), Center Status in Col H
+    headers_bull = ["🟢 BULLISH SYMBOL", "TURNOVER", "CLOSE", "CHANGE %", "BUY RADAR", "SELL RADAR", "ORGANIC"]
+    center_status = [f"Data: {fetched_date_str} | Updated: {ist_now} (IST)"]
+    headers_bear = ["🔴 BEARISH / DIP", "TURNOVER", "CLOSE", "CHANGE %", "BUY RADAR", "SELL RADAR", "ORGANIC"]
+    
+    full_headers = headers_bull + center_status + headers_bear
+    worksheet.update('A1', [full_headers])
+    
+    # Combine side-by-side rows
+    max_rows = max(len(bullish_list), len(bearish_list))
+    combined_rows = []
+    
+    for idx in range(max_rows):
+        row = []
+        # Bullish Side (Cols A to G)
+        if idx < len(bullish_list):
+            b = bullish_list[idx]
+            row.extend([b['symbol'], b['turnover'], b['close'], b['change_str'], b['buy'], b['sell'], b['organic']])
+        else:
+            row.extend(["", "", "", "", "", "", ""])
+            
+        # Center Separator / Blank (Col H)
+        row.append("")
+        
+        # Bearish Side (Cols I to O)
+        if idx < len(bearish_list):
+            r = bearish_list[idx]
+            row.extend([r['symbol'], r['turnover'], r['close'], r['change_str'], r['buy'], r['sell'], r['organic']])
+        else:
+            row.extend(["", "", "", "", "", "", ""])
+            
+        combined_rows.append(row)
+        
+    worksheet.update('A2', combined_rows)
+    print("SUCCESS: Dual-Side Bullish/Bearish Dashboard & Center Time Updated!")
 else:
     print("❌ Failed to fetch data.")
