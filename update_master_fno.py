@@ -149,7 +149,7 @@ for i in range(5):
     if raw_data:
         break
 
-# 4. Sheet Output (Side-by-Side Dual-Side Dashboard with LTP Header)
+# 4. Sheet Output (LTP in Col B & Col H)
 if raw_data:
     worksheet.clear()  
     
@@ -161,10 +161,12 @@ if raw_data:
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    # Headers updated to explicitly show LTP
-    headers_bull = ["🟢 BUYING SYMBOL", "TURNOVER (CR)", "LTP", "CHANGE %", "BUY SIGNAL"]
+    # Col A: Symbol, Col B: LTP, Col C: Turnover, Col D: Change %, Col E: Signal
+    # Col F: Time
+    # Col G: Symbol, Col H: LTP, Col I: Turnover, Col J: Change %, Col K: Signal
+    headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "BUY SIGNAL"]
     center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
-    headers_bear = ["🔴 SELLING / DIP SYMBOL", "TURNOVER (CR)", "LTP", "CHANGE %", "SELL SIGNAL"]
+    headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "SELL SIGNAL"]
     
     full_headers = headers_bull + center_header + headers_bear
     worksheet.update('A1', [full_headers])
@@ -174,23 +176,26 @@ if raw_data:
     
     for idx in range(max_rows):
         row = []
+        # Bullish Side (LTP in Col B, Turnover in Col C)
         if idx < len(bullish_list):
             b = bullish_list[idx]
-            row.extend([b['symbol'], b['turnover'], b['close'], b['change_str'], b['buy']])
+            row.extend([b['symbol'], b['close'], b['turnover'], b['change_str'], b['buy']])
         else:
             row.extend(["", "", "", "", ""])
             
+        # Center Separator (Col F)
         row.append("")
         
+        # Bearish Side (LTP in Col H, Turnover in Col I)
         if idx < len(bearish_list):
             r = bearish_list[idx]
-            row.extend([r['symbol'], r['turnover'], r['close'], r['change_str'], r['sell']])
+            row.extend([r['symbol'], r['close'], r['turnover'], r['change_str'], r['sell']])
         else:
             row.extend(["", "", "", "", ""])
             
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: LTP Header Updated Successfully!")
+    print("SUCCESS: LTP Moved to Col B and Col H Successfully!")
 else:
     print("❌ Failed to fetch data.")
