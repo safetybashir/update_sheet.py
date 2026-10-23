@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 creds_json = os.environ.get('GCP_CREDENTIALS_JSON')
 if not creds_json:
     raise ValueError("❌ GCP_CREDENTIALS_JSON environment variable not found!")
-    
+
 creds_dict = json.loads(creds_json)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -23,7 +23,29 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# 2. Strict Shield Engine (Blocked Banks, Financials, Liquor, Tobacco, Insurance)
+# --- STRICT CLEAN F&O STOCKS WHITELIST ---
+STRICT_FNO_WHITELIST = {
+    "INFY", "PAYTM", "BHARTIARTL", "ETERNAL", "TCS", "TMPV", "M&M", "OFSS", "KAYNES", "LT",
+    "POWERINDIA", "APOLLOHOSP", "DIXON", "MARUTI", "PFC", "BHEL", "LAURUSLABS", "TRENT",
+    "SWIGGY", "SONACOMS", "POLYCAB", "GRASIM", "DLF", "HINDALCO", "ZYDUSLIFE", "BEL",
+    "SOLARINDS", "MOTHERSON", "ULTRACEMCO", "COALINDIA", "FORTIS", "INDIGO", "HINDZINC",
+    "HCLTECH", "MAXHEALTH", "TORNTPHARM", "GLENMARK", "HAL", "TITAN", "SAIL", "LTF",
+    "HINDPETRO", "TVSMOTOR", "POWERGRID", "CUMMINSIND", "PERSISTENT", "CDSL", "CIPLA",
+    "ASHOKLEY", "KALYANKJIL", "HEROMOTOCO", "WIPRO", "AAREEENER", "IREDA", "EICHERMOT",
+    "TECHM", "COFORGE", "NAUKRI", "HINDUNILVR", "DELHIVERY", "GVT&D", "BAJAJ-AUTO",
+    "JSWSTEEL", "SUNPHARMA", "LTMR", "RECLTD", "DRREDDY", "ONGC", "OBEROIRLTY", "NYKAA",
+    "UPL", "DMART", "FORCEMOT", "INDUSTOWER", "BHARATFORG", "AUROPHARMA", "PIIND",
+    "BDL", "IOC", "ASIANPAINT", "BIOCON", "GMRAIRPORT", "JSWENERGY", "LODHA", "GAIL",
+    "MAZDOCK", "PHOENIXLTD", "BOSCHLTD", "LUPIN", "BLUESTARCO", "RELIANCE", "NMDC",
+    "TATACONSUM", "CGPOWER", "ANGELONE", "INOXWIND", "MANKIND", "PIDILITIND", "APLAPOLLO",
+    "AMBER", "NATIONALUM", "COLPAL", "KEI", "KPITTECH", "TATAPOWER", "PAGEIND", "BPCL",
+    "COCHINSHIP", "ABB", "TATAELXSI", "CAMS", "BRITANNIA", "NESTLEIND", "ASTRAL",
+    "RVNL", "JINDALSTEL", "GODREJPROP", "PRESTIGE", "JUBLFOOD", "AMBUJACEM", "MPHASIS",
+    "DALBHARAT", "VOLTAS", "PREMIERENE", "SUPREMEIND", "KFINTECH", "MARICO", "HAVELLS",
+    "UNOMINDA", "CONCOR", "NBCC", "SIEMENS", "CROMPTON", "SRF", "DABUR", "GODREJCP",
+    "PETRONET", "PGEL", "SHREECEM", "TIINDIA", "RSYSTEMS", "ALKEM"
+}
+
 def fetch_bhavcopy_for_date(date_obj):
     date_str = date_obj.strftime("%Y%m%d")
     url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -54,7 +76,7 @@ def fetch_bhavcopy_for_date(date_obj):
                             prev_close_col = col
                             break
                             
-                    series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' in df.columns and 'SERIES' or None)
+                    series_col = 'SCTYSRS' if 'SCTYSRS' in df.columns else ('SERIES' if 'SERIES' in df.columns else None)
                     
                     vol_col = 'TTLTRADGVOL'
                     for c in ['TTLTRADGVOL', 'TTLTRDQTY', 'TOTTRDQTY']:
@@ -65,32 +87,24 @@ def fetch_bhavcopy_for_date(date_obj):
                     if not sym_col or not close_col:
                         return None
 
-                    # --- 1. SERIES FILTER ---
+                    # --- 1. SERIES FILTER (EQ ONLY) ---
                     if series_col and series_col in df.columns:
                         df = df[df[series_col].astype(str).str.strip() == 'EQ']
                     
-                    # --- 2. REMOVE ETFs, INDICES, REITs ---
-                    filter_keywords = 'BEES|ETF|GOLD|LIQUID|CASE|SILVER|LIQ|NIFTY|SETF|NV20|CPSE'
-                    df = df[~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)]
-                    
-                    # --- 3. STRICT SECTOR EXCLUSION BLOCK (BANKS, FIN, LIQUOR, TOBACCO, INSUR, LOANS) ---
-                    exclude_sectors = 'BANK|FIN|HOUSING|CIG|TOBACCO|INSUR|MUTUAL|CAPITAL|FINSERV|CREDIT|INVEST|BREW|SPIRIT|ALCOHOL|LIQUOR|LENDING|WEALTH|ASSET|NBFC'
-                    df = df[~df[sym_col].astype(str).str.contains(exclude_sectors, case=False, na=False)]
-                    
-                    # --- 4. TURNOVER & LIQUIDITY BASELINE (Min 50 Cr) ---
+                    # --- 2. STRICT WHITELIST FILTER (ONLY USER PROVIDED F&O LIST) ---
+                    df[sym_col] = df[sym_col].astype(str).str.strip()
+                    df = df[df[sym_col].isin(STRICT_FNO_WHITELIST)]
+
+                    # --- 3. TURNOVER CALCULATION ---
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
-                    df = df[df['TRADED_VALUE'] >= 500000000] 
                     
                     if prev_close_col and prev_close_col in df.columns:
                         df['DAY_CHANGE_PCT'] = ((df[close_col].astype(float) - df[prev_close_col].astype(float)) / df[prev_close_col].astype(float)) * 100
                     else:
                         df['DAY_CHANGE_PCT'] = 0.0
 
-                    # Keep top liquid institutional candidates
-                    df_top = df.sort_values(by='TRADED_VALUE', ascending=False).head(200)
-                    
                     processed_data = []
-                    for _, row in df_top.iterrows():
+                    for _, row in df.iterrows():
                         symbol = row[sym_col]
                         close_p = round(float(row[close_col]), 2)
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
@@ -173,9 +187,9 @@ if data_to_insert:
     worksheet.update('A2', data_to_insert)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
-    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [Strict Sector Shield Active]"
+    status_msg = f"Data Date: {fetched_date_str} | Updated: {ist_now} (IST) [Strict F&O Whitelist Active]"
     worksheet.update('I1', [[status_msg]])
     
-    print("SUCCESS: Sector Shield Active! Banks, INSURANCE, NBFC, Financials, Liquor & Tobacco completely blocked.")
+    print("SUCCESS: Master F&O Whitelist Active! Only High-Momentum Valid Chart Stocks Uploaded.")
 else:
     print("❌ Failed to fetch data.")
