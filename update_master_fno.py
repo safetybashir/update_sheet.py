@@ -149,7 +149,7 @@ for i in range(5):
     if raw_data:
         break
 
-# 4. Sheet Output (Side-by-Side Dual-Side Dashboard)
+# 4. Sheet Output (Side-by-Side Dual-Side Dashboard with LTP Header)
 if raw_data:
     worksheet.clear()  
     
@@ -161,9 +161,10 @@ if raw_data:
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    headers_bull = ["🟢 BUYING SYMBOL", "TURNOVER (CR)", "CLOSE", "CHANGE %", "BUY SIGNAL"]
+    # Headers updated to explicitly show LTP
+    headers_bull = ["🟢 BUYING SYMBOL", "TURNOVER (CR)", "LTP", "CHANGE %", "BUY SIGNAL"]
     center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
-    headers_bear = ["🔴 SELLING / DIP SYMBOL", "TURNOVER (CR)", "CLOSE", "CHANGE %", "SELL SIGNAL"]
+    headers_bear = ["🔴 SELLING / DIP SYMBOL", "TURNOVER (CR)", "LTP", "CHANGE %", "SELL SIGNAL"]
     
     full_headers = headers_bull + center_header + headers_bear
     worksheet.update('A1', [full_headers])
@@ -190,6 +191,6 @@ if raw_data:
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: Missile-Grade Volume Surge Screener Updated!")
+    print("SUCCESS: LTP Header Updated Successfully!")
 else:
     print("❌ Failed to fetch data.")
