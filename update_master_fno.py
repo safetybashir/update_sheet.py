@@ -101,26 +101,27 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # Bullish Signal
+                        # --- ADVANCED BUYING SIGNALS ---
                         buy_signal = "—"
                         if (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
-                            buy_signal = "🟢 ROCKET BLAST"
+                            buy_signal = "🟢 ROCKET BLAST (BUY)"
                         elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
-                            buy_signal = "🎯 SNIPER BULL"
+                            buy_signal = "🎯 SNIPER BULL (BUY)"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
 
-                        # Bearish Signal
+                        # --- ADVANCED SELLING / DIP SIGNALS ---
                         sell_signal = "—"
                         if (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
-                            sell_signal = "🔴 SHARP DUMP"
+                            sell_signal = "🔴 SHARP DUMP (EXIT)"
                         elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
-                            sell_signal = "⚠️ BEAR HIT"
+                            sell_signal = "⚠️ BEAR HIT (SELL)"
                         elif change_pct < 0:
-                            sell_signal = "📉 DIP / BEARISH"
+                            sell_signal = "📉 DEEP DIP / BEARISH"
                             
                         processed_data.append({
                             'symbol': symbol,
+                            'turnover': turnover_cr,
                             'close': close_p,
                             'change_pct': change_pct,
                             'change_str': f"{change_pct:+.2f}%",
@@ -136,7 +137,6 @@ def fetch_bhavcopy_for_date(date_obj):
 # 3. Execution Trigger
 date = datetime.now()
 raw_data = None
-fetched_date_str = ""
 
 for i in range(5): 
     test_date = date - timedelta(days=i)
@@ -144,26 +144,24 @@ for i in range(5):
         continue
     raw_data = fetch_bhavcopy_for_date(test_date)
     if raw_data:
-        fetched_date_str = test_date.strftime('%d-%b-%Y')
         break
 
-# 4. Sheet Output (Clean 9-Column Layout: Bullish | Center Time | Bearish)
+# 4. Sheet Output (Side-by-Side Buying & Selling Layout)
 if raw_data:
     worksheet.clear()  
     
     bullish_list = [x for x in raw_data if x['change_pct'] >= 0]
     bearish_list = [x for x in raw_data if x['change_pct'] < 0]
     
-    # Sort: Bullish highest gainers top, Bearish deepest negative/dips top
     bullish_list.sort(key=lambda x: x['change_pct'], reverse=True)
     bearish_list.sort(key=lambda x: x['change_pct'], reverse=False)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    # Clean Compact Headers (A to I)
-    headers_bull = ["🟢 BULLISH SYMBOL", "CLOSE", "CHANGE %", "SIGNAL"]
-    center_header = [f"🕒 UPDATED: {ist_now} (IST) | DATA: {fetched_date_str}"]
-    headers_bear = ["🔴 BEARISH / DIP SYMBOL", "CLOSE", "CHANGE %", "SIGNAL"]
+    # Left Side: Buying (Cols A to E), Center: Time (Col F), Right Side: Selling/Dips (Cols G to K)
+    headers_bull = ["🟢 BUYING SYMBOL", "TURNOVER (CR)", "CLOSE", "CHANGE %", "BUY SIGNAL"]
+    center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
+    headers_bear = ["🔴 SELLING / DIP SYMBOL", "TURNOVER (CR)", "CLOSE", "CHANGE %", "SELL SIGNAL"]
     
     full_headers = headers_bull + center_header + headers_bear
     worksheet.update('A1', [full_headers])
@@ -173,26 +171,26 @@ if raw_data:
     
     for idx in range(max_rows):
         row = []
-        # Bullish Side (Cols A to D)
+        # Bullish / Buying Side (Cols A to E)
         if idx < len(bullish_list):
             b = bullish_list[idx]
-            row.extend([b['symbol'], b['close'], b['change_str'], b['buy']])
+            row.extend([b['symbol'], b['turnover'], b['close'], b['change_str'], b['buy']])
         else:
-            row.extend(["", "", "", ""])
+            row.extend(["", "", "", "", ""])
             
-        # Center Column (Col E) - Empty for rows to keep clean
+        # Center Timestamp Column (Col F) - Empty for rows
         row.append("")
         
-        # Bearish Side (Cols F to I)
+        # Bearish / Selling Side (Cols G to K)
         if idx < len(bearish_list):
             r = bearish_list[idx]
-            row.extend([r['symbol'], r['close'], r['change_str'], r['sell']])
+            row.extend([r['symbol'], r['turnover'], r['close'], r['change_str'], r['sell']])
         else:
-            row.extend(["", "", "", ""])
+            row.extend(["", "", "", "", ""])
             
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: Clean 9-Column Dual Layout & Center Timestamp Updated!")
+    print("SUCCESS: Buying & Selling Dual-Side Dashboard Updated!")
 else:
     print("❌ Failed to fetch data.")
