@@ -101,21 +101,24 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # --- ADVANCED BUYING SIGNALS ---
+                        # --- NUCLEAR-GRADE VOLUME & MOMENTUM LOGIC ---
                         buy_signal = "—"
-                        if (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
+                        if turnover_cr >= 500 and change_pct >= 3.0:
+                            buy_signal = "🚀 NUCLEAR VOLUME SURGE (BUY)"
+                        elif (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
                             buy_signal = "🟢 ROCKET BLAST (BUY)"
                         elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
                             buy_signal = "🎯 SNIPER BULL (BUY)"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
 
-                        # --- ADVANCED SELLING / DIP SIGNALS ---
                         sell_signal = "—"
-                        if (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
-                            sell_signal = "🔴 SHARP DUMP (EXIT)"
+                        if turnover_cr >= 400 and change_pct <= -3.0:
+                            sell_signal = "🔴 HEAVY INSTI DUMP (EXIT)"
+                        elif (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
+                            sell_signal = "⚠️ SHARP DUMP (EXIT)"
                         elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
-                            sell_signal = "⚠️ BEAR HIT (SELL)"
+                            sell_signal = "📉 BEAR HIT (SELL)"
                         elif change_pct < 0:
                             sell_signal = "📉 DEEP DIP / BEARISH"
                             
@@ -146,7 +149,7 @@ for i in range(5):
     if raw_data:
         break
 
-# 4. Sheet Output (Side-by-Side Buying & Selling Layout)
+# 4. Sheet Output (Side-by-Side Dual-Side Dashboard)
 if raw_data:
     worksheet.clear()  
     
@@ -158,7 +161,6 @@ if raw_data:
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    # Left Side: Buying (Cols A to E), Center: Time (Col F), Right Side: Selling/Dips (Cols G to K)
     headers_bull = ["🟢 BUYING SYMBOL", "TURNOVER (CR)", "CLOSE", "CHANGE %", "BUY SIGNAL"]
     center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
     headers_bear = ["🔴 SELLING / DIP SYMBOL", "TURNOVER (CR)", "CLOSE", "CHANGE %", "SELL SIGNAL"]
@@ -171,17 +173,14 @@ if raw_data:
     
     for idx in range(max_rows):
         row = []
-        # Bullish / Buying Side (Cols A to E)
         if idx < len(bullish_list):
             b = bullish_list[idx]
             row.extend([b['symbol'], b['turnover'], b['close'], b['change_str'], b['buy']])
         else:
             row.extend(["", "", "", "", ""])
             
-        # Center Timestamp Column (Col F) - Empty for rows
         row.append("")
         
-        # Bearish / Selling Side (Cols G to K)
         if idx < len(bearish_list):
             r = bearish_list[idx]
             row.extend([r['symbol'], r['turnover'], r['close'], r['change_str'], r['sell']])
@@ -191,6 +190,6 @@ if raw_data:
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: Buying & Selling Dual-Side Dashboard Updated!")
+    print("SUCCESS: Missile-Grade Volume Surge Screener Updated!")
 else:
     print("❌ Failed to fetch data.")
