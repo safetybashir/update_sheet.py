@@ -101,26 +101,37 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # --- NUCLEAR-GRADE VOLUME & MOMENTUM LOGIC ---
+                        # --- BUYING SIGNALS & HEAT METER ---
                         buy_signal = "—"
+                        buy_heat = "❄️ COOL / LOW"
                         if turnover_cr >= 500 and change_pct >= 3.0:
                             buy_signal = "🚀 NUCLEAR VOLUME SURGE (BUY)"
+                            buy_heat = "🔥🔥🔥 [SUPER HOT]"
                         elif (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
                             buy_signal = "🟢 ROCKET BLAST (BUY)"
+                            buy_heat = "🔥🔥 [HIGH HEAT]"
                         elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
                             buy_signal = "🎯 SNIPER BULL (BUY)"
+                            buy_heat = "🔥 [WARM]"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
+                            buy_heat = "⚡ [MODERATE]"
 
+                        # --- SELLING SIGNALS & HEAT METER ---
                         sell_signal = "—"
+                        sell_heat = "❄️ COOL / LOW"
                         if turnover_cr >= 400 and change_pct <= -3.0:
                             sell_signal = "🔴 HEAVY INSTI DUMP (EXIT)"
+                            sell_heat = "🧊 [EXTREME DUMP]"
                         elif (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
                             sell_signal = "⚠️ SHARP DUMP (EXIT)"
+                            sell_heat = "🔻 [HIGH DUMP]"
                         elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
                             sell_signal = "📉 BEAR HIT (SELL)"
+                            sell_heat = "📉 [HEAVY BEAR]"
                         elif change_pct < 0:
                             sell_signal = "📉 DEEP DIP / BEARISH"
+                            sell_heat = "⚡ [MODERATE DIP]"
                             
                         processed_data.append({
                             'symbol': symbol,
@@ -129,7 +140,9 @@ def fetch_bhavcopy_for_date(date_obj):
                             'change_pct': change_pct,
                             'change_str': f"{change_pct:+.2f}%",
                             'buy': buy_signal,
-                            'sell': sell_signal
+                            'buy_heat': buy_heat,
+                            'sell': sell_signal,
+                            'sell_heat': sell_heat
                         })
                     return processed_data
         return None
@@ -149,7 +162,7 @@ for i in range(5):
     if raw_data:
         break
 
-# 4. Sheet Output (LTP in Col B & Col H)
+# 4. Sheet Output (Side-by-Side with Heat Meter Columns Added)
 if raw_data:
     worksheet.clear()  
     
@@ -161,12 +174,10 @@ if raw_data:
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    # Col A: Symbol, Col B: LTP, Col C: Turnover, Col D: Change %, Col E: Signal
-    # Col F: Time
-    # Col G: Symbol, Col H: LTP, Col I: Turnover, Col J: Change %, Col K: Signal
-    headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "BUY SIGNAL"]
+    # Left Side Headers (Cols A to F) + Center Timestamp (Col G) + Right Side Headers (Cols H to M)
+    headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "BUY SIGNAL", "HEAT METER"]
     center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
-    headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "SELL SIGNAL"]
+    headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "SELL SIGNAL", "HEAT METER"]
     
     full_headers = headers_bull + center_header + headers_bear
     worksheet.update('A1', [full_headers])
@@ -176,26 +187,26 @@ if raw_data:
     
     for idx in range(max_rows):
         row = []
-        # Bullish Side (LTP in Col B, Turnover in Col C)
+        # Bullish Side (Cols A to F)
         if idx < len(bullish_list):
             b = bullish_list[idx]
-            row.extend([b['symbol'], b['close'], b['turnover'], b['change_str'], b['buy']])
+            row.extend([b['symbol'], b['close'], b['turnover'], b['change_str'], b['buy'], b['buy_heat']])
         else:
-            row.extend(["", "", "", "", ""])
+            row.extend(["", "", "", "", "", ""])
             
-        # Center Separator (Col F)
+        # Center Separator (Col G)
         row.append("")
         
-        # Bearish Side (LTP in Col H, Turnover in Col I)
+        # Bearish Side (Cols H to M)
         if idx < len(bearish_list):
             r = bearish_list[idx]
-            row.extend([r['symbol'], r['close'], r['turnover'], r['change_str'], r['sell']])
+            row.extend([r['symbol'], r['close'], r['turnover'], r['change_str'], r['sell'], r['sell_heat']])
         else:
-            row.extend(["", "", "", "", ""])
+            row.extend(["", "", "", "", "", ""])
             
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: LTP Moved to Col B and Col H Successfully!")
+    print("SUCCESS: Missile Heat Meter Added Successfully!")
 else:
     print("❌ Failed to fetch data.")
