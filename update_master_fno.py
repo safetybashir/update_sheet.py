@@ -101,34 +101,34 @@ def fetch_bhavcopy_for_date(date_obj):
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
                         
-                        # --- BUYING SIGNALS & HEAT METER ---
+                        # --- BUYING SIGNALS & GREEN HEAT METER ---
                         buy_signal = "—"
-                        buy_heat = "❄️ COOL / LOW"
+                        buy_heat = "⚪ [LOW]"
                         if turnover_cr >= 500 and change_pct >= 3.0:
                             buy_signal = "🚀 NUCLEAR VOLUME SURGE (BUY)"
-                            buy_heat = "🔥🔥🔥 [SUPER HOT]"
+                            buy_heat = "🟢🟢🟢 [SUPER HOT]"
                         elif (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
                             buy_signal = "🟢 ROCKET BLAST (BUY)"
-                            buy_heat = "🔥🔥 [HIGH HEAT]"
+                            buy_heat = "🟢🟢 [HIGH HEAT]"
                         elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
                             buy_signal = "🎯 SNIPER BULL (BUY)"
-                            buy_heat = "🔥 [WARM]"
+                            buy_heat = "🌱 [WARM]"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
                             buy_heat = "⚡ [MODERATE]"
 
-                        # --- SELLING SIGNALS & HEAT METER ---
+                        # --- SELLING SIGNALS & RED HEAT METER ---
                         sell_signal = "—"
-                        sell_heat = "❄️ COOL / LOW"
+                        sell_heat = "⚪ [LOW]"
                         if turnover_cr >= 400 and change_pct <= -3.0:
                             sell_signal = "🔴 HEAVY INSTI DUMP (EXIT)"
-                            sell_heat = "🧊 [EXTREME DUMP]"
+                            sell_heat = "🔴🔴🔴 [EXTREME DUMP]"
                         elif (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
                             sell_signal = "⚠️ SHARP DUMP (EXIT)"
-                            sell_heat = "🔻 [HIGH DUMP]"
+                            sell_heat = "🔴🔴 [HIGH DUMP]"
                         elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
                             sell_signal = "📉 BEAR HIT (SELL)"
-                            sell_heat = "📉 [HEAVY BEAR]"
+                            sell_heat = "🚨 [HEAVY BEAR]"
                         elif change_pct < 0:
                             sell_signal = "📉 DEEP DIP / BEARISH"
                             sell_heat = "⚡ [MODERATE DIP]"
@@ -162,7 +162,7 @@ for i in range(5):
     if raw_data:
         break
 
-# 4. Sheet Output (Side-by-Side with Heat Meter Columns Added)
+# 4. Sheet Output
 if raw_data:
     worksheet.clear()  
     
@@ -174,7 +174,6 @@ if raw_data:
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    # Left Side Headers (Cols A to F) + Center Timestamp (Col G) + Right Side Headers (Cols H to M)
     headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "BUY SIGNAL", "HEAT METER"]
     center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
     headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "SELL SIGNAL", "HEAT METER"]
@@ -187,17 +186,14 @@ if raw_data:
     
     for idx in range(max_rows):
         row = []
-        # Bullish Side (Cols A to F)
         if idx < len(bullish_list):
             b = bullish_list[idx]
             row.extend([b['symbol'], b['close'], b['turnover'], b['change_str'], b['buy'], b['buy_heat']])
         else:
             row.extend(["", "", "", "", "", ""])
             
-        # Center Separator (Col G)
         row.append("")
         
-        # Bearish Side (Cols H to M)
         if idx < len(bearish_list):
             r = bearish_list[idx]
             row.extend([r['symbol'], r['close'], r['turnover'], r['change_str'], r['sell'], r['sell_heat']])
@@ -207,6 +203,6 @@ if raw_data:
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: Missile Heat Meter Added Successfully!")
+    print("SUCCESS: Color-coded Green/Red Heat Meter Updated!")
 else:
     print("❌ Failed to fetch data.")
