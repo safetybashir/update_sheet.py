@@ -10,7 +10,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 1. Credentials Setup
 creds_json = os.environ.get('GCP_CREDENTIALS_JSON')
 if not creds_json:
-    # Fallback for local testing if file exists
     if os.path.exists('credentials.json'):
         with open('credentials.json') as f:
             creds_dict = json.load(f)
@@ -51,21 +50,20 @@ RAW_WHITELIST = [
     "PETRONET", "PGEL", "TIINDIA", "RSYSTEMS"
 ]
 
-def fetch_live_intraday_data():
+def fetch_and_update_data():
     tickers = [f"{sym}.NS" for sym in RAW_WHITELIST]
-    print("🔄 Fetching live market snapshot via Free Data Source...")
+    print("🔄 Fetching market data snapshot...")
     
     try:
-        # Download today's data snapshot
-        data = yf.download(tickers, period='1d', interval='1m', progress=False)
+        data = yf.download(tickers, period='2d', interval='1d', progress=False)
         if data.empty:
-            return None
+            print("❌ No data received from Yahoo Finance.")
+            return
         
         processed_data = []
         for sym in RAW_WHITELIST:
             ticker_str = f"{sym}.NS"
             try:
-                # Extract close and volume for the specific ticker
                 if len(tickers) == 1:
                     df_ticker = data
                 else:
@@ -74,15 +72,13 @@ def fetch_live_intraday_data():
                 if df_ticker is None or df_ticker.empty:
                     continue
                 
-                closes = df_ticker['Close'].dropna()
-                volumes = df_ticker['Volume'].dropna()
-                
-                if len(closes) < 2:
+                df_ticker = df_ticker.dropna(subset=['Close'])
+                if len(df_ticker) < 2:
                     continue
                 
-                current_price = float(closes.iloc[-1])
-                prev_close = float(closes.iloc[0]) # Opening/Prev reference for intraday
-                total_vol = float(volumes.sum())
+                current_price = float(df_ticker['Close'].iloc[-1])
+                prev_close = float(df_ticker['Close'].iloc[-2])
+                total_vol = float(df_ticker['Volume'].iloc[-1])
                 
                 change_pts = round(current_price - prev_close, 2)
                 change_pct = round((change_pts / prev_close) * 100, 2) if prev_close > 0 else 0.0
@@ -133,61 +129,52 @@ def fetch_live_intraday_data():
                 })
             except Exception as e:
                 continue
-        return processed_data
-    except Exception as e:
-        print(f"Error fetching live data: {e}")
-        return None
 
-# 4. Continuous Loop for Market Hours (Runs every 5 mins)
-if __name__ == "__main__":
-    print("🚀 Free Live Intraday Screener Initialized...")
-    while True:
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-        
-        # Check if market is open (Monday to Friday, 9:15 AM to 3:30 PM IST)
-        if now_ist.weekday() < 5 and (9 <= now_ist.hour < 16):
-            raw_data = fetch_live_intraday_data()
+        if processed_data:
+            worksheet.clear()
+            bullish_list = [x for x in processed_data if x['change_pct'] >= 0]
+            bearish_list = [x for x in processed_data if x['change_pct'] < 0]
             
-            if raw_data:
-                worksheet.clear()
-                bullish_list = [x for x in raw_data if x['change_pct'] >= 0]
-                bearish_list = [x for x in raw_data if x['change_pct'] < 0]
-                
-                bullish_list.sort(key=lambda x: (x['change_pts'], x['change_pct']), reverse=True)
-                bearish_list.sort(key=lambda x: (x['change_pts'], x['change_pct']), reverse=False)
-                
-                ist_now_str = now_ist.strftime('%d-%b %H:%M')
-                headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE % (PTS)", "BUY SIGNAL", "HEAT METER"]
-                center_header = [f"🕒 LIVE: {ist_now_str} (IST)"]
-                headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE % (PTS)", "SELL SIGNAL", "HEAT METER"]
-                
-                full_headers = headers_bull + center_header + headers_bear
-                worksheet.update('A1', [full_headers])
-                
-                max_rows = max(len(bullish_list), len(bearish_list))
-                combined_rows = []
-                for idx in range(max_rows):
-                    row = []
-                    if idx < len(bullish_list):
-                        b = bullish_list[idx]
-                        row.extend([b['symbol'], b['close'], b['turnover'], b['change_str'], b['buy'], b['buy_heat']])
-                    else:
-                        row.extend(["", "", "", "", "", ""])
-                    
-                    row.append("")
-                    
-                    if idx < len(bearish_list):
-                        r = bearish_list[idx]
-                        row.extend([r['symbol'], r['close'], r['turnover'], r['change_str'], r['sell'], r['sell_heat']])
-                    else:
-                        row.extend(["", "", "", "", "", ""])
-                    combined_rows.append(row)
-                    
-                worksheet.update('A2', combined_rows)
-                print(f"✅ Google Sheet Updated Live at {ist_now_str}")
+            bullish_list.sort(key=lambda x: (x['change_pts'], x['change_pct']), reverse=True)
+            bearish_list.sort(key=lambda x: (x['change_pts'], x['change_pct']), reverse=False)
             
-            # Wait for 5 minutes before next refresh
-            time.sleep(300)
+            now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            ist_now_str = now_ist.strftime('%d-%b %H:%M')
+            
+            headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE % (PTS)", "BUY SIGNAL", "HEAT METER"]
+            center_header = [f"🕒 TEST RUN: {ist_now_str} (IST)"]
+            headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE % (PTS)", "SELL SIGNAL", "HEAT METER"]
+            
+            full_headers = headers_bull + center_header + headers_bear
+            worksheet.update('A1', [full_headers])
+            
+            max_rows = max(len(bullish_list), len(bearish_list))
+            combined_rows = []
+            for idx in range(max_rows):
+                row = []
+                if idx < len(bullish_list):
+                    b = bullish_list[idx]
+                    row.extend([b['symbol'], b['close'], b['turnover'], b['change_str'], b['buy'], b['buy_heat']])
+                else:
+                    row.extend(["", "", "", "", "", ""])
+                
+                row.append("")
+                
+                if idx < len(bearish_list):
+                    r = bearish_list[idx]
+                    row.extend([r['symbol'], r['close'], r['turnover'], r['change_str'], r['sell'], r['sell_heat']])
+                else:
+                    row.extend(["", "", "", "", "", ""])
+                combined_rows.append(row)
+                
+            worksheet.update('A2', combined_rows)
+            print(f"✅ Google Sheet Successfully Updated at {ist_now_str}!")
         else:
-            print("⏳ Market Closed. Waiting for next market session...")
-            time.sleep(600)
+            print("⚠️ No valid processed data found.")
+            
+    except Exception as e:
+        print(f"❌ Error during fetch: {e}")
+
+if __name__ == "__main__":
+    print("🚀 Immediate Test Run Initiated...")
+    fetch_and_update_data()
