@@ -23,27 +23,28 @@ client = gspread.authorize(creds)
 spreadsheet_id = "15LBUVcxELAmdffUxsboBjrXfuJyM9xC-KZVh6GwBzxg" 
 worksheet = client.open_by_key(spreadsheet_id).worksheet("LIVE_MASTER_DASHBOARD")
 
-# --- STRICT CLEAN F&O STOCKS WHITELIST ---
+# --- STRICT CLEAN F&O & HIGH-MOVER WHITELIST (UPDATED WITH YOUR EXACT LIST) ---
 STRICT_FNO_WHITELIST = {
-    "INFY", "PAYTM", "BHARTIARTL", "ETERNAL", "TCS", "TMPV", "M&M", "OFSS", "KAYNES", "LT",
-    "POWERINDIA", "APOLLOHOSP", "DIXON", "MARUTI", "PFC", "BHEL", "LAURUSLABS", "TRENT",
-    "SWIGGY", "SONACOMS", "POLYCAB", "GRASIM", "DLF", "HINDALCO", "ZYDUSLIFE", "BEL",
-    "SOLARINDS", "MOTHERSON", "ULTRACEMCO", "COALINDIA", "FORTIS", "INDIGO", "HINDZINC",
-    "HCLTECH", "MAXHEALTH", "TORNTPHARM", "GLENMARK", "HAL", "TITAN", "SAIL", "LTF",
-    "HINDPETRO", "TVSMOTOR", "POWERGRID", "CUMMINSIND", "PERSISTENT", "CDSL", "CIPLA",
-    "ASHOKLEY", "KALYANKJIL", "HEROMOTOCO", "WIPRO", "AAREEENER", "IREDA", "EICHERMOT",
-    "TECHM", "COFORGE", "NAUKRI", "HINDUNILVR", "DELHIVERY", "GVT&D", "BAJAJ-AUTO",
-    "JSWSTEEL", "SUNPHARMA", "LTMR", "RECLTD", "DRREDDY", "ONGC", "OBEROIRLTY", "NYKAA",
-    "UPL", "DMART", "FORCEMOT", "INDUSTOWER", "BHARATFORG", "AUROPHARMA", "PIIND",
-    "BDL", "IOC", "ASIANPAINT", "BIOCON", "GMRAIRPORT", "JSWENERGY", "LODHA", "GAIL",
-    "MAZDOCK", "PHOENIXLTD", "BOSCHLTD", "LUPIN", "BLUESTARCO", "RELIANCE", "NMDC",
-    "TATACONSUM", "CGPOWER", "ANGELONE", "INOXWIND", "MANKIND", "PIDILITIND", "APLAPOLLO",
-    "AMBER", "NATIONALUM", "COLPAL", "KEI", "KPITTECH", "TATAPOWER", "PAGEIND", "BPCL",
-    "COCHINSHIP", "ABB", "TATAELXSI", "CAMS", "BRITANNIA", "NESTLEIND", "ASTRAL",
-    "RVNL", "JINDALSTEL", "GODREJPROP", "PRESTIGE", "JUBLFOOD", "AMBUJACEM", "MPHASIS",
-    "DALBHARAT", "VOLTAS", "PREMIERENE", "SUPREMEIND", "KFINTECH", "MARICO", "HAVELLS",
-    "UNOMINDA", "CONCOR", "NBCC", "SIEMENS", "CROMPTON", "SRF", "DABUR", "GODREJCP",
-    "PETRONET", "PGEL", "SHREECEM", "TIINDIA", "RSYSTEMS", "ALKEM"
+    "BOSCHLTD", "SHREECEM", "POWERINDIA", "SOLARINDS", "POLYCAB", "OFSS", "ABB", "KEI", 
+    "NIFTY", "HEROMOTOCO", "ULTRACEMCO", "BSE", "PERSISTENT", "KAYNES", "APOLLOHOSP", 
+    "DIVISLAB", "COFORGE", "LAURUSLABS", "MANKIND", "ALKEM", "DRREDDY", "MPHASIS", 
+    "JSWSTEEL", "GLENMARK", "INDIGO", "GRASIM", "HAL", "INFY", "PAYTM", "BHARTIARTL", 
+    "ETERNAL", "TCS", "TMPV", "M&M", "DIXON", "MARUTI", "PFC", "BHEL", "TRENT", 
+    "SWIGGY", "SONACOMS", "DLF", "HINDALCO", "ZYDUSLIFE", "BEL", "MOTHERSON", 
+    "COALINDIA", "FORTIS", "HINDZINC", "HCLTECH", "MAXHEALTH", "TORNTPHARM", "TITAN", 
+    "SAIL", "LTF", "HINDPETRO", "TVSMOTOR", "POWERGRID", "CUMMINSIND", "CDSL", "CIPLA", 
+    "ASHOKLEY", "KALYANKJIL", "WIPRO", "AAREEENER", "IREDA", "EICHERMOT", "TECHM", 
+    "NAUKRI", "HINDUNILVR", "DELHIVERY", "GVT&D", "BAJAJ-AUTO", "SUNPHARMA", "LTMR", 
+    "RECLTD", "ONGC", "OBEROIRLTY", "NYKAA", "UPL", "DMART", "FORCEMOT", "INDUSTOWER", 
+    "BHARATFORG", "AUROPHARMA", "PIIND", "BDL", "IOC", "ASIANPAINT", "BIOCON", 
+    "GMRAIRPORT", "JSWENERGY", "LODHA", "GAIL", "MAZDOCK", "PHOENIXLTD", "LUPIN", 
+    "BLUESTARCO", "RELIANCE", "NMDC", "TATACONSUM", "CGPOWER", "ANGELONE", "INOXWIND", 
+    "PIDILITIND", "APLAPOLLO", "AMBER", "NATIONALUM", "COLPAL", "KPITTECH", "TATAPOWER", 
+    "PAGEIND", "BPCL", "COCHINSHIP", "TATAELXSI", "CAMS", "BRITANNIA", "NESTLEIND", 
+    "ASTRAL", "RVNL", "JINDALSTEL", "GODREJPROP", "PRESTIGE", "JUBLFOOD", "AMBUJACEM", 
+    "DALBHARAT", "VOLTAS", "PREMIERENE", "SUPREMEIND", "KFINTECH", "MARICO", "HAVELLS", 
+    "UNOMINDA", "CONCOR", "NBCC", "SIEMENS", "CROMPTON", "SRF", "DABUR", "GODREJCP", 
+    "PETRONET", "PGEL", "TIINDIA", "RSYSTEMS"
 }
 
 def fetch_bhavcopy_for_date(date_obj):
@@ -83,15 +84,17 @@ def fetch_bhavcopy_for_date(date_obj):
                         return None
 
                     if series_col and series_col in df.columns:
-                        df = df[df[series_col].astype(str).str.strip() == 'EQ']
+                        df = df[df[series_col].astype(str).str.strip().isin(['EQ', 'BE'])]
                     
                     df[sym_col] = df[sym_col].astype(str).str.strip()
                     df = df[df[sym_col].isin(STRICT_FNO_WHITELIST)]
 
                     df['TRADED_VALUE'] = df[vol_col].astype(float) * df[close_col].astype(float)
                     if prev_close_col and prev_close_col in df.columns:
-                        df['DAY_CHANGE_PCT'] = ((df[close_col].astype(float) - df[prev_close_col].astype(float)) / df[prev_close_col].astype(float)) * 100
+                        df['DAY_CHANGE_PTS'] = df[close_col].astype(float) - df[prev_close_col].astype(float)
+                        df['DAY_CHANGE_PCT'] = (df['DAY_CHANGE_PTS'] / df[prev_close_col].astype(float)) * 100
                     else:
+                        df['DAY_CHANGE_PTS'] = 0.0
                         df['DAY_CHANGE_PCT'] = 0.0
 
                     processed_data = []
@@ -100,33 +103,37 @@ def fetch_bhavcopy_for_date(date_obj):
                         close_p = round(float(row[close_col]), 2)
                         turnover_cr = round(float(row['TRADED_VALUE']) / 10000000, 2)
                         change_pct = round(float(row['DAY_CHANGE_PCT']), 2)
+                        change_pts = round(float(row['DAY_CHANGE_PTS']), 2)
                         
-                        # --- BUYING SIGNALS & GREEN HEAT METER ---
+                        # --- RECALIBRATED LOGIC FOR HIGH MOVERS & ABSOLUTE POINTS ---
                         buy_signal = "—"
                         buy_heat = "⚪ [LOW]"
-                        if turnover_cr >= 500 and change_pct >= 3.0:
-                            buy_signal = "🚀 NUCLEAR VOLUME SURGE (BUY)"
+                        
+                        # Rule 1: High Absolute Move (+100 Points or 3%+) OR High Turnover Surge
+                        if change_pts >= 100 or (turnover_cr >= 250 and change_pct >= 2.5):
+                            buy_signal = f"🚀 NUCLEAR MOVER (+{change_pts} Pts)"
                             buy_heat = "🟢🟢🟢 [SUPER HOT]"
-                        elif (turnover_cr >= 400 and change_pct >= 2.0) or (turnover_cr >= 150 and change_pct >= 6.0):
-                            buy_signal = "🟢 ROCKET BLAST (BUY)"
+                        elif change_pts >= 50 or (turnover_cr >= 150 and change_pct >= 1.8):
+                            buy_signal = f"🟢 ROCKET BLAST (+{change_pts} Pts)"
                             buy_heat = "🟢🟢 [HIGH HEAT]"
-                        elif (turnover_cr >= 300 and change_pct >= 1.5) or (turnover_cr >= 100 and change_pct >= 4.0):
+                        elif change_pts >= 25 or (turnover_cr >= 80 and change_pct >= 1.0):
                             buy_signal = "🎯 SNIPER BULL (BUY)"
                             buy_heat = "🌱 [WARM]"
                         elif change_pct > 0:
                             buy_signal = "📈 MILD BULLISH"
                             buy_heat = "⚡ [MODERATE]"
 
-                        # --- SELLING SIGNALS & RED HEAT METER ---
+                        # --- RECALIBRATED SELLING LOGIC ---
                         sell_signal = "—"
                         sell_heat = "⚪ [LOW]"
-                        if turnover_cr >= 400 and change_pct <= -3.0:
-                            sell_signal = "🔴 HEAVY INSTI DUMP (EXIT)"
+                        
+                        if change_pts <= -100 or (turnover_cr >= 250 and change_pct <= -2.5):
+                            sell_signal = f"🔴 HEAVY INSTI DUMP ({change_pts} Pts)"
                             sell_heat = "🔴🔴🔴 [EXTREME DUMP]"
-                        elif (turnover_cr >= 400 and change_pct <= -2.0) or (turnover_cr >= 150 and change_pct <= -4.0):
-                            sell_signal = "⚠️ SHARP DUMP (EXIT)"
+                        elif change_pts <= -50 or (turnover_cr >= 150 and change_pct <= -1.8):
+                            sell_signal = f"⚠️ SHARP DUMP ({change_pts} Pts)"
                             sell_heat = "🔴🔴 [HIGH DUMP]"
-                        elif (turnover_cr >= 300 and change_pct <= -1.5) or (turnover_cr >= 100 and change_pct <= -2.5):
+                        elif change_pts <= -25 or (turnover_cr >= 80 and change_pct <= -1.0):
                             sell_signal = "📉 BEAR HIT (SELL)"
                             sell_heat = "🚨 [HEAVY BEAR]"
                         elif change_pct < 0:
@@ -138,7 +145,8 @@ def fetch_bhavcopy_for_date(date_obj):
                             'turnover': turnover_cr,
                             'close': close_p,
                             'change_pct': change_pct,
-                            'change_str': f"{change_pct:+.2f}%",
+                            'change_pts': change_pts,
+                            'change_str': f"{change_pct:+.2f}% ({change_pts:+.1f} Pts)",
                             'buy': buy_signal,
                             'buy_heat': buy_heat,
                             'sell': sell_signal,
@@ -169,14 +177,15 @@ if raw_data:
     bullish_list = [x for x in raw_data if x['change_pct'] >= 0]
     bearish_list = [x for x in raw_data if x['change_pct'] < 0]
     
-    bullish_list.sort(key=lambda x: x['change_pct'], reverse=True)
-    bearish_list.sort(key=lambda x: x['change_pct'], reverse=False)
+    # Priority sorting by Absolute Points & Percentage Change
+    bullish_list.sort(key=lambda x: (x['change_pts'], x['change_pct']), reverse=True)
+    bearish_list.sort(key=lambda x: (x['change_pts'], x['change_pct']), reverse=False)
     
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b %H:%M')
     
-    headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "BUY SIGNAL", "HEAT METER"]
+    headers_bull = ["🟢 BUYING SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE % (PTS)", "BUY SIGNAL", "HEAT METER"]
     center_header = [f"🕒 UPDATED: {ist_now} (IST)"]
-    headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE %", "SELL SIGNAL", "HEAT METER"]
+    headers_bear = ["🔴 SELLING / DIP SYMBOL", "LTP", "TURNOVER (CR)", "CHANGE % (PTS)", "SELL SIGNAL", "HEAT METER"]
     
     full_headers = headers_bull + center_header + headers_bear
     worksheet.update('A1', [full_headers])
@@ -203,6 +212,6 @@ if raw_data:
         combined_rows.append(row)
         
     worksheet.update('A2', combined_rows)
-    print("SUCCESS: Color-coded Green/Red Heat Meter Updated!")
+    print("SUCCESS: Recalibrated Mover Logic Executed Successfully!")
 else:
     print("❌ Failed to fetch data.")
